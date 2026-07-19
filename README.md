@@ -58,22 +58,22 @@ is dynamically imported behind the client-only React boundary in
 
 ## Current milestone
 
-Phase 4, the Complete Skirmish, is implemented on the 64×64 Golden Scar map.
-The Gold player now fights a deterministic, build-order-driven Normal AI
-through explored terrain and current-visibility fog of war. The AI scouts,
-defends, rebuilds, expands, produces mixed armies, and attacks using the same
-credits, prerequisites, placement rules, production time, and visibility
-memory as the player.
+Phase 5, the feature-complete v1, is implemented on the 64×64 Golden Scar map.
+The complete deterministic skirmish now includes match setup, pause, surrender,
+restart, results, persistent settings, contextual first-match onboarding, and
+the Solar Spear superweapon. A powered Oracle charges the weapon; launch
+requires current vision and creates a public four-second warning before impact.
 
-The earlier deterministic movement and combat slices remain available through
-the same simulation module and acceptance suite. Gameplay commands continue to
-enter the 20 Hz fixed-step simulation through a queue; React and Phaser consume
-frozen snapshots and never mutate simulation state.
+The browser audio layer synthesizes original radio tones, selection and
+construction alerts, weapon and explosion effects, warnings, and an industrial
+ambient bed at runtime. Master, ambient, and effects volumes, alert subtitles,
+interface scale, reduced motion, and onboarding progress persist locally.
 
-In the Phase 4 skirmish, choose a structure in the construction grid, then
-right-click a visible legal tile inside the connected build-radius overlay.
-Select production structures to queue units, scout to reveal the map, and
-right-click currently visible enemy units or structures to attack.
+All gameplay commands—including Solar Spear launch and surrender—continue to
+enter the 20 Hz fixed-step simulation through a queue. React and Phaser consume
+frozen snapshots and never mutate simulation state. Choose a deterministic seed
+in match setup, then build through the Oracle, keep it powered, and arm the
+Solar Spear before selecting currently visible ground.
 
 ## Hosting
 

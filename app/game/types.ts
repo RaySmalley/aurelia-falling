@@ -38,6 +38,16 @@ export type OrderKind =
 export type MatchStatus = "active" | "victory" | "defeat" | "draw";
 export type SimulationScenario = "combat" | "economy" | "skirmish";
 export type VisibilityLevel = 0 | 1 | 2;
+export type SolarSpearState =
+  | "unknown"
+  | "unavailable"
+  | "charging"
+  | "ready"
+  | "warning";
+export type SolarSpearFailure =
+  | "outsideMap"
+  | "notVisible"
+  | "notReady";
 export type PlacementFailure =
   | "outsideMap"
   | "blockedTerrain"
@@ -76,6 +86,8 @@ export type SimCommand =
     }
   | { kind: "cancelProduction"; structureId: StructureId; queueIndex: number }
   | { kind: "setRepair"; structureId: StructureId; enabled: boolean }
+  | { kind: "launchSolarSpear"; target: GridPoint }
+  | { kind: "surrender" }
   | { kind: "switchPlayer"; playerId: PlayerId }
   | { kind: "restartCombat"; seed?: number }
   | { kind: "restartEconomy"; seed?: number }
@@ -187,6 +199,29 @@ export type AiSnapshot = Readonly<{
   cheats: false;
 }>;
 
+export type SolarSpearSnapshot = Readonly<{
+  playerId: PlayerId;
+  state: SolarSpearState;
+  chargeTicks: number;
+  chargeTotalTicks: number;
+  target: GridPoint | null;
+  impactTick: number | null;
+  lastImpact: Readonly<{ target: GridPoint; tick: number }> | null;
+  launches: number;
+}>;
+
+export type OnboardingSnapshot = Readonly<{
+  selection: boolean;
+  reactor: boolean;
+  refinery: boolean;
+  barracks: boolean;
+  production: boolean;
+  controlGroup: boolean;
+  attackMove: boolean;
+  operationsCenter: boolean;
+  solarSpear: boolean;
+}>;
+
 export type SimulationSnapshot = Readonly<{
   tick: number;
   scenario: SimulationScenario;
@@ -204,8 +239,22 @@ export type SimulationSnapshot = Readonly<{
   kills: Readonly<Record<PlayerId, number>>;
   seed: number;
   lastPlacementFailure: PlacementFailure | null;
+  lastSolarFailure: SolarSpearFailure | null;
   visibility: VisibilitySnapshot;
   ai: AiSnapshot;
+  solarSpears: Readonly<Record<PlayerId, SolarSpearSnapshot>>;
+  onboarding: OnboardingSnapshot;
+}>;
+
+export type AudioSettings = Readonly<{
+  masterVolume: number;
+  musicVolume: number;
+  effectsVolume: number;
+}>;
+
+export type AudioCueSnapshot = Readonly<{
+  id: number;
+  text: string;
 }>;
 
 export type RuntimeSnapshot = Readonly<{
@@ -213,6 +262,10 @@ export type RuntimeSnapshot = Readonly<{
   paused: boolean;
   pauseReason: "hidden" | "manual" | null;
   audioReady: boolean;
+  cameraMoved: boolean;
+  pendingBuilding: BuildingKind | null;
+  solarTargeting: boolean;
+  audioCue: AudioCueSnapshot | null;
   renderer: string;
 }>;
 
@@ -222,9 +275,12 @@ export type GameRuntime = {
   subscribe(listener: RuntimeListener): () => void;
   enqueue(command: SimCommand): void;
   beginPlacement(buildingKind: BuildingKind | null): void;
+  beginSolarTargeting(active: boolean): void;
+  clearTargetingModes(): void;
   pause(reason: "hidden" | "manual"): void;
   resume(): void;
   unlockAudio(): Promise<void>;
+  setAudioSettings(settings: AudioSettings): void;
   centerCamera(): void;
   destroy(): void;
 };
