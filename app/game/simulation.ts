@@ -37,6 +37,7 @@ export const TICKS_PER_SECOND = 20;
 export const SIM_STEP_MS = 1_000 / TICKS_PER_SECOND;
 export const DEFAULT_COMBAT_SEED = 0xa11e_1a;
 
+const ZERO_SEED_RNG_STATE = 0x6d2b_79f5;
 const SEPARATION_MILLI = 420;
 const SEPARATION_STEP = 24;
 const CHASE_REPATH_TICKS = 8;
@@ -277,8 +278,10 @@ const gridDistanceSquared = (left: GridPoint, right: GridPoint) => {
 export class DeterministicRng {
   private state: number;
 
-  constructor(seed: number) {
-    this.state = (seed >>> 0) || DEFAULT_COMBAT_SEED;
+  constructor(seed = DEFAULT_COMBAT_SEED) {
+    const normalizedSeed = seed >>> 0;
+    this.state =
+      normalizedSeed === 0 ? ZERO_SEED_RNG_STATE : normalizedSeed;
   }
 
   nextUint32() {
@@ -1130,7 +1133,13 @@ export class Simulation {
   }
 
   private moveUnit(unit: UnitState) {
-    if (unit.pathIndex >= unit.path.length) return;
+    if (unit.pathIndex >= unit.path.length) {
+      if (unit.order === "move" && unit.destination) {
+        this.clearPath(unit);
+        unit.order = "idle";
+      }
+      return;
+    }
     const waypoint = tileCenter(unit.path[unit.pathIndex]);
     const dx = waypoint.x - unit.position.x;
     const dy = waypoint.y - unit.position.y;
