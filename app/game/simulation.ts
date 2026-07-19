@@ -1447,15 +1447,7 @@ export class Simulation {
               this.isUnitVisibleTo(observer, unit)),
         )
         .map((unit) => tileKeyOf(toTile(unit.position))),
-      ...this.structures
-        .filter(
-          (structure) =>
-            !observer ||
-            this.scenario !== "skirmish" ||
-            structure.playerId === observer ||
-            this.isStructureVisibleTo(observer, structure),
-        )
-        .map((structure) => tileKeyOf(structure.tile)),
+      ...this.structures.map((structure) => tileKeyOf(structure.tile)),
       ...this.fields.map((field) => tileKeyOf(field.tile)),
     ]);
   }

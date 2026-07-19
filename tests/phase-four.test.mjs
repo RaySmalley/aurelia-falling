@@ -159,6 +159,46 @@ test("Aurelite fields expose live state only while currently visible", () => {
   );
 });
 
+test("hidden enemy structures remain physical pathfinding blockers", () => {
+  const simulation = new Simulation(4_024, "skirmish");
+  const hiddenCitadel = simulation.structures.find(
+    (structure) => structure.id === 4,
+  );
+  assert.equal(
+    simulation.snapshot().structures.some(
+      (structure) => structure.id === hiddenCitadel.id,
+    ),
+    false,
+  );
+
+  simulation.enqueue({
+    kind: "selectUnits",
+    unitIds: [1],
+    additive: false,
+  });
+  simulation.enqueue({
+    kind: "move",
+    target: { ...hiddenCitadel.tile },
+    mode: "move",
+  });
+  simulation.step();
+
+  const harvester = simulation.units.find((unit) => unit.id === 1);
+  assert.notDeepEqual(harvester.destination, hiddenCitadel.tile);
+  assert.equal(
+    harvester.path.some(
+      (point) => tileKeyOf(point) === tileKeyOf(hiddenCitadel.tile),
+    ),
+    false,
+  );
+  assert.equal(
+    simulation.snapshot().structures.some(
+      (structure) => structure.id === hiddenCitadel.id,
+    ),
+    false,
+  );
+});
+
 test("the Normal AI builds, scouts, expands, and spends only legal resources", () => {
   const simulation = new Simulation(4_003, "skirmish");
   let minimumCredits = simulation.players[2].credits;
