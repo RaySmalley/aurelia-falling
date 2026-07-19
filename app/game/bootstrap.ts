@@ -163,7 +163,6 @@ export async function createGameRuntime(
               buildingKind: this.pendingBuilding,
               tile: target,
             });
-            this.pendingBuilding = null;
             return;
           }
           const enemyPlayer =

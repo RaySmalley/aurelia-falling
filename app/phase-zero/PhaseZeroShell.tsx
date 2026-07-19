@@ -125,8 +125,9 @@ export default function EconomySandboxShell() {
   const placementFailure = simulation.lastPlacementFailure;
 
   const beginPlacement = (kind: BuildingKind) => {
-    setPlacement(kind);
-    runtimeRef.current?.beginPlacement(kind);
+    const next = placement === kind ? null : kind;
+    setPlacement(next);
+    runtimeRef.current?.beginPlacement(next);
   };
 
   const switchSide = (playerId: PlayerId) => {
@@ -239,7 +240,7 @@ export default function EconomySandboxShell() {
           </div>
           <p className="placement-help">
             {placement
-              ? `Right-click the map to place ${gameData.buildings[placement].displayName}.`
+              ? `Right-click to place ${gameData.buildings[placement].displayName}. Invalid sites keep placement active; click the active build button to cancel.`
               : "Choose a structure, then right-click inside a connected radius."}
           </p>
           {placementFailure && (

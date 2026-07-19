@@ -1278,6 +1278,11 @@ export class Simulation {
       this.updateCombatOrder(unit);
       return;
     }
+    if (unit.order === "move" || unit.order === "hold") return;
+    if (unit.order === "attackMove") {
+      this.updateCombatOrder(unit);
+      return;
+    }
     const definition = gameData.units.midasHarvester;
     if (unit.cargo >= definition.cargoCapacity) {
       const refinery = this.nearestOperationalRefinery(unit);

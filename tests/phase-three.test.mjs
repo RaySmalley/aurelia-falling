@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
@@ -45,6 +46,21 @@ test("Phase 3 exposes all seven structures and the complete production tree", ()
   assert.ok(gameData.buildings.operationsCenter.powerConsumed > 0);
 });
 
+test("invalid placement attempts keep renderer and HUD placement modes aligned", async () => {
+  const [bootstrap, shell] = await Promise.all([
+    readFile(
+      new URL("../app/game/bootstrap.ts", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../app/phase-zero/PhaseZeroShell.tsx", import.meta.url),
+      "utf8",
+    ),
+  ]);
+  assert.doesNotMatch(bootstrap, /this\.pendingBuilding = null/);
+  assert.match(shell, /placement === kind \? null : kind/);
+});
+
 test("Harvesters gather Aurelite, unload it, and regenerate fields deterministically", () => {
   const first = new Simulation(9_001, "economy");
   const second = new Simulation(9_001, "economy");
@@ -62,6 +78,46 @@ test("Harvesters gather Aurelite, unload it, and regenerate fields deterministic
     ),
     true,
   );
+});
+
+test("Harvesters honor explicit move, attack-move, and hold orders", () => {
+  const simulation = new Simulation(9_002, "economy");
+  simulation.enqueue({
+    kind: "selectUnits",
+    unitIds: [1],
+    additive: false,
+  });
+  simulation.enqueue({
+    kind: "move",
+    target: { x: 20, y: 20 },
+    mode: "move",
+  });
+  simulation.step();
+  let harvester = simulation
+    .snapshot()
+    .units.find((unit) => unit.id === 1);
+  assert.equal(harvester.order, "move");
+  assert.ok(harvester.path.length > 0);
+
+  simulation.enqueue({ kind: "hold" });
+  simulation.step();
+  const heldPosition = simulation
+    .snapshot()
+    .units.find((unit) => unit.id === 1).position;
+  step(simulation, 20);
+  harvester = simulation.snapshot().units.find((unit) => unit.id === 1);
+  assert.equal(harvester.order, "hold");
+  assert.deepEqual(harvester.position, heldPosition);
+
+  simulation.enqueue({
+    kind: "move",
+    target: { x: 22, y: 20 },
+    mode: "attackMove",
+  });
+  simulation.step();
+  harvester = simulation.snapshot().units.find((unit) => unit.id === 1);
+  assert.equal(harvester.order, "attackMove");
+  assert.ok(harvester.path.length > 0);
 });
 
 test("Placement enforces prerequisites, terrain, build radius, and credits", () => {
