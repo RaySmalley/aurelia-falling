@@ -1,6 +1,10 @@
 import { BLOCKED_TILES, MAP_SIZE, TILE_MILLI } from "./map";
+import { gameData } from "./data";
 import { SIM_STEP_MS, Simulation } from "./simulation";
+import { ProceduralAudio } from "./audio";
 import type {
+  AudioCueSnapshot,
+  AudioSettings,
   AureliteFieldSnapshot,
   BuildingKind,
   GameRuntime,
@@ -51,6 +55,9 @@ export async function createGameRuntime(
   let paused = false;
   let pauseReason: RuntimeSnapshot["pauseReason"] = null;
   let audioReady = false;
+  let cameraMoved = false;
+  let audioCue: AudioCueSnapshot | null = null;
+  let nextAudioCueId = 1;
   let renderer = "initializing";
   let accumulator = 0;
   let lastSnapshot = simulation.snapshot();
@@ -63,10 +70,17 @@ export async function createGameRuntime(
       paused,
       pauseReason,
       audioReady,
+      cameraMoved,
+      audioCue,
       renderer,
     };
     listeners.forEach((listener) => listener(snapshot));
   };
+  const proceduralAudio = new ProceduralAudio((text) => {
+    audioCue = Object.freeze({ id: nextAudioCueId, text });
+    nextAudioCueId += 1;
+    emit();
+  });
 
   class OperationsScene extends Phaser.Scene {
     private cursorKeys!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -78,6 +92,7 @@ export async function createGameRuntime(
     private rallyGraphics!: Phaser.GameObjects.Graphics;
     private projectileGraphics!: Phaser.GameObjects.Graphics;
     private buildRadiusGraphics!: Phaser.GameObjects.Graphics;
+    private solarGraphics!: Phaser.GameObjects.Graphics;
     private fogTexture!: Phaser.GameObjects.RenderTexture;
     private fogScratch!: Phaser.GameObjects.Graphics;
     private lastFogRevision = -1;
@@ -88,6 +103,7 @@ export async function createGameRuntime(
     private fieldViews = new Map<number, Phaser.GameObjects.Container>();
     private pendingOrder: "move" | "attackMove" | "rally" = "move";
     public pendingBuilding: BuildingKind | null = null;
+    public solarTargeting = false;
 
     constructor() {
       super("operations");
@@ -100,6 +116,7 @@ export async function createGameRuntime(
       this.rallyGraphics = this.add.graphics().setDepth(7);
       this.projectileGraphics = this.add.graphics().setDepth(24);
       this.buildRadiusGraphics = this.add.graphics().setDepth(6);
+      this.solarGraphics = this.add.graphics().setDepth(70);
       this.fogTexture = this.add
         .renderTexture(
           FOG_LEFT,
@@ -169,6 +186,18 @@ export async function createGameRuntime(
         const world = pointer.positionToCamera(
           this.cameras.main,
         ) as Phaser.Math.Vector2;
+        if (this.solarTargeting) {
+          const targetGrid = worldToGrid(world);
+          simulation.enqueue({
+            kind: "launchSolarSpear",
+            target: {
+              x: Math.round(targetGrid.x),
+              y: Math.round(targetGrid.y),
+            },
+          });
+          this.solarTargeting = false;
+          return;
+        }
         if (pointer.rightButtonDown()) {
           const targetGrid = worldToGrid(world);
           const target = {
@@ -264,6 +293,7 @@ export async function createGameRuntime(
           previousSnapshot = lastSnapshot;
           simulation.step();
           lastSnapshot = simulation.snapshot();
+          proceduralAudio.observe(previousSnapshot, lastSnapshot);
           accumulator -= SIM_STEP_MS;
         }
       }
@@ -281,6 +311,7 @@ export async function createGameRuntime(
       this.drawProjectiles(lastSnapshot);
       this.drawBuildRadii(lastSnapshot);
       this.drawFog(lastSnapshot);
+      this.drawSolarSpear(lastSnapshot);
 
       if (
         lastSnapshot.tick !== lastEmittedTick &&
@@ -293,6 +324,19 @@ export async function createGameRuntime(
 
     private updateCamera(delta: number) {
       const cameraSpeed = 0.46 * delta;
+      const moved =
+        this.cursorKeys.left.isDown ||
+        this.cameraKeys.A.isDown ||
+        this.cursorKeys.right.isDown ||
+        this.cameraKeys.D.isDown ||
+        this.cursorKeys.up.isDown ||
+        this.cameraKeys.W.isDown ||
+        this.cursorKeys.down.isDown ||
+        this.cameraKeys.S.isDown;
+      if (moved && !cameraMoved) {
+        cameraMoved = true;
+        emit();
+      }
       if (this.cursorKeys.left.isDown || this.cameraKeys.A.isDown)
         this.cameras.main.scrollX -= cameraSpeed;
       if (this.cursorKeys.right.isDown || this.cameraKeys.D.isDown)
@@ -301,6 +345,57 @@ export async function createGameRuntime(
         this.cameras.main.scrollY -= cameraSpeed;
       if (this.cursorKeys.down.isDown || this.cameraKeys.S.isDown)
         this.cameras.main.scrollY += cameraSpeed;
+    }
+
+    private drawSolarSpear(snapshot: SimulationSnapshot) {
+      this.solarGraphics.clear();
+      for (const playerId of [1, 2] as const) {
+        const solar = snapshot.solarSpears[playerId];
+        if (
+          solar.state === "warning" &&
+          solar.target &&
+          solar.impactTick !== null
+        ) {
+          const world = gridToWorld(solar.target);
+          const remaining = Math.max(0, solar.impactTick - snapshot.tick);
+          const pulse = 0.45 + ((remaining % 10) / 10) * 0.45;
+          const color = playerId === 1 ? 0xffca54 : 0x63fff0;
+          const radiusTiles =
+            gameData.solarSpear.blastRadiusMilli / TILE_MILLI;
+          this.solarGraphics.lineStyle(3, color, pulse);
+          this.solarGraphics.strokeEllipse(
+            world.x,
+            world.y,
+            radiusTiles * TILE_WIDTH * 2,
+            radiusTiles * TILE_HEIGHT * 2,
+          );
+          this.solarGraphics.lineBetween(
+            world.x - 22,
+            world.y,
+            world.x + 22,
+            world.y,
+          );
+          this.solarGraphics.lineBetween(
+            world.x,
+            world.y - 22,
+            world.x,
+            world.y + 22,
+          );
+        }
+        if (
+          solar.lastImpact &&
+          snapshot.tick - solar.lastImpact.tick <= 18
+        ) {
+          const world = gridToWorld(solar.lastImpact.target);
+          const age = snapshot.tick - solar.lastImpact.tick;
+          const radius = 28 + age * 13;
+          const color = playerId === 1 ? 0xffe28a : 0xb5fff8;
+          this.solarGraphics.fillStyle(color, Math.max(0, 0.7 - age / 26));
+          this.solarGraphics.fillCircle(world.x, world.y, radius);
+          this.solarGraphics.lineStyle(4, 0xffffff, 0.85 - age / 24);
+          this.solarGraphics.strokeCircle(world.x, world.y, radius * 1.35);
+        }
+      }
     }
 
     private drawTerrain() {
@@ -857,6 +952,13 @@ export async function createGameRuntime(
       return () => listeners.delete(listener);
     },
     enqueue(command: SimCommand) {
+      if (
+        command.kind === "restartCombat" ||
+        command.kind === "restartEconomy" ||
+        command.kind === "restartSkirmish"
+      ) {
+        cameraMoved = false;
+      }
       simulation.enqueue(command);
     },
     beginPlacement(buildingKind) {
@@ -865,10 +967,17 @@ export async function createGameRuntime(
       ) as OperationsScene | null;
       if (scene) scene.pendingBuilding = buildingKind;
     },
+    beginSolarTargeting(active) {
+      const scene = game.scene.getScene(
+        "operations",
+      ) as OperationsScene | null;
+      if (scene) scene.solarTargeting = active;
+    },
     pause(reason) {
       paused = true;
       pauseReason = reason;
       accumulator = 0;
+      proceduralAudio.setPaused(true);
       emit();
     },
     resume() {
@@ -876,33 +985,16 @@ export async function createGameRuntime(
       pauseReason = null;
       accumulator = 0;
       previousSnapshot = lastSnapshot;
+      proceduralAudio.setPaused(false);
       emit();
     },
     async unlockAudio() {
       if (audioReady) return;
-      const AudioContextClass =
-        window.AudioContext ??
-        (
-          window as typeof window & {
-            webkitAudioContext?: typeof AudioContext;
-          }
-        ).webkitAudioContext;
-      if (!AudioContextClass) return;
-      const context = new AudioContextClass();
-      await context.resume();
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      gain.gain.setValueAtTime(0.025, context.currentTime);
-      gain.gain.exponentialRampToValueAtTime(
-        0.0001,
-        context.currentTime + 0.09,
-      );
-      oscillator.frequency.value = 520;
-      oscillator.connect(gain).connect(context.destination);
-      oscillator.start();
-      oscillator.stop(context.currentTime + 0.09);
-      audioReady = true;
+      audioReady = await proceduralAudio.unlock();
       emit();
+    },
+    setAudioSettings(settings: AudioSettings) {
+      proceduralAudio.setSettings(settings);
     },
     centerCamera() {
       game.scene
@@ -911,6 +1003,7 @@ export async function createGameRuntime(
     },
     destroy() {
       listeners.clear();
+      proceduralAudio.destroy();
       game.destroy(true);
     },
   };

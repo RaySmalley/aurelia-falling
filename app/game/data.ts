@@ -59,6 +59,7 @@ export type AiProfile = Readonly<{
   scoutIntervalTicks: number;
   attackIntervalTicks: number;
   attackStartTick: number;
+  solarLaunchStartTick: number;
   attackUnitThreshold: number;
   defenseRadiusMilli: number;
   productionQueueTarget: number;
@@ -355,6 +356,12 @@ export const gameData = Object.freeze({
     repairHealthPerCredit: 4,
     productionQueueLimit: 5,
   }),
+  solarSpear: Object.freeze({
+    chargeTicks: 4_800,
+    warningTicks: 80,
+    blastRadiusMilli: 5_000,
+    damage: 5_000,
+  }),
   ai: Object.freeze({
     normal: Object.freeze({
       id: "normal",
@@ -362,6 +369,7 @@ export const gameData = Object.freeze({
       scoutIntervalTicks: 360,
       attackIntervalTicks: 1_200,
       attackStartTick: 23_000,
+      solarLaunchStartTick: 24_000,
       attackUnitThreshold: 6,
       defenseRadiusMilli: 12_000,
       productionQueueTarget: 2,

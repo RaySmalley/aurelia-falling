@@ -20,6 +20,7 @@ import type {
   AureliteFieldSnapshot,
   BuildingKind,
   GridPoint,
+  OnboardingSnapshot,
   OrderKind,
   PlacementFailure,
   PlayerId,
@@ -29,6 +30,8 @@ import type {
   SimCommand,
   SimulationScenario,
   SimulationSnapshot,
+  SolarSpearFailure,
+  SolarSpearSnapshot,
   StructureId,
   StructureSnapshot,
   UnitId,
@@ -118,6 +121,18 @@ type ProjectileState = {
   willHit: boolean;
 };
 
+type SolarSpearStateData = {
+  chargeTicks: number;
+  target: GridPoint | null;
+  impactTick: number | null;
+  lastImpact: { target: GridPoint; tick: number } | null;
+  launches: number;
+};
+
+type OnboardingState = {
+  -readonly [Key in keyof OnboardingSnapshot]: boolean;
+};
+
 type StartingUnit = Readonly<{
   id: UnitId;
   callsign: string;
@@ -164,6 +179,10 @@ type AiCommand =
   | Readonly<{
       kind: "repair";
       structureId: StructureId;
+    }>
+  | Readonly<{
+      kind: "launchSolarSpear";
+      target: GridPoint;
     }>;
 
 type EnemyMemory = {
@@ -171,6 +190,26 @@ type EnemyMemory = {
   tile: GridPoint;
   lastSeenTick: number;
 };
+
+const createSolarSpearState = (): SolarSpearStateData => ({
+  chargeTicks: 0,
+  target: null,
+  impactTick: null,
+  lastImpact: null,
+  launches: 0,
+});
+
+const createOnboardingState = (): OnboardingState => ({
+  selection: false,
+  reactor: false,
+  refinery: false,
+  barracks: false,
+  production: false,
+  controlGroup: false,
+  attackMove: false,
+  operationsCenter: false,
+  solarSpear: false,
+});
 
 const UNIT_KINDS: readonly UnitKind[] = Object.freeze([
   "midasHarvester",
@@ -366,7 +405,14 @@ export class Simulation {
   private status: SimulationSnapshot["status"] = "active";
   private winner: PlayerId | null = null;
   private lastPlacementFailure: PlacementFailure | null = null;
+  private lastSolarFailure: SolarSpearFailure | null = null;
   private visibility!: Record<PlayerId, VisibilityGrid>;
+  private solarSpears: Record<PlayerId, SolarSpearStateData> = {
+    1: createSolarSpearState(),
+    2: createSolarSpearState(),
+  };
+  private onboarding = createOnboardingState();
+  private readonly onboardingConstructionIds = new Set<StructureId>();
   private aiPhase: AiPhase = "build";
   private aiLastDecisionTick = -1;
   private aiLastScoutTick = -1;
@@ -407,6 +453,7 @@ export class Simulation {
     if (this.scenario !== "combat") {
       this.updateConstruction();
       this.updateConnectivityAndPower();
+      if (this.updateSolarSpears()) this.removeDestroyedEntities();
       this.updateRepairs();
       this.updateProduction();
       this.updateFields();
@@ -598,8 +645,45 @@ export class Simulation {
       kills: Object.freeze({ ...this.kills }),
       seed: this.seed,
       lastPlacementFailure: this.lastPlacementFailure,
+      lastSolarFailure: this.lastSolarFailure,
       visibility: this.visibility[this.controlledPlayer].snapshot(),
       ai: this.aiSnapshot(),
+      solarSpears: Object.freeze({
+        1: this.solarSpearSnapshot(1),
+        2: this.solarSpearSnapshot(2),
+      }),
+      onboarding: Object.freeze({ ...this.onboarding }),
+    });
+  }
+
+  private solarSpearSnapshot(playerId: PlayerId): SolarSpearSnapshot {
+    const solar = this.solarSpears[playerId];
+    const warning = solar.impactTick !== null;
+    const oracle = this.operationalOracle(playerId);
+    const hiddenEnemy = playerId !== this.controlledPlayer && !warning;
+    const state = hiddenEnemy
+      ? "unknown"
+      : warning
+        ? "warning"
+        : !oracle
+          ? "unavailable"
+          : solar.chargeTicks >= gameData.solarSpear.chargeTicks
+            ? "ready"
+            : "charging";
+    return Object.freeze({
+      playerId,
+      state,
+      chargeTicks: hiddenEnemy ? 0 : solar.chargeTicks,
+      chargeTotalTicks: gameData.solarSpear.chargeTicks,
+      target: solar.target ? Object.freeze({ ...solar.target }) : null,
+      impactTick: solar.impactTick,
+      lastImpact: solar.lastImpact
+        ? Object.freeze({
+            target: Object.freeze({ ...solar.lastImpact.target }),
+            tick: solar.lastImpact.tick,
+          })
+        : null,
+      launches: hiddenEnemy ? 0 : solar.launches,
     });
   }
 
@@ -710,10 +794,17 @@ export class Simulation {
     this.status = "active";
     this.winner = null;
     this.lastPlacementFailure = null;
+    this.lastSolarFailure = null;
     this.visibility = {
       1: new VisibilityGrid(scenario === "skirmish"),
       2: new VisibilityGrid(scenario === "skirmish"),
     };
+    this.solarSpears = {
+      1: createSolarSpearState(),
+      2: createSolarSpearState(),
+    };
+    this.onboarding = createOnboardingState();
+    this.onboardingConstructionIds.clear();
     this.aiPhase = "build";
     this.aiLastDecisionTick = -1;
     this.aiLastScoutTick = -1;
@@ -870,6 +961,16 @@ export class Simulation {
     }
     if (this.status !== "active") return;
 
+    if (command.kind === "surrender") {
+      this.clearAllOrders();
+      this.winner = this.controlledPlayer === 1 ? 2 : 1;
+      this.status = this.controlledPlayer === 1 ? "defeat" : "victory";
+      return;
+    }
+    if (command.kind === "launchSolarSpear") {
+      this.launchSolarSpear(this.controlledPlayer, command.target);
+      return;
+    }
     if (command.kind === "switchPlayer") {
       if (this.scenario === "skirmish") return;
       this.controlledPlayer = command.playerId;
@@ -891,6 +992,8 @@ export class Simulation {
           ? unit.selected || requested.has(unit.id)
           : requested.has(unit.id);
       }
+      this.onboarding.selection ||=
+        this.selectedUnits().length > 0;
       return;
     }
     if (command.kind === "selectStructures") {
@@ -907,6 +1010,12 @@ export class Simulation {
           ? structure.selected || requested.has(structure.id)
           : requested.has(structure.id);
       }
+      this.onboarding.selection ||=
+        this.structures.some(
+          (structure) =>
+            structure.selected &&
+            structure.playerId === this.controlledPlayer,
+        );
       return;
     }
     if (command.kind === "placeBuilding") {
@@ -941,10 +1050,9 @@ export class Simulation {
       return;
     }
     if (command.kind === "assignControlGroup") {
-      this.controlGroups.set(
-        command.group,
-        this.selectedUnits().map((unit) => unit.id),
-      );
+      const selected = this.selectedUnits().map((unit) => unit.id);
+      this.controlGroups.set(command.group, selected);
+      this.onboarding.controlGroup ||= selected.length > 0;
       return;
     }
     if (command.kind === "recallControlGroup") {
@@ -1019,6 +1127,8 @@ export class Simulation {
       return;
     }
     if (command.kind === "move") {
+      this.onboarding.attackMove ||=
+        command.mode === "attackMove" && this.selectedUnits().length > 0;
       this.issueFormationMove(command.target, command.mode);
     }
   }
@@ -1041,6 +1151,10 @@ export class Simulation {
       ) {
         structure.repairing = true;
       }
+      return;
+    }
+    if (command.kind === "launchSolarSpear") {
+      this.launchSolarSpear(2, command.target, false);
       return;
     }
     const units = command.unitIds
@@ -1158,6 +1272,40 @@ export class Simulation {
           ),
       )
       .sort((left, right) => left.id - right.id);
+
+    if (
+      this.tick >= profile.solarLaunchStartTick &&
+      this.solarSpearReady(2)
+    ) {
+      const visibleStructure = this.sortedStructures()
+        .filter(
+          (structure) =>
+            structure.playerId === 1 &&
+            this.isStructureVisibleTo(2, structure),
+        )
+        .sort(
+          (left, right) =>
+            Number(right.kind === "citadel") -
+              Number(left.kind === "citadel") ||
+            left.id - right.id,
+        )[0];
+      const visibleUnit = this.sortedUnits().find(
+        (unit) => unit.playerId === 1 && this.isUnitVisibleTo(2, unit),
+      );
+      const solarTarget = visibleStructure
+        ? { ...visibleStructure.tile }
+        : visibleUnit
+          ? toTile(visibleUnit.position)
+          : null;
+      if (solarTarget) {
+        this.aiPhase = "attack";
+        this.aiCommands.push({
+          kind: "launchSolarSpear",
+          target: solarTarget,
+        });
+        return;
+      }
+    }
 
     const damaged = ownStructures.find(
       (structure) =>
@@ -1758,15 +1906,137 @@ export class Simulation {
     unit.position.y += Math.trunc((dy * stepMilli) / distance);
   }
 
+  private liveOracle(playerId: PlayerId) {
+    return this.sortedStructures().find(
+      (structure) =>
+        structure.playerId === playerId &&
+        structure.kind === "operationsCenter" &&
+        structure.constructionRemainingTicks === 0 &&
+        structure.health > 0,
+    );
+  }
+
+  private operationalOracle(playerId: PlayerId) {
+    const oracle = this.liveOracle(playerId);
+    return oracle?.powered ? oracle : undefined;
+  }
+
+  private solarSpearReady(playerId: PlayerId) {
+    const solar = this.solarSpears[playerId];
+    return (
+      solar.impactTick === null &&
+      this.operationalOracle(playerId) !== undefined &&
+      solar.chargeTicks >= gameData.solarSpear.chargeTicks
+    );
+  }
+
+  private launchSolarSpear(
+    playerId: PlayerId,
+    target: GridPoint,
+    reportFailure = playerId === this.controlledPlayer,
+  ) {
+    const normalizedTarget = {
+      x: Math.round(target.x),
+      y: Math.round(target.y),
+    };
+    let failure: SolarSpearFailure | null = null;
+    if (
+      !Number.isFinite(normalizedTarget.x) ||
+      !Number.isFinite(normalizedTarget.y) ||
+      normalizedTarget.x < 0 ||
+      normalizedTarget.y < 0 ||
+      normalizedTarget.x >= MAP_SIZE ||
+      normalizedTarget.y >= MAP_SIZE
+    ) {
+      failure = "outsideMap";
+    } else if (!this.solarSpearReady(playerId)) {
+      failure = "notReady";
+    } else if (
+      this.scenario === "skirmish" &&
+      !this.visibility[playerId].isVisible(normalizedTarget)
+    ) {
+      failure = "notVisible";
+    }
+    if (reportFailure) this.lastSolarFailure = failure;
+    if (failure) return false;
+
+    const solar = this.solarSpears[playerId];
+    solar.chargeTicks = 0;
+    solar.target = normalizedTarget;
+    solar.impactTick = this.tick + gameData.solarSpear.warningTicks;
+    solar.launches += 1;
+    if (playerId === this.controlledPlayer) {
+      this.onboarding.solarSpear = true;
+    }
+    return true;
+  }
+
+  private updateSolarSpears() {
+    let impacted = false;
+    for (const playerId of [1, 2] as const) {
+      const solar = this.solarSpears[playerId];
+      if (solar.impactTick !== null && solar.target) {
+        if (this.tick < solar.impactTick) continue;
+        const targetPosition = tileCenter(solar.target);
+        const radiusSquared =
+          gameData.solarSpear.blastRadiusMilli *
+          gameData.solarSpear.blastRadiusMilli;
+        for (const unit of this.units) {
+          if (distanceSquared(unit.position, targetPosition) <= radiusSquared) {
+            unit.health = Math.max(
+              0,
+              unit.health - gameData.solarSpear.damage,
+            );
+          }
+        }
+        for (const structure of this.structures) {
+          if (
+            distanceSquared(tileCenter(structure.tile), targetPosition) <=
+            radiusSquared
+          ) {
+            structure.health = Math.max(
+              0,
+              structure.health - gameData.solarSpear.damage,
+            );
+          }
+        }
+        solar.lastImpact = { target: { ...solar.target }, tick: this.tick };
+        solar.target = null;
+        solar.impactTick = null;
+        impacted = true;
+        continue;
+      }
+
+      if (!this.liveOracle(playerId)) {
+        solar.chargeTicks = 0;
+      } else if (this.operationalOracle(playerId)) {
+        solar.chargeTicks = Math.min(
+          gameData.solarSpear.chargeTicks,
+          solar.chargeTicks + 1,
+        );
+      }
+    }
+    return impacted;
+  }
+
   private updateConstruction() {
     for (const structure of this.sortedStructures()) {
       if (structure.constructionRemainingTicks <= 0) continue;
       structure.constructionRemainingTicks -= 1;
-      if (
-        structure.constructionRemainingTicks === 0 &&
-        structure.kind === "refinery"
-      ) {
-        this.spawnUnit(structure, "midasHarvester");
+      if (structure.constructionRemainingTicks === 0) {
+        if (structure.kind === "refinery") {
+          this.spawnUnit(structure, "midasHarvester");
+        }
+        if (this.onboardingConstructionIds.delete(structure.id)) {
+          if (
+            structure.kind === "reactor" ||
+            structure.kind === "refinery" ||
+            structure.kind === "barracks" ||
+            structure.kind === "operationsCenter"
+          ) {
+            this.onboarding[structure.kind] = true;
+          }
+        }
       }
     }
   }
@@ -2104,15 +2374,19 @@ export class Simulation {
     if (failure) return;
     const definition = gameData.buildings[buildingKind];
     this.players[playerId].credits -= definition.cost;
+    const structureId = this.nextStructureId;
     this.structures.push(
       this.createStructureState(
-        this.nextStructureId,
+        structureId,
         playerId,
         buildingKind,
         tile,
         false,
       ),
     );
+    if (playerId === this.controlledPlayer) {
+      this.onboardingConstructionIds.add(structureId);
+    }
     this.nextStructureId += 1;
   }
 
@@ -2147,6 +2421,9 @@ export class Simulation {
       remainingTicks: definition.buildTicks,
       totalTicks: definition.buildTicks,
     });
+    if (playerId === this.controlledPlayer) {
+      this.onboarding.production = true;
+    }
   }
 
   private cancelProduction(structureId: number, queueIndex: number) {
@@ -2302,6 +2579,7 @@ export class Simulation {
       const destroyedIds = new Set(
         destroyedStructures.map((structure) => structure.id),
       );
+      for (const id of destroyedIds) this.onboardingConstructionIds.delete(id);
       this.structures = this.structures.filter(
         (structure) => !destroyedIds.has(structure.id),
       );
@@ -2319,6 +2597,14 @@ export class Simulation {
         }
       }
       this.updateConnectivityAndPower();
+      for (const playerId of [1, 2] as const) {
+        if (
+          this.solarSpears[playerId].impactTick === null &&
+          !this.liveOracle(playerId)
+        ) {
+          this.solarSpears[playerId].chargeTicks = 0;
+        }
+      }
     }
   }
 

@@ -18,30 +18,30 @@ export const metadata: Metadata = {
     template: "%s — Aurelia Falling",
   },
   description:
-    "Command the Meridian Coalition through fog of war against a rules-legal Normal AI.",
+    "Build, fight, and deploy the Solar Spear against a rules-legal Normal AI.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
   },
   openGraph: {
     type: "website",
-    title: "Aurelia Falling — Complete Skirmish",
+    title: "Aurelia Falling — Feature-Complete v1",
     description:
-      "Build, scout, and fight through the Golden Scar against a deterministic Normal AI.",
+      "Command the Golden Scar with persistent settings, onboarding, and the Solar Spear.",
     images: [
       {
         url: "/og-phase-four.png",
         width: 1731,
         height: 909,
-        alt: "Aurelia Falling Phase 4 skirmish with Gold and Cyan forces divided by fog of war",
+        alt: "Aurelia Falling skirmish with Gold and Cyan forces divided by fog of war",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Aurelia Falling — Complete Skirmish",
+    title: "Aurelia Falling — Feature-Complete v1",
     description:
-      "Build, scout, and fight through the Golden Scar against a deterministic Normal AI.",
+      "Command the Golden Scar with persistent settings, onboarding, and the Solar Spear.",
     images: ["/og-phase-four.png"],
   },
 };
