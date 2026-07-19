@@ -87,6 +87,7 @@ export async function createGameRuntime(
   let previousSnapshot = lastSnapshot;
   let lastEmittedTick = -1;
   let detachKeyboardCaptureGuard = () => {};
+  let pendingFogMemoryReset = false;
 
   const emit = () => {
     const snapshot: RuntimeSnapshot = {
@@ -379,6 +380,10 @@ export async function createGameRuntime(
         accumulator = Math.min(accumulator + delta, SIM_STEP_MS * 4);
         while (accumulator >= SIM_STEP_MS) {
           previousSnapshot = lastSnapshot;
+          if (pendingFogMemoryReset) {
+            this.clearStaleFogMemory();
+            pendingFogMemoryReset = false;
+          }
           simulation.step();
           lastSnapshot = simulation.snapshot();
           if (isContinuousAudioTransition(previousSnapshot, lastSnapshot)) {
@@ -783,6 +788,15 @@ export async function createGameRuntime(
       }
     }
 
+    private clearStaleFogMemory() {
+      this.staleStructureMemory.clear();
+      for (const view of this.staleStructureViews.values()) {
+        view.destroy(true);
+      }
+      this.staleStructureViews.clear();
+      this.lastFogRevision = -1;
+    }
+
     private drawBuildRadii(snapshot: SimulationSnapshot) {
       this.buildRadiusGraphics.clear();
       for (const structure of snapshot.structures) {
@@ -1150,6 +1164,7 @@ export async function createGameRuntime(
         command.kind === "restartSkirmish"
       ) {
         cameraMoved = false;
+        pendingFogMemoryReset = true;
         resetTargetingModes();
       }
       simulation.enqueue(command);

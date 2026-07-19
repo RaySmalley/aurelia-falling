@@ -110,6 +110,18 @@ test("Phase 6 presentation, keyboard focus, and retry hooks are integrated", asy
   assert.match(bootstrap, /maxRetries: 2/);
   assert.match(bootstrap, /procedural fallback/);
   assert.match(bootstrap, /staleStructureMemory/);
+  assert.match(
+    bootstrap,
+    /pendingFogMemoryReset = true;[\s\S]*resetTargetingModes\(\);/,
+  );
+  assert.match(
+    bootstrap,
+    /if \(pendingFogMemoryReset\) \{\s*this\.clearStaleFogMemory\(\);\s*pendingFogMemoryReset = false;/,
+  );
+  assert.match(
+    bootstrap,
+    /clearStaleFogMemory\(\)[\s\S]*staleStructureMemory\.clear\(\)[\s\S]*staleStructureViews\.clear\(\)[\s\S]*lastFogRevision = -1;/,
+  );
   assert.match(bootstrap, /setFrame\(UNIT_ATLAS_FRAME/);
   assert.match(bootstrap, /setZoom\(cameraZoom\)/);
   assert.match(bootstrap, /reducedScreenShake/);
