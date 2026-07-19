@@ -1,0 +1,284 @@
+:root {
+  --ink: #061015;
+  --panel: #0b1b20;
+  --line: #31545a;
+  --teal: #79e0d3;
+  --teal-dim: #3d8f89;
+  --amber: #e6a63f;
+  --paper: #e5eeeb;
+  --muted: #8ba3a2;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+  margin: 0;
+  background:
+    radial-gradient(circle at 20% 0%, #16343a 0, transparent 34rem),
+    linear-gradient(135deg, #050c10, #09171b 55%, #050b0f);
+  color: var(--paper);
+}
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+button,
+kbd {
+  font: inherit;
+}
+
+button {
+  border: 1px solid var(--teal-dim);
+  background: linear-gradient(#183a3e, #0d2529);
+  color: var(--teal);
+  padding: 0.72rem 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+button:hover,
+button:focus-visible {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 2px #79e0d322;
+}
+
+.operations-shell {
+  width: min(1500px, 100%);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: clamp(0.75rem, 2vw, 1.5rem);
+  display: grid;
+  grid-template-rows: auto minmax(350px, 1fr) auto;
+  gap: 0.75rem;
+}
+
+.topbar,
+.command-deck {
+  border: 1px solid var(--line);
+  background: #08171bdc;
+  box-shadow: inset 0 1px #7de4d31a, 0 18px 50px #0008;
+}
+
+.topbar {
+  padding: 0.85rem 1.15rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: clamp(1.65rem, 3vw, 2.55rem);
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+}
+
+h2 {
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.eyebrow {
+  color: var(--teal);
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.17em;
+  margin-bottom: 0.28rem;
+}
+
+.phase-badge {
+  display: grid;
+  text-align: right;
+  gap: 0.22rem;
+}
+
+.phase-badge span {
+  color: var(--amber);
+  font-size: 0.66rem;
+  letter-spacing: 0.18em;
+}
+
+.phase-badge strong {
+  font-size: 0.76rem;
+  color: var(--teal);
+}
+
+.battlefield-frame {
+  position: relative;
+  overflow: hidden;
+  min-height: 420px;
+  border: 1px solid #47696e;
+  background: #071318;
+}
+
+.battlefield-frame::before,
+.battlefield-frame::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+}
+
+.battlefield-frame::before {
+  box-shadow: inset 0 0 90px #000c;
+}
+
+.battlefield-frame::after {
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0,
+    transparent 3px,
+    #79e0d307 4px
+  );
+}
+
+.game-host,
+.game-host canvas {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 420px;
+  display: block;
+}
+
+.fatal-panel,
+.pause-curtain {
+  position: absolute;
+  z-index: 6;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.8rem;
+  text-align: center;
+  padding: 2rem;
+  background: #061015e8;
+}
+
+.fatal-panel strong,
+.pause-curtain h2 {
+  color: var(--amber);
+  font-size: 1.6rem;
+}
+
+.pause-curtain span {
+  max-width: 40rem;
+  color: var(--muted);
+}
+
+.command-deck {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.15fr) minmax(360px, 1.5fr) minmax(250px, 1fr);
+  gap: 1px;
+  background: var(--line);
+}
+
+.unit-card,
+.telemetry,
+.controls {
+  background: var(--panel);
+  padding: 0.95rem 1rem;
+}
+
+.unit-card {
+  display: flex;
+  gap: 0.9rem;
+  align-items: center;
+}
+
+.unit-card span,
+.controls p {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.unit-glyph {
+  width: 3.5rem;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--amber);
+  color: var(--amber);
+  font-size: 0.75rem;
+  font-weight: 800;
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  background: #e6a63f16;
+}
+
+.telemetry {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.telemetry div {
+  border-left: 1px solid var(--line);
+  padding-left: 0.7rem;
+}
+
+.telemetry dt {
+  color: var(--muted);
+  font-size: 0.58rem;
+  letter-spacing: 0.14em;
+}
+
+.telemetry dd {
+  margin: 0.2rem 0 0;
+  font-family: "Courier New", monospace;
+  color: var(--teal);
+  font-size: 0.82rem;
+}
+
+.controls {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.controls button {
+  margin-top: 0.25rem;
+}
+
+kbd {
+  color: var(--paper);
+  font-size: 0.7rem;
+}
+
+@media (max-width: 900px) {
+  .operations-shell {
+    grid-template-rows: auto minmax(380px, 1fr) auto;
+  }
+
+  .command-deck {
+    grid-template-columns: 1fr;
+  }
+
+  .telemetry {
+    grid-row: 2;
+  }
+}
+
+@media (max-width: 520px) {
+  .phase-badge {
+    display: none;
+  }
+
+  .telemetry {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
