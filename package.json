@@ -9,7 +9,7 @@
     "dev": "vinext dev --port 4000",
     "build": "vinext build",
     "start": "vinext start --port 4000",
-    "test": "npm run build && node --test tests/phase-zero.test.mjs",
+    "test": "npm run build && node --test tests/phase-zero.test.mjs tests/phase-one.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },

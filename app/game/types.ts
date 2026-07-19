@@ -1,17 +1,42 @@
 export type Vec2 = Readonly<{ x: number; y: number }>;
+export type GridPoint = Vec2;
+export type UnitId = number;
+export type OrderKind = "idle" | "move" | "attackMove" | "hold";
 
 export type SimCommand =
-  | { kind: "move"; target: Vec2 }
-  | { kind: "select"; selected: boolean };
+  | {
+      kind: "selectUnits";
+      unitIds: readonly UnitId[];
+      additive: boolean;
+    }
+  | { kind: "move"; target: GridPoint; mode: "move" | "attackMove" }
+  | { kind: "stop" }
+  | { kind: "hold" }
+  | { kind: "assignControlGroup"; group: number }
+  | { kind: "recallControlGroup"; group: number }
+  | { kind: "setRally"; target: GridPoint };
+
+export type UnitSnapshot = Readonly<{
+  id: UnitId;
+  callsign: string;
+  formationId: number;
+  position: Vec2;
+  destination: GridPoint | null;
+  selected: boolean;
+  order: OrderKind;
+  path: readonly GridPoint[];
+}>;
+
+export type RallySnapshot = Readonly<{
+  formationId: number;
+  target: GridPoint;
+}>;
 
 export type SimulationSnapshot = Readonly<{
   tick: number;
-  unit: Readonly<{
-    id: "pathfinder-01";
-    position: Vec2;
-    destination: Vec2 | null;
-    selected: boolean;
-  }>;
+  units: readonly UnitSnapshot[];
+  selectedUnitIds: readonly UnitId[];
+  rallies: readonly RallySnapshot[];
 }>;
 
 export type RuntimeSnapshot = Readonly<{

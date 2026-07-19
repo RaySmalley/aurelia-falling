@@ -1,21 +1,31 @@
+import { BLOCKED_TILES, MAP_SIZE, TILE_MILLI } from "./map";
 import { SIM_STEP_MS, Simulation } from "./simulation";
 import type {
   GameRuntime,
   RuntimeListener,
   RuntimeSnapshot,
   SimCommand,
+  SimulationSnapshot,
+  UnitSnapshot,
   Vec2,
 } from "./types";
 
 const TILE_WIDTH = 64;
 const TILE_HEIGHT = 32;
-const MAP_SIZE = 16;
+const CAMERA_CENTER = Object.freeze({ x: 0, y: 390 });
 
 function gridToWorld(point: Vec2) {
   return {
     x: (point.x - point.y) * (TILE_WIDTH / 2),
     y: (point.x + point.y) * (TILE_HEIGHT / 2),
   };
+}
+
+function fixedToWorld(point: Vec2) {
+  return gridToWorld({
+    x: point.x / TILE_MILLI,
+    y: point.y / TILE_MILLI,
+  });
 }
 
 function worldToGrid(point: Vec2): Vec2 {
@@ -37,6 +47,7 @@ export async function createGameRuntime(
   let renderer = "initializing";
   let accumulator = 0;
   let lastSnapshot = simulation.snapshot();
+  let previousSnapshot = lastSnapshot;
   let lastEmittedTick = -1;
 
   const emit = () => {
@@ -51,11 +62,17 @@ export async function createGameRuntime(
   };
 
   class OperationsScene extends Phaser.Scene {
-    private unit!: Phaser.GameObjects.Container;
-    private selectionRing!: Phaser.GameObjects.Ellipse;
-    private destinationMarker!: Phaser.GameObjects.Arc;
     private cursorKeys!: Phaser.Types.Input.Keyboard.CursorKeys;
-    private keys!: Record<string, Phaser.Input.Keyboard.Key>;
+    private cameraKeys!: Record<string, Phaser.Input.Keyboard.Key>;
+    private shiftKey!: Phaser.Input.Keyboard.Key;
+    private ctrlKey!: Phaser.Input.Keyboard.Key;
+    private selectionBox!: Phaser.GameObjects.Graphics;
+    private routeGraphics!: Phaser.GameObjects.Graphics;
+    private rallyGraphics!: Phaser.GameObjects.Graphics;
+    private orderMarker!: Phaser.GameObjects.Arc;
+    private dragStart: Phaser.Math.Vector2 | null = null;
+    private unitViews = new Map<number, Phaser.GameObjects.Container>();
+    private pendingOrder: "move" | "attackMove" | "rally" = "move";
 
     constructor() {
       super("operations");
@@ -64,14 +81,58 @@ export async function createGameRuntime(
     create() {
       this.cameras.main.setBackgroundColor("#071318");
       this.drawTerrain();
-      this.createUnit();
-      this.cameras.main.centerOn(0, 260);
+      this.routeGraphics = this.add.graphics().setDepth(8);
+      this.rallyGraphics = this.add.graphics().setDepth(7);
+      this.selectionBox = this.add.graphics().setDepth(100);
+      this.orderMarker = this.add
+        .circle(0, 0, 9, 0x000000, 0)
+        .setStrokeStyle(2, 0xf4bd55, 0.95)
+        .setDepth(30)
+        .setVisible(false);
+      this.syncUnitViews(lastSnapshot);
+
+      const worldWidth = MAP_SIZE * TILE_WIDTH + 900;
+      const worldHeight = MAP_SIZE * TILE_HEIGHT + 440;
+      this.cameras.main.setBounds(
+        -worldWidth / 2,
+        -180,
+        worldWidth,
+        worldHeight,
+      );
+      this.cameras.main.centerOn(CAMERA_CENTER.x, CAMERA_CENTER.y);
 
       this.cursorKeys = this.input.keyboard!.createCursorKeys();
-      this.keys = this.input.keyboard!.addKeys("W,A,S,D") as Record<
-        string,
-        Phaser.Input.Keyboard.Key
-      >;
+      this.cameraKeys = this.input.keyboard!.addKeys(
+        "W,A,S,D",
+      ) as Record<string, Phaser.Input.Keyboard.Key>;
+      this.shiftKey = this.input.keyboard!.addKey("SHIFT");
+      this.ctrlKey = this.input.keyboard!.addKey("CTRL");
+      this.input.keyboard!.addCapture(
+        "UP,DOWN,LEFT,RIGHT,W,A,S,D,F,X,H,R,ONE,TWO,THREE",
+      );
+
+      this.input.keyboard!.on("keydown-F", () => {
+        this.pendingOrder = "attackMove";
+      });
+      this.input.keyboard!.on("keydown-R", () => {
+        this.pendingOrder = "rally";
+      });
+      this.input.keyboard!.on("keydown-X", () => {
+        simulation.enqueue({ kind: "stop" });
+      });
+      this.input.keyboard!.on("keydown-H", () => {
+        simulation.enqueue({ kind: "hold" });
+      });
+      for (let group = 1; group <= 3; group += 1) {
+        const key = this.input.keyboard!.addKey(String(group));
+        key.on("down", () => {
+          simulation.enqueue(
+            this.ctrlKey.isDown
+              ? { kind: "assignControlGroup", group }
+              : { kind: "recallControlGroup", group },
+          );
+        });
+      }
 
       this.input.mouse?.disableContextMenu();
       this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
@@ -79,14 +140,53 @@ export async function createGameRuntime(
           this.cameras.main,
         ) as Phaser.Math.Vector2;
         if (pointer.rightButtonDown()) {
-          simulation.enqueue({ kind: "move", target: worldToGrid(world) });
+          const targetGrid = worldToGrid(world);
+          const target = {
+            x: Math.round(targetGrid.x),
+            y: Math.round(targetGrid.y),
+          };
+          if (this.pendingOrder === "rally") {
+            simulation.enqueue({ kind: "setRally", target });
+          } else {
+            simulation.enqueue({
+              kind: "move",
+              target,
+              mode: this.pendingOrder,
+            });
+            this.orderMarker
+              .setPosition(world.x, world.y)
+              .setStrokeStyle(
+                2,
+                this.pendingOrder === "attackMove" ? 0xf06d5c : 0xf4bd55,
+                0.95,
+              )
+              .setVisible(true);
+          }
+          this.pendingOrder = "move";
           return;
         }
 
-        const unitWorld = gridToWorld(lastSnapshot.unit.position);
-        const selected =
-          Math.hypot(world.x - unitWorld.x, world.y - unitWorld.y) < 28;
-        simulation.enqueue({ kind: "select", selected });
+        if (pointer.leftButtonDown()) {
+          this.dragStart = world.clone();
+        }
+      });
+
+      this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
+        if (!this.dragStart || !pointer.isDown) return;
+        const world = pointer.positionToCamera(
+          this.cameras.main,
+        ) as Phaser.Math.Vector2;
+        this.drawSelectionBox(this.dragStart, world);
+      });
+
+      this.input.on("pointerup", (pointer: Phaser.Input.Pointer) => {
+        if (!this.dragStart || pointer.button !== 0) return;
+        const world = pointer.positionToCamera(
+          this.cameras.main,
+        ) as Phaser.Math.Vector2;
+        this.completeSelection(this.dragStart, world);
+        this.dragStart = null;
+        this.selectionBox.clear();
       });
 
       renderer =
@@ -98,31 +198,21 @@ export async function createGameRuntime(
       if (!paused) {
         accumulator = Math.min(accumulator + delta, SIM_STEP_MS * 4);
         while (accumulator >= SIM_STEP_MS) {
+          previousSnapshot = lastSnapshot;
           simulation.step();
+          lastSnapshot = simulation.snapshot();
           accumulator -= SIM_STEP_MS;
         }
-        lastSnapshot = simulation.snapshot();
       }
 
-      const cameraSpeed = 0.42 * delta;
-      if (this.cursorKeys.left.isDown || this.keys.A.isDown)
-        this.cameras.main.scrollX -= cameraSpeed;
-      if (this.cursorKeys.right.isDown || this.keys.D.isDown)
-        this.cameras.main.scrollX += cameraSpeed;
-      if (this.cursorKeys.up.isDown || this.keys.W.isDown)
-        this.cameras.main.scrollY -= cameraSpeed;
-      if (this.cursorKeys.down.isDown || this.keys.S.isDown)
-        this.cameras.main.scrollY += cameraSpeed;
-
-      const point = gridToWorld(lastSnapshot.unit.position);
-      this.unit.setPosition(point.x, point.y);
-      this.selectionRing.setVisible(lastSnapshot.unit.selected);
-      if (lastSnapshot.unit.destination) {
-        const target = gridToWorld(lastSnapshot.unit.destination);
-        this.destinationMarker.setPosition(target.x, target.y).setVisible(true);
-      } else {
-        this.destinationMarker.setVisible(false);
-      }
+      this.updateCamera(delta);
+      this.syncUnitViews(lastSnapshot);
+      this.renderUnits(
+        previousSnapshot,
+        lastSnapshot,
+        paused ? 1 : accumulator / SIM_STEP_MS,
+      );
+      this.drawRoutes(lastSnapshot);
 
       if (
         lastSnapshot.tick !== lastEmittedTick &&
@@ -133,14 +223,37 @@ export async function createGameRuntime(
       }
     }
 
+    private updateCamera(delta: number) {
+      const cameraSpeed = 0.46 * delta;
+      if (this.cursorKeys.left.isDown || this.cameraKeys.A.isDown)
+        this.cameras.main.scrollX -= cameraSpeed;
+      if (this.cursorKeys.right.isDown || this.cameraKeys.D.isDown)
+        this.cameras.main.scrollX += cameraSpeed;
+      if (this.cursorKeys.up.isDown || this.cameraKeys.W.isDown)
+        this.cameras.main.scrollY -= cameraSpeed;
+      if (this.cursorKeys.down.isDown || this.cameraKeys.S.isDown)
+        this.cameras.main.scrollY += cameraSpeed;
+    }
+
     private drawTerrain() {
-      const graphics = this.add.graphics();
+      const graphics = this.add.graphics().setDepth(0);
+      const blocked = new Set(
+        BLOCKED_TILES.map((point) => point.y * MAP_SIZE + point.x),
+      );
       for (let y = 0; y < MAP_SIZE; y += 1) {
         for (let x = 0; x < MAP_SIZE; x += 1) {
           const point = gridToWorld({ x, y });
+          const isBlocked = blocked.has(y * MAP_SIZE + x);
           const alternate = (x + y) % 2 === 0;
-          graphics.fillStyle(alternate ? 0x183234 : 0x13292c, 1);
-          graphics.lineStyle(1, 0x376164, 0.48);
+          graphics.fillStyle(
+            isBlocked ? 0x402e29 : alternate ? 0x173235 : 0x12292c,
+            1,
+          );
+          graphics.lineStyle(
+            isBlocked ? 1.4 : 0.7,
+            isBlocked ? 0xb36b42 : 0x31575b,
+            isBlocked ? 0.78 : 0.34,
+          );
           graphics.beginPath();
           graphics.moveTo(point.x, point.y - TILE_HEIGHT / 2);
           graphics.lineTo(point.x + TILE_WIDTH / 2, point.y);
@@ -149,26 +262,180 @@ export async function createGameRuntime(
           graphics.closePath();
           graphics.fillPath();
           graphics.strokePath();
+          if (isBlocked) {
+            graphics.fillStyle(0x211916, 0.58);
+            graphics.fillTriangle(
+              point.x - 17,
+              point.y + 5,
+              point.x + 15,
+              point.y + 5,
+              point.x - 2,
+              point.y - 11,
+            );
+          }
         }
       }
     }
 
-    private createUnit() {
-      const unitBody = this.add.graphics();
-      unitBody.fillStyle(0xe4a33a, 1);
-      unitBody.lineStyle(2, 0xffd78a, 1);
-      unitBody.fillTriangle(-18, 11, 18, 11, 0, -14);
-      unitBody.strokeTriangle(-18, 11, 18, 11, 0, -14);
-      const core = this.add.circle(0, 0, 5, 0x86e7dc);
-      this.unit = this.add.container(0, 0, [unitBody, core]).setDepth(10);
-      this.selectionRing = this.add
-        .ellipse(0, 13, 49, 22)
-        .setStrokeStyle(2, 0x72e4d5, 0.95);
-      this.unit.addAt(this.selectionRing, 0);
-      this.destinationMarker = this.add
-        .circle(0, 0, 8, 0x000000, 0)
-        .setStrokeStyle(2, 0xf4bd55, 0.9)
-        .setVisible(false);
+    private createUnitView(unit: UnitSnapshot) {
+      const heavy = unit.id >= 9;
+      const teamColor = unit.formationId === 1 ? 0xe4a33a : 0x76d9cc;
+      const outline = unit.formationId === 1 ? 0xffd78a : 0xb6fff5;
+      const body = this.add.graphics();
+      body.fillStyle(teamColor, 1);
+      body.lineStyle(2, outline, 1);
+      if (heavy) {
+        body.fillRoundedRect(-17, -11, 34, 22, 4);
+        body.strokeRoundedRect(-17, -11, 34, 22, 4);
+        body.fillStyle(0x172226, 1);
+        body.fillRect(-6, -16, 12, 9);
+      } else {
+        body.fillTriangle(-16, 10, 16, 10, 0, -13);
+        body.strokeTriangle(-16, 10, 16, 10, 0, -13);
+      }
+      const core = this.add.circle(0, 0, 4, 0xe9ffff);
+      const ring = this.add
+        .ellipse(0, 13, heavy ? 52 : 45, heavy ? 24 : 20)
+        .setStrokeStyle(2, 0xf4f0b5, 0.98)
+        .setName("selection")
+        .setVisible(unit.selected);
+      const container = this.add
+        .container(0, 0, [ring, body, core])
+        .setDepth(10)
+        .setName(`unit-${unit.id}`);
+      this.unitViews.set(unit.id, container);
+    }
+
+    private syncUnitViews(snapshot: SimulationSnapshot) {
+      for (const unit of snapshot.units) {
+        if (!this.unitViews.has(unit.id)) this.createUnitView(unit);
+      }
+    }
+
+    private renderUnits(
+      previous: SimulationSnapshot,
+      current: SimulationSnapshot,
+      alpha: number,
+    ) {
+      const previousById = new Map(previous.units.map((unit) => [unit.id, unit]));
+      for (const unit of current.units) {
+        const prior = previousById.get(unit.id) ?? unit;
+        const position = {
+          x:
+            prior.position.x +
+            (unit.position.x - prior.position.x) * Math.max(0, alpha),
+          y:
+            prior.position.y +
+            (unit.position.y - prior.position.y) * Math.max(0, alpha),
+        };
+        const world = fixedToWorld(position);
+        const view = this.unitViews.get(unit.id)!;
+        view.setPosition(world.x, world.y).setDepth(10 + world.y / 10_000);
+        (
+          view.getByName("selection") as Phaser.GameObjects.Ellipse | null
+        )?.setVisible(unit.selected);
+      }
+    }
+
+    private drawRoutes(snapshot: SimulationSnapshot) {
+      this.routeGraphics.clear();
+      this.rallyGraphics.clear();
+      for (const unit of snapshot.units) {
+        if (!unit.selected || unit.path.length === 0) continue;
+        const start = fixedToWorld(unit.position);
+        this.routeGraphics.lineStyle(
+          1.5,
+          unit.order === "attackMove" ? 0xef6a58 : 0xe7bc63,
+          0.42,
+        );
+        this.routeGraphics.beginPath();
+        this.routeGraphics.moveTo(start.x, start.y);
+        for (const waypoint of unit.path) {
+          const world = gridToWorld(waypoint);
+          this.routeGraphics.lineTo(world.x, world.y);
+        }
+        this.routeGraphics.strokePath();
+      }
+      for (const rally of snapshot.rallies) {
+        const world = gridToWorld(rally.target);
+        const color = rally.formationId === 1 ? 0xe4a33a : 0x76d9cc;
+        this.rallyGraphics.lineStyle(2, color, 0.9);
+        this.rallyGraphics.strokeCircle(world.x, world.y, 10);
+        this.rallyGraphics.lineBetween(
+          world.x,
+          world.y - 10,
+          world.x,
+          world.y - 27,
+        );
+        this.rallyGraphics.fillStyle(color, 0.82);
+        this.rallyGraphics.fillTriangle(
+          world.x,
+          world.y - 27,
+          world.x + 14,
+          world.y - 22,
+          world.x,
+          world.y - 17,
+        );
+      }
+    }
+
+    private drawSelectionBox(
+      start: Phaser.Math.Vector2,
+      end: Phaser.Math.Vector2,
+    ) {
+      const x = Math.min(start.x, end.x);
+      const y = Math.min(start.y, end.y);
+      const width = Math.abs(end.x - start.x);
+      const height = Math.abs(end.y - start.y);
+      this.selectionBox.clear();
+      this.selectionBox.fillStyle(0x79e0d3, 0.09);
+      this.selectionBox.fillRect(x, y, width, height);
+      this.selectionBox.lineStyle(1.5, 0x79e0d3, 0.95);
+      this.selectionBox.strokeRect(x, y, width, height);
+    }
+
+    private completeSelection(
+      start: Phaser.Math.Vector2,
+      end: Phaser.Math.Vector2,
+    ) {
+      const x = Math.min(start.x, end.x);
+      const y = Math.min(start.y, end.y);
+      const width = Math.abs(end.x - start.x);
+      const height = Math.abs(end.y - start.y);
+      const click = width < 10 && height < 10;
+      let unitIds: number[] = [];
+      if (click) {
+        const nearest = lastSnapshot.units
+          .map((unit) => {
+            const world = fixedToWorld(unit.position);
+            const dx = world.x - end.x;
+            const dy = world.y - end.y;
+            return { id: unit.id, distanceSquared: dx * dx + dy * dy };
+          })
+          .filter((candidate) => candidate.distanceSquared <= 32 * 32)
+          .sort(
+            (a, b) =>
+              a.distanceSquared - b.distanceSquared || a.id - b.id,
+          )[0];
+        unitIds = nearest ? [nearest.id] : [];
+      } else {
+        unitIds = lastSnapshot.units
+          .filter((unit) => {
+            const world = fixedToWorld(unit.position);
+            return (
+              world.x >= x &&
+              world.x <= x + width &&
+              world.y >= y &&
+              world.y <= y + height
+            );
+          })
+          .map((unit) => unit.id);
+      }
+      simulation.enqueue({
+        kind: "selectUnits",
+        unitIds,
+        additive: this.shiftKey.isDown,
+      });
     }
   }
 
@@ -178,8 +445,9 @@ export async function createGameRuntime(
     width: 1280,
     height: 720,
     backgroundColor: "#071318",
+    disableContextMenu: true,
     scene: OperationsScene,
-    render: { antialias: true, pixelArt: false },
+    render: { antialias: true, pixelArt: false, pathDetailThreshold: 1 },
     scale: {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -206,6 +474,7 @@ export async function createGameRuntime(
       paused = false;
       pauseReason = null;
       accumulator = 0;
+      previousSnapshot = lastSnapshot;
       emit();
     },
     async unlockAudio() {
@@ -235,7 +504,9 @@ export async function createGameRuntime(
       emit();
     },
     centerCamera() {
-      game.scene.getScene("operations")?.cameras.main.centerOn(0, 260);
+      game.scene
+        .getScene("operations")
+        ?.cameras.main.centerOn(CAMERA_CENTER.x, CAMERA_CENTER.y);
     },
     destroy() {
       listeners.clear();
