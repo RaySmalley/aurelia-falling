@@ -6,12 +6,9 @@ import type { GameRuntime, RuntimeSnapshot } from "../game/types";
 const INITIAL_SNAPSHOT: RuntimeSnapshot = {
   simulation: {
     tick: 0,
-    unit: {
-      id: "pathfinder-01",
-      position: { x: 6, y: 7 },
-      destination: null,
-      selected: false,
-    },
+    units: [],
+    selectedUnitIds: [],
+    rallies: [],
   },
   paused: false,
   pauseReason: null,
@@ -19,7 +16,7 @@ const INITIAL_SNAPSHOT: RuntimeSnapshot = {
   renderer: "initializing",
 };
 
-export default function PhaseZeroShell() {
+export default function MovementSandboxShell() {
   const hostRef = useRef<HTMLDivElement>(null);
   const runtimeRef = useRef<GameRuntime | null>(null);
   const [snapshot, setSnapshot] = useState(INITIAL_SNAPSHOT);
@@ -70,18 +67,26 @@ export default function PhaseZeroShell() {
     };
   }, []);
 
-  const unit = snapshot.simulation.unit;
-  const position = `${unit.position.x.toFixed(1)}, ${unit.position.y.toFixed(1)}`;
+  const selectedUnits = snapshot.simulation.units.filter(
+    (unit) => unit.selected,
+  );
+  const leadUnit = selectedUnits[0] ?? null;
+  const gridPosition = leadUnit
+    ? `${(leadUnit.position.x / 1_000).toFixed(1)}, ${(leadUnit.position.y / 1_000).toFixed(1)}`
+    : "—";
+  const movingUnits = snapshot.simulation.units.filter(
+    (unit) => unit.order === "move" || unit.order === "attackMove",
+  ).length;
 
   return (
     <main className="operations-shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">ARCLIGHT COMMAND // FRAMEWORK TRIAL</p>
+          <p className="eyebrow">ARCLIGHT COMMAND // GOLDEN SCAR EXERCISE</p>
           <h1>Aurelia Falling</h1>
         </div>
         <div className="phase-badge">
-          <span>PHASE 0</span>
+          <span>PHASE 1</span>
           <strong>LINK {loadError ? "FAULT" : "STABLE"}</strong>
         </div>
       </header>
@@ -97,7 +102,7 @@ export default function PhaseZeroShell() {
         {snapshot.paused && (
           <div className="pause-curtain">
             <p>TACTICAL LINK SUSPENDED</p>
-            <h2>Operation paused</h2>
+            <h2>Movement exercise paused</h2>
             <span>
               Simulation time was discarded while this tab was hidden. Resume
               manually when ready.
@@ -111,16 +116,20 @@ export default function PhaseZeroShell() {
 
       <section className="command-deck" aria-label="Command HUD">
         <div className="unit-card">
-          <div className="unit-glyph">P-01</div>
+          <div className="unit-glyph">
+            {selectedUnits.length > 0 ? selectedUnits.length : "—"}
+          </div>
           <div>
-            <p className="eyebrow">SELECTED ELEMENT</p>
-            <h2>{unit.selected ? "Pathfinder 01" : "No unit selected"}</h2>
+            <p className="eyebrow">SELECTED FORMATION</p>
+            <h2>
+              {selectedUnits.length > 0
+                ? `${selectedUnits.length} Meridian units`
+                : "No units selected"}
+            </h2>
             <span>
-              {unit.selected
-                ? unit.destination
-                  ? "Executing move order"
-                  : "Awaiting command"
-                : "Left-click the amber unit"}
+              {leadUnit
+                ? `${leadUnit.callsign} // ${leadUnit.order.toUpperCase()}`
+                : "Drag a selection box over either formation"}
             </span>
           </div>
         </div>
@@ -131,29 +140,40 @@ export default function PhaseZeroShell() {
             <dd>{snapshot.simulation.tick}</dd>
           </div>
           <div>
-            <dt>GRID</dt>
-            <dd>{position}</dd>
+            <dt>LEAD GRID</dt>
+            <dd>{gridPosition}</dd>
           </div>
           <div>
-            <dt>RENDER</dt>
+            <dt>IN MOTION</dt>
+            <dd>
+              {movingUnits}/{snapshot.simulation.units.length}
+            </dd>
+          </div>
+          <div>
+            <dt>LINK</dt>
             <dd>{snapshot.renderer}</dd>
-          </div>
-          <div>
-            <dt>AUDIO</dt>
-            <dd>{snapshot.audioReady ? "Unlocked" : "Standby"}</dd>
           </div>
         </dl>
 
         <div className="controls">
           <p>
-            <kbd>Left click</kbd> select · <kbd>Right click</kbd> move
+            <kbd>Drag / Shift</kbd> select · <kbd>Right click</kbd> move
           </p>
           <p>
-            <kbd>WASD</kbd> / <kbd>Arrows</kbd> pan camera
+            <kbd>F</kbd> attack-move · <kbd>R</kbd> rally ·{" "}
+            <kbd>Ctrl+1–3</kbd> group
           </p>
-          <button onClick={() => runtimeRef.current?.centerCamera()}>
-            Recenter tactical view
-          </button>
+          <div className="control-buttons">
+            <button onClick={() => runtimeRef.current?.enqueue({ kind: "stop" })}>
+              Stop [X]
+            </button>
+            <button onClick={() => runtimeRef.current?.enqueue({ kind: "hold" })}>
+              Hold [H]
+            </button>
+            <button onClick={() => runtimeRef.current?.centerCamera()}>
+              Recenter
+            </button>
+          </div>
         </div>
       </section>
     </main>

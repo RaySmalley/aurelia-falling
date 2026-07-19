@@ -254,6 +254,16 @@ h2 {
   margin-top: 0.25rem;
 }
 
+.control-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.4rem;
+}
+
+.control-buttons button {
+  padding-inline: 0.45rem;
+}
+
 kbd {
   color: var(--paper);
   font-size: 0.7rem;
@@ -280,5 +290,9 @@ kbd {
 
   .telemetry {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .control-buttons {
+    grid-template-columns: 1fr;
   }
 }

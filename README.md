@@ -36,6 +36,14 @@ The fixed-step simulation and gameplay modules live under `app/game/`. Phaser
 is dynamically imported behind the client-only React boundary in
 `app/phase-zero/`.
 
+## Current milestone
+
+Phase 1, the Movement Sandbox, is implemented on the 64×64 Golden Scar map.
+It includes deterministic fixed-point unit motion, grid A*, shared formation
+routes, dynamic occupancy, blocked-destination fallback, local separation,
+drag selection, contextual movement, attack-move, stop/hold, rally markers,
+control groups, and bounded camera navigation.
+
 ## Hosting
 
 The project uses Codex Sites with the project identity recorded in

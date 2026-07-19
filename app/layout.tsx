@@ -17,10 +17,32 @@ export const metadata: Metadata = {
     default: "Aurelia Falling",
     template: "%s — Aurelia Falling",
   },
-  description: "A deterministic browser real-time strategy game.",
+  description:
+    "Command Meridian Coalition formations across the deterministic Golden Scar movement sandbox.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
+  },
+  openGraph: {
+    type: "website",
+    title: "Aurelia Falling",
+    description:
+      "Command two Meridian formations through the Golden Scar Movement Sandbox.",
+    images: [
+      {
+        url: "/og.png",
+        width: 1672,
+        height: 941,
+        alt: "Aurelia Falling — Movement Sandbox",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Aurelia Falling",
+    description:
+      "Command two Meridian formations through the Golden Scar Movement Sandbox.",
+    images: ["/og.png"],
   },
 };
 
