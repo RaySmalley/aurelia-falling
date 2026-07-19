@@ -263,6 +263,8 @@ export type RuntimeSnapshot = Readonly<{
   pauseReason: "hidden" | "manual" | null;
   audioReady: boolean;
   cameraMoved: boolean;
+  pendingBuilding: BuildingKind | null;
+  solarTargeting: boolean;
   audioCue: AudioCueSnapshot | null;
   renderer: string;
 }>;
@@ -274,6 +276,7 @@ export type GameRuntime = {
   enqueue(command: SimCommand): void;
   beginPlacement(buildingKind: BuildingKind | null): void;
   beginSolarTargeting(active: boolean): void;
+  clearTargetingModes(): void;
   pause(reason: "hidden" | "manual"): void;
   resume(): void;
   unlockAudio(): Promise<void>;

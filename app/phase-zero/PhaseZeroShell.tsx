@@ -93,6 +93,8 @@ const INITIAL_SNAPSHOT: RuntimeSnapshot = {
   pauseReason: "manual",
   audioReady: false,
   cameraMoved: false,
+  pendingBuilding: null,
+  solarTargeting: false,
   audioCue: null,
   renderer: "initializing",
 };
@@ -264,14 +266,12 @@ export default function SkirmishShell() {
   const settingsRef = useRef<AppSettings>(DEFAULT_SETTINGS);
   const [snapshot, setSnapshot] = useState(INITIAL_SNAPSHOT);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [placement, setPlacement] = useState<BuildingKind | null>(null);
   const [screen, setScreen] = useState<"setup" | "playing">("setup");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [settingsHydrated, setSettingsHydrated] = useState(false);
   const [runtimeReady, setRuntimeReady] = useState(false);
   const [seedInput, setSeedInput] = useState("4115");
-  const [solarTargeting, setSolarTargeting] = useState(false);
   const [tutorialProgress, setTutorialProgress] =
     useState<TutorialProgress>(EMPTY_TUTORIAL_PROGRESS);
 
@@ -339,6 +339,8 @@ export default function SkirmishShell() {
   }, []);
 
   const simulation = snapshot.simulation;
+  const placement = snapshot.pendingBuilding;
+  const solarTargeting = snapshot.solarTargeting;
   const observedProgress: TutorialProgress = {
     cameraSelection:
       snapshot.cameraMoved && simulation.onboarding.selection,
@@ -402,16 +404,11 @@ export default function SkirmishShell() {
   useEffect(() => {
     if (solar.state !== "ready" && solarTargeting) {
       runtimeRef.current?.beginSolarTargeting(false);
-      const timeout = window.setTimeout(() => setSolarTargeting(false));
-      return () => window.clearTimeout(timeout);
     }
   }, [solar.state, solarTargeting]);
 
   const beginPlacement = (kind: BuildingKind) => {
     const next = placement === kind ? null : kind;
-    setPlacement(next);
-    setSolarTargeting(false);
-    runtimeRef.current?.beginSolarTargeting(false);
     runtimeRef.current?.beginPlacement(next);
   };
 
@@ -428,31 +425,26 @@ export default function SkirmishShell() {
     const parsed = Number.parseInt(seedInput, 10);
     const seed = Number.isFinite(parsed) ? parsed >>> 0 : 4_115;
     setSeedInput(String(seed));
-    setPlacement(null);
-    setSolarTargeting(false);
-    runtimeRef.current?.beginPlacement(null);
-    runtimeRef.current?.beginSolarTargeting(false);
+    runtimeRef.current?.clearTargetingModes();
     runtimeRef.current?.enqueue({ kind: "restartSkirmish", seed });
     runtimeRef.current?.resume();
     setScreen("playing");
   };
 
   const restartMatch = () => {
+    runtimeRef.current?.clearTargetingModes();
     runtimeRef.current?.enqueue({
       kind: "restartSkirmish",
       seed: simulation.seed,
     });
     runtimeRef.current?.resume();
-    setPlacement(null);
-    setSolarTargeting(false);
   };
 
   const returnToSetup = () => {
     runtimeRef.current?.pause("manual");
     setScreen("setup");
     setSettingsOpen(false);
-    setSolarTargeting(false);
-    runtimeRef.current?.beginSolarTargeting(false);
+    runtimeRef.current?.clearTargetingModes();
   };
 
   const openSettings = () => {
@@ -465,9 +457,6 @@ export default function SkirmishShell() {
   const toggleSolarTargeting = () => {
     if (solar.state !== "ready") return;
     const next = !solarTargeting;
-    setSolarTargeting(next);
-    setPlacement(null);
-    runtimeRef.current?.beginPlacement(null);
     runtimeRef.current?.beginSolarTargeting(next);
   };
 

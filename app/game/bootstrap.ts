@@ -56,6 +56,8 @@ export async function createGameRuntime(
   let pauseReason: RuntimeSnapshot["pauseReason"] = null;
   let audioReady = false;
   let cameraMoved = false;
+  let pendingBuilding: BuildingKind | null = null;
+  let solarTargeting = false;
   let audioCue: AudioCueSnapshot | null = null;
   let nextAudioCueId = 1;
   let renderer = "initializing";
@@ -71,11 +73,28 @@ export async function createGameRuntime(
       pauseReason,
       audioReady,
       cameraMoved,
+      pendingBuilding,
+      solarTargeting,
       audioCue,
       renderer,
     };
     listeners.forEach((listener) => listener(snapshot));
   };
+  const setTargetingModes = (
+    nextBuilding: BuildingKind | null,
+    nextSolarTargeting: boolean,
+  ) => {
+    if (
+      pendingBuilding === nextBuilding &&
+      solarTargeting === nextSolarTargeting
+    ) {
+      return;
+    }
+    pendingBuilding = nextBuilding;
+    solarTargeting = nextSolarTargeting;
+    emit();
+  };
+  const resetTargetingModes = () => setTargetingModes(null, false);
   const proceduralAudio = new ProceduralAudio((text) => {
     audioCue = Object.freeze({ id: nextAudioCueId, text });
     nextAudioCueId += 1;
@@ -102,8 +121,6 @@ export async function createGameRuntime(
     private structureViews = new Map<number, Phaser.GameObjects.Container>();
     private fieldViews = new Map<number, Phaser.GameObjects.Container>();
     private pendingOrder: "move" | "attackMove" | "rally" = "move";
-    public pendingBuilding: BuildingKind | null = null;
-    public solarTargeting = false;
 
     constructor() {
       super("operations");
@@ -186,7 +203,7 @@ export async function createGameRuntime(
         const world = pointer.positionToCamera(
           this.cameras.main,
         ) as Phaser.Math.Vector2;
-        if (this.solarTargeting) {
+        if (solarTargeting) {
           const targetGrid = worldToGrid(world);
           simulation.enqueue({
             kind: "launchSolarSpear",
@@ -195,7 +212,7 @@ export async function createGameRuntime(
               y: Math.round(targetGrid.y),
             },
           });
-          this.solarTargeting = false;
+          setTargetingModes(pendingBuilding, false);
           return;
         }
         if (pointer.rightButtonDown()) {
@@ -204,10 +221,10 @@ export async function createGameRuntime(
             x: Math.round(targetGrid.x),
             y: Math.round(targetGrid.y),
           };
-          if (this.pendingBuilding) {
+          if (pendingBuilding) {
             simulation.enqueue({
               kind: "placeBuilding",
-              buildingKind: this.pendingBuilding,
+              buildingKind: pendingBuilding,
               tile: target,
             });
             return;
@@ -958,20 +975,18 @@ export async function createGameRuntime(
         command.kind === "restartSkirmish"
       ) {
         cameraMoved = false;
+        resetTargetingModes();
       }
       simulation.enqueue(command);
     },
     beginPlacement(buildingKind) {
-      const scene = game.scene.getScene(
-        "operations",
-      ) as OperationsScene | null;
-      if (scene) scene.pendingBuilding = buildingKind;
+      setTargetingModes(buildingKind, buildingKind ? false : solarTargeting);
     },
     beginSolarTargeting(active) {
-      const scene = game.scene.getScene(
-        "operations",
-      ) as OperationsScene | null;
-      if (scene) scene.solarTargeting = active;
+      setTargetingModes(active ? null : pendingBuilding, active);
+    },
+    clearTargetingModes() {
+      resetTargetingModes();
     },
     pause(reason) {
       paused = true;

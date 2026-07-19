@@ -196,6 +196,36 @@ test("surrender and seeded restart stay inside the fixed-step command queue", ()
   assert.equal(restarted.solarSpears[1].launches, 0);
 });
 
+test("runtime targeting state stays synchronized across clicks and restarts", async () => {
+  const [bootstrap, shell, types] = await Promise.all([
+    readFile(new URL("../app/game/bootstrap.ts", import.meta.url), "utf8"),
+    readFile(
+      new URL("../app/phase-zero/PhaseZeroShell.tsx", import.meta.url),
+      "utf8",
+    ),
+    readFile(new URL("../app/game/types.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(types, /pendingBuilding: BuildingKind \| null;/);
+  assert.match(types, /solarTargeting: boolean;/);
+  assert.match(types, /clearTargetingModes\(\): void;/);
+  assert.match(
+    bootstrap,
+    /if \(solarTargeting\)[\s\S]*setTargetingModes\(pendingBuilding, false\);/,
+  );
+  assert.match(
+    bootstrap,
+    /command\.kind === "restartSkirmish"[\s\S]*resetTargetingModes\(\);/,
+  );
+  assert.match(shell, /const placement = snapshot\.pendingBuilding;/);
+  assert.match(shell, /const solarTargeting = snapshot\.solarTargeting;/);
+  assert.match(
+    shell,
+    /const restartMatch = \(\) => \{\s*runtimeRef\.current\?\.clearTargetingModes\(\);/,
+  );
+  assert.doesNotMatch(shell, /setPlacement|setSolarTargeting/);
+});
+
 test("Phase 5 shell persists settings and synthesizes audio without simulation randomness", async () => {
   const [audio, bootstrap, shell, simulation] = await Promise.all([
     readFile(new URL("../app/game/audio.ts", import.meta.url), "utf8"),
