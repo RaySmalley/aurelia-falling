@@ -18,31 +18,31 @@ export const metadata: Metadata = {
     template: "%s — Aurelia Falling",
   },
   description:
-    "Command Meridian Coalition formations across the deterministic Golden Scar movement sandbox.",
+    "Lead six Meridian Coalition unit classes through a deterministic Golden Scar combat exercise.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
   },
   openGraph: {
     type: "website",
-    title: "Aurelia Falling",
+    title: "Aurelia Falling — Combat Slice",
     description:
-      "Command two Meridian formations through the Golden Scar Movement Sandbox.",
+      "Lead six unit classes through a seeded Gold-versus-Cyan combat exercise.",
     images: [
       {
-        url: "/og.png",
-        width: 1672,
-        height: 941,
-        alt: "Aurelia Falling — Movement Sandbox",
+        url: "/og-phase-two.png",
+        width: 1733,
+        height: 909,
+        alt: "Aurelia Falling Phase 2 combat slice with opposing amber and cyan armies",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Aurelia Falling",
+    title: "Aurelia Falling — Combat Slice",
     description:
-      "Command two Meridian formations through the Golden Scar Movement Sandbox.",
-    images: ["/og.png"],
+      "Lead six unit classes through a seeded Gold-versus-Cyan combat exercise.",
+    images: ["/og-phase-two.png"],
   },
 };
 

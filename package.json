@@ -10,7 +10,7 @@
     "build": "vinext build",
     "start": "vinext start --port 4000",
     "test": "npm run build && npm run test:unit",
-    "test:unit": "node --test tests/phase-zero.test.mjs tests/phase-one.test.mjs",
+    "test:unit": "node --test tests/phase-zero.test.mjs tests/phase-one.test.mjs tests/phase-two.test.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"

@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import PhaseZeroShell from "./phase-zero/PhaseZeroShell";
 
 export const metadata: Metadata = {
-  title: "Movement Sandbox",
+  title: "Combat Slice | Aurelia Falling",
   description:
-    "Command Meridian Coalition formations across the deterministic Golden Scar movement sandbox.",
+    "Command a Meridian Coalition strike group in a deterministic Golden Scar combat exercise.",
 };
 
 export default function Page() {
