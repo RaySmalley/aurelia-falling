@@ -16,6 +16,10 @@ import type {
 const TILE_WIDTH = 64;
 const TILE_HEIGHT = 32;
 const CAMERA_CENTER = Object.freeze({ x: 0, y: 390 });
+const FOG_LEFT = -(MAP_SIZE * TILE_WIDTH) / 2;
+const FOG_TOP = -TILE_HEIGHT / 2;
+const FOG_WIDTH = MAP_SIZE * TILE_WIDTH;
+const FOG_HEIGHT = MAP_SIZE * TILE_HEIGHT;
 
 function gridToWorld(point: Vec2) {
   return {
@@ -42,7 +46,7 @@ export async function createGameRuntime(
   host: HTMLDivElement,
 ): Promise<GameRuntime> {
   const Phaser = await import("phaser");
-  const simulation = new Simulation(undefined, "economy");
+  const simulation = new Simulation(undefined, "skirmish");
   const listeners = new Set<RuntimeListener>();
   let paused = false;
   let pauseReason: RuntimeSnapshot["pauseReason"] = null;
@@ -74,6 +78,9 @@ export async function createGameRuntime(
     private rallyGraphics!: Phaser.GameObjects.Graphics;
     private projectileGraphics!: Phaser.GameObjects.Graphics;
     private buildRadiusGraphics!: Phaser.GameObjects.Graphics;
+    private fogTexture!: Phaser.GameObjects.RenderTexture;
+    private fogScratch!: Phaser.GameObjects.Graphics;
+    private lastFogRevision = -1;
     private orderMarker!: Phaser.GameObjects.Arc;
     private dragStart: Phaser.Math.Vector2 | null = null;
     private unitViews = new Map<number, Phaser.GameObjects.Container>();
@@ -93,6 +100,16 @@ export async function createGameRuntime(
       this.rallyGraphics = this.add.graphics().setDepth(7);
       this.projectileGraphics = this.add.graphics().setDepth(24);
       this.buildRadiusGraphics = this.add.graphics().setDepth(6);
+      this.fogTexture = this.add
+        .renderTexture(
+          FOG_LEFT,
+          FOG_TOP,
+          FOG_WIDTH,
+          FOG_HEIGHT,
+        )
+        .setOrigin(0, 0)
+        .setDepth(60);
+      this.fogScratch = this.add.graphics();
       this.selectionBox = this.add.graphics().setDepth(100);
       this.orderMarker = this.add
         .circle(0, 0, 9, 0x000000, 0)
@@ -102,6 +119,7 @@ export async function createGameRuntime(
       this.syncUnitViews(lastSnapshot);
       this.syncStructureViews(lastSnapshot);
       this.syncFieldViews(lastSnapshot);
+      this.drawFog(lastSnapshot);
 
       const worldWidth = MAP_SIZE * TILE_WIDTH + 900;
       const worldHeight = MAP_SIZE * TILE_HEIGHT + 440;
@@ -262,6 +280,7 @@ export async function createGameRuntime(
       this.drawRoutes(lastSnapshot);
       this.drawProjectiles(lastSnapshot);
       this.drawBuildRadii(lastSnapshot);
+      this.drawFog(lastSnapshot);
 
       if (
         lastSnapshot.tick !== lastEmittedTick &&
@@ -324,6 +343,47 @@ export async function createGameRuntime(
           }
         }
       }
+    }
+
+    private drawFog(snapshot: SimulationSnapshot) {
+      const visibility = snapshot.visibility;
+      if (!visibility.enabled) {
+        this.fogTexture.setVisible(false);
+        return;
+      }
+      this.fogTexture.setVisible(true);
+      if (visibility.revision === this.lastFogRevision) return;
+      this.lastFogRevision = visibility.revision;
+      this.fogScratch.clear();
+
+      for (const level of [0, 1] as const) {
+        this.fogScratch.fillStyle(
+          level === 0 ? 0x020608 : 0x071318,
+          level === 0 ? 0.96 : 0.52,
+        );
+        for (let y = 0; y < visibility.height; y += 1) {
+          for (let x = 0; x < visibility.width; x += 1) {
+            if (visibility.tiles[y * visibility.width + x] !== level) {
+              continue;
+            }
+            const point = gridToWorld({ x, y });
+            const localX = point.x - FOG_LEFT;
+            const localY = point.y - FOG_TOP;
+            this.fogScratch.beginPath();
+            this.fogScratch.moveTo(localX, localY - TILE_HEIGHT / 2);
+            this.fogScratch.lineTo(localX + TILE_WIDTH / 2, localY);
+            this.fogScratch.lineTo(localX, localY + TILE_HEIGHT / 2);
+            this.fogScratch.lineTo(localX - TILE_WIDTH / 2, localY);
+            this.fogScratch.closePath();
+            this.fogScratch.fillPath();
+          }
+        }
+      }
+
+      this.fogTexture.clear();
+      this.fogTexture.draw(this.fogScratch);
+      this.fogTexture.render();
+      this.fogScratch.clear();
     }
 
     private createFieldView(field: AureliteFieldSnapshot) {

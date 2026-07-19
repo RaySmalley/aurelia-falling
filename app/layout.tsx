@@ -18,31 +18,31 @@ export const metadata: Metadata = {
     template: "%s — Aurelia Falling",
   },
   description:
-    "Lead six Meridian Coalition unit classes through a deterministic Golden Scar combat exercise.",
+    "Command the Meridian Coalition through fog of war against a rules-legal Normal AI.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
   },
   openGraph: {
     type: "website",
-    title: "Aurelia Falling — Combat Slice",
+    title: "Aurelia Falling — Complete Skirmish",
     description:
-      "Lead six unit classes through a seeded Gold-versus-Cyan combat exercise.",
+      "Build, scout, and fight through the Golden Scar against a deterministic Normal AI.",
     images: [
       {
-        url: "/og-phase-two.png",
-        width: 1733,
+        url: "/og-phase-four.png",
+        width: 1731,
         height: 909,
-        alt: "Aurelia Falling Phase 2 combat slice with opposing amber and cyan armies",
+        alt: "Aurelia Falling Phase 4 skirmish with Gold and Cyan forces divided by fog of war",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Aurelia Falling — Combat Slice",
+    title: "Aurelia Falling — Complete Skirmish",
     description:
-      "Lead six unit classes through a seeded Gold-versus-Cyan combat exercise.",
-    images: ["/og-phase-two.png"],
+      "Build, scout, and fight through the Golden Scar against a deterministic Normal AI.",
+    images: ["/og-phase-four.png"],
   },
 };
 

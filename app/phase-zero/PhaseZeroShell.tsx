@@ -5,7 +5,6 @@ import { gameData } from "../game/data";
 import type {
   BuildingKind,
   GameRuntime,
-  PlayerId,
   RuntimeSnapshot,
   UnitKind,
 } from "../game/types";
@@ -21,7 +20,7 @@ const EMPTY_PLAYER = Object.freeze({
 const INITIAL_SNAPSHOT: RuntimeSnapshot = {
   simulation: {
     tick: 0,
-    scenario: "economy",
+    scenario: "skirmish",
     controlledPlayer: 1,
     units: [],
     structures: [],
@@ -39,6 +38,23 @@ const INITIAL_SNAPSHOT: RuntimeSnapshot = {
     kills: { 1: 0, 2: 0 },
     seed: 0,
     lastPlacementFailure: null,
+    visibility: {
+      enabled: true,
+      width: 64,
+      height: 64,
+      revision: 0,
+      tiles: [],
+    },
+    ai: {
+      enabled: true,
+      playerId: 2,
+      profile: "normal",
+      phase: "build",
+      lastDecisionTick: -1,
+      knownEnemyUnits: 0,
+      knownEnemyStructures: 0,
+      cheats: false,
+    },
   },
   paused: false,
   pauseReason: null,
@@ -60,13 +76,14 @@ const PLACEMENT_MESSAGES = {
   blockedTerrain: "Scorched terrain blocks this site.",
   occupied: "Another unit or structure occupies this tile.",
   resourceField: "Aurelite vents cannot be built over.",
+  unexplored: "Construction requires current battlefield vision.",
   outsideBuildRadius: "Site is outside connected construction radius.",
   missingPrerequisite: "Build-tree prerequisite is missing.",
   insufficientCredits: "Insufficient credits.",
   citadelUnique: "Each side may field only one Citadel.",
 } as const;
 
-export default function EconomySandboxShell() {
+export default function SkirmishShell() {
   const hostRef = useRef<HTMLDivElement>(null);
   const runtimeRef = useRef<GameRuntime | null>(null);
   const [snapshot, setSnapshot] = useState(INITIAL_SNAPSHOT);
@@ -123,17 +140,19 @@ export default function EconomySandboxShell() {
     simulation.structures.find((structure) => structure.selected) ?? null;
   const leadUnit = selectedUnits[0] ?? null;
   const placementFailure = simulation.lastPlacementFailure;
+  const exploredTiles = simulation.visibility.tiles.filter(
+    (level) => level > 0,
+  ).length;
+  const visibleEnemies =
+    simulation.units.filter((unit) => unit.playerId !== side).length +
+    simulation.structures.filter(
+      (structure) => structure.playerId !== side,
+    ).length;
 
   const beginPlacement = (kind: BuildingKind) => {
     const next = placement === kind ? null : kind;
     setPlacement(next);
     runtimeRef.current?.beginPlacement(next);
-  };
-
-  const switchSide = (playerId: PlayerId) => {
-    setPlacement(null);
-    runtimeRef.current?.beginPlacement(null);
-    runtimeRef.current?.enqueue({ kind: "switchPlayer", playerId });
   };
 
   const queueUnit = (unitKind: UnitKind) => {
@@ -146,10 +165,10 @@ export default function EconomySandboxShell() {
   };
 
   return (
-    <main className="operations-shell economy-shell">
+    <main className="operations-shell economy-shell skirmish-shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">ARCLIGHT COMMAND // GOLDEN SCAR ECONOMY TEST</p>
+          <p className="eyebrow">ARCLIGHT COMMAND // GOLDEN SCAR SKIRMISH</p>
           <h1>Aurelia Falling</h1>
         </div>
         <div className="resource-bar" aria-label="Economy status">
@@ -163,16 +182,14 @@ export default function EconomySandboxShell() {
               {player.powerGenerated} / {player.powerConsumed}
             </strong>
           </div>
-          <button
-            onClick={() => switchSide(side === 1 ? 2 : 1)}
-            title="Switch local debug control"
-          >
-            Control {side === 1 ? "Cyan" : "Gold"}
-          </button>
+          <div>
+            <span>NORMAL AI</span>
+            <strong>{simulation.ai.phase.toUpperCase()}</strong>
+          </div>
         </div>
         <div className="phase-badge">
-          <span>PHASE 3</span>
-          <strong>{side === 1 ? "GOLD" : "CYAN"} OPERATOR</strong>
+          <span>PHASE 4</span>
+          <strong>GOLD // PLAYER VS AI</strong>
         </div>
       </header>
 
@@ -187,10 +204,10 @@ export default function EconomySandboxShell() {
         {snapshot.paused && (
           <div className="pause-curtain">
             <p>TACTICAL LINK SUSPENDED</p>
-            <h2>Base simulation paused</h2>
+            <h2>Skirmish paused</h2>
             <span>
               Background time was discarded. Resume explicitly to continue the
-              deterministic fixed-step economy.
+              deterministic fixed-step battle.
             </span>
             <button onClick={() => runtimeRef.current?.resume()}>
               Resume operation
@@ -208,10 +225,10 @@ export default function EconomySandboxShell() {
             <span>Final assault resolved at tick {simulation.tick}.</span>
             <button
               onClick={() =>
-                runtimeRef.current?.enqueue({ kind: "restartEconomy" })
+                runtimeRef.current?.enqueue({ kind: "restartSkirmish" })
               }
             >
-              Restart economy sandbox
+              Restart skirmish
             </button>
           </div>
         )}
@@ -359,7 +376,7 @@ export default function EconomySandboxShell() {
             </dl>
           ) : (
             <p className="empty-state">
-              Select units or a structure belonging to the active operator.
+              Select one of your Gold units or structures.
             </p>
           )}
         </section>
@@ -405,6 +422,22 @@ export default function EconomySandboxShell() {
             <div>
               <dt>LINK</dt>
               <dd>{snapshot.renderer}</dd>
+            </div>
+            <div>
+              <dt>INTEL</dt>
+              <dd>{visibleEnemies} CONTACTS</dd>
+            </div>
+            <div>
+              <dt>EXPLORED</dt>
+              <dd>
+                {simulation.visibility.tiles.length === 0
+                  ? 0
+                  : Math.floor(
+                      (100 * exploredTiles) /
+                        simulation.visibility.tiles.length,
+                    )}
+                %
+              </dd>
             </div>
           </dl>
         </aside>

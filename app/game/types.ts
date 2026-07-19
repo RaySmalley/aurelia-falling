@@ -36,12 +36,14 @@ export type OrderKind =
   | "harvest"
   | "unload";
 export type MatchStatus = "active" | "victory" | "defeat" | "draw";
-export type SimulationScenario = "combat" | "economy";
+export type SimulationScenario = "combat" | "economy" | "skirmish";
+export type VisibilityLevel = 0 | 1 | 2;
 export type PlacementFailure =
   | "outsideMap"
   | "blockedTerrain"
   | "occupied"
   | "resourceField"
+  | "unexplored"
   | "outsideBuildRadius"
   | "missingPrerequisite"
   | "insufficientCredits"
@@ -76,7 +78,8 @@ export type SimCommand =
   | { kind: "setRepair"; structureId: StructureId; enabled: boolean }
   | { kind: "switchPlayer"; playerId: PlayerId }
   | { kind: "restartCombat"; seed?: number }
-  | { kind: "restartEconomy"; seed?: number };
+  | { kind: "restartEconomy"; seed?: number }
+  | { kind: "restartSkirmish"; seed?: number };
 
 export type UnitSnapshot = Readonly<{
   id: UnitId;
@@ -158,6 +161,32 @@ export type RallySnapshot = Readonly<{
   target: GridPoint;
 }>;
 
+export type VisibilitySnapshot = Readonly<{
+  enabled: boolean;
+  width: number;
+  height: number;
+  revision: number;
+  tiles: readonly VisibilityLevel[];
+}>;
+
+export type AiPhase =
+  | "build"
+  | "scout"
+  | "defend"
+  | "expand"
+  | "attack";
+
+export type AiSnapshot = Readonly<{
+  enabled: boolean;
+  playerId: 2;
+  profile: "normal";
+  phase: AiPhase;
+  lastDecisionTick: number;
+  knownEnemyUnits: number;
+  knownEnemyStructures: number;
+  cheats: false;
+}>;
+
 export type SimulationSnapshot = Readonly<{
   tick: number;
   scenario: SimulationScenario;
@@ -175,6 +204,8 @@ export type SimulationSnapshot = Readonly<{
   kills: Readonly<Record<PlayerId, number>>;
   seed: number;
   lastPlacementFailure: PlacementFailure | null;
+  visibility: VisibilitySnapshot;
+  ai: AiSnapshot;
 }>;
 
 export type RuntimeSnapshot = Readonly<{
