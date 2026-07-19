@@ -27,10 +27,30 @@ different port explicitly only when a task requires it.
 ## Validation
 
 ```bash
+npm run typecheck
 npm run build
 npm test
 npm run lint
 ```
+
+## Automated pull request review
+
+Every non-draft pull request runs the workflows in `.github/workflows/`:
+
+- ESLint and Semgrep findings are converted into inline review comments by
+  reviewdog.
+- TypeScript typechecking, the production build, and the deterministic test
+  suite run as required-status-check candidates.
+- CodeQL scans JavaScript and TypeScript when the repository is public.
+
+This setup does not require GitHub Copilot or a paid Copilot plan. GitHub Free
+only provides CodeQL code scanning for public repositories, so the CodeQL job
+is intentionally skipped when the repository is private. The other checks
+continue to work within the repository's normal GitHub Actions allowance.
+
+For pull requests from forks, GitHub gives the workflow token read-only access.
+Reviewdog therefore falls back to workflow annotations when it cannot create a
+PR review comment.
 
 The fixed-step simulation and gameplay modules live under `app/game/`. Phaser
 is dynamically imported behind the client-only React boundary in
