@@ -88,6 +88,77 @@ test("hidden enemies cannot be targeted and visibility snapshots are immutable",
   }, TypeError);
 });
 
+test("combat targets are dropped as soon as they leave current vision", () => {
+  const unitSimulation = new Simulation(4_021, "skirmish");
+  const playerUnit = unitSimulation.units.find((unit) => unit.id === 1);
+  const enemyUnit = unitSimulation.units.find((unit) => unit.id === 2);
+  enemyUnit.position = { x: 16_000, y: 15_000 };
+  unitSimulation.updateVisibility(true);
+  unitSimulation.enqueue({
+    kind: "selectUnits",
+    unitIds: [playerUnit.id],
+    additive: false,
+  });
+  unitSimulation.enqueue({ kind: "attackUnit", targetUnitId: enemyUnit.id });
+  unitSimulation.step();
+  assert.equal(playerUnit.targetId, enemyUnit.id);
+
+  enemyUnit.position = { x: 49_000, y: 48_000 };
+  unitSimulation.step();
+  assert.equal(playerUnit.targetId, null);
+  assert.equal(playerUnit.order, "idle");
+
+  const structureSimulation = new Simulation(4_022, "skirmish");
+  const structureAttacker = structureSimulation.units.find(
+    (unit) => unit.id === 1,
+  );
+  const enemyStructure = structureSimulation.structures.find(
+    (structure) => structure.id === 4,
+  );
+  structureAttacker.position = { x: 52_000, y: 54_000 };
+  structureSimulation.updateVisibility(true);
+  structureSimulation.enqueue({
+    kind: "selectUnits",
+    unitIds: [structureAttacker.id],
+    additive: false,
+  });
+  structureSimulation.enqueue({
+    kind: "attackStructure",
+    targetStructureId: enemyStructure.id,
+  });
+  structureSimulation.step();
+  assert.equal(structureAttacker.targetStructureId, enemyStructure.id);
+
+  structureAttacker.position = { x: 14_000, y: 15_000 };
+  structureSimulation.updateVisibility(true);
+  structureSimulation.step();
+  assert.equal(structureAttacker.targetStructureId, null);
+  assert.equal(structureAttacker.order, "idle");
+});
+
+test("Aurelite fields expose live state only while currently visible", () => {
+  const simulation = new Simulation(4_023, "skirmish");
+  assert.deepEqual(
+    simulation.snapshot().fields.map((field) => field.id),
+    [1],
+  );
+
+  const harvester = simulation.units.find((unit) => unit.id === 1);
+  harvester.position = { x: 28_000, y: 31_000 };
+  simulation.updateVisibility(true);
+  assert.equal(
+    simulation.snapshot().fields.some((field) => field.id === 3),
+    true,
+  );
+
+  harvester.position = { x: 14_000, y: 15_000 };
+  simulation.updateVisibility(true);
+  assert.equal(
+    simulation.snapshot().fields.some((field) => field.id === 3),
+    false,
+  );
+});
+
 test("the Normal AI builds, scouts, expands, and spends only legal resources", () => {
   const simulation = new Simulation(4_003, "skirmish");
   let minimumCredits = simulation.players[2].credits;

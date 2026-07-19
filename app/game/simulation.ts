@@ -524,6 +524,11 @@ export class Simulation {
       this.fields
         .slice()
         .sort((a, b) => a.id - b.id)
+        .filter(
+          (field) =>
+            this.scenario !== "skirmish" ||
+            this.visibility[this.controlledPlayer].isVisible(field.tile),
+        )
         .map((field) =>
           Object.freeze({
             id: field.id,
@@ -1531,7 +1536,8 @@ export class Simulation {
     if (
       !unitTarget ||
       unitTarget.playerId === unit.playerId ||
-      unitTarget.health <= 0
+      unitTarget.health <= 0 ||
+      !this.isUnitVisibleTo(unit.playerId, unitTarget)
     ) {
       unit.targetId = null;
       unitTarget = undefined;
@@ -1539,7 +1545,8 @@ export class Simulation {
     if (
       !structureTarget ||
       structureTarget.playerId === unit.playerId ||
-      structureTarget.health <= 0
+      structureTarget.health <= 0 ||
+      !this.isStructureVisibleTo(unit.playerId, structureTarget)
     ) {
       unit.targetStructureId = null;
       structureTarget = undefined;
