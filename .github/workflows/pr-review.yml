@@ -23,10 +23,10 @@ jobs:
       pull-requests: write
     steps:
       - name: Check out the pull request
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: npm
@@ -35,7 +35,7 @@ jobs:
         run: npm ci
 
       - name: Review ESLint findings
-        uses: reviewdog/action-eslint@2fee6dd72a5419ff4113f694e2068d2a03bb35dd # v1.33.2
+        uses: reviewdog/action-eslint@556a3fdaf8b4201d4d74d406013386aa4f7dab96 # v1.34.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           reporter: github-pr-review
@@ -50,10 +50,10 @@ jobs:
     timeout-minutes: 25
     steps:
       - name: Check out the pull request
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: npm
@@ -81,7 +81,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Check out the pull request
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -106,7 +106,7 @@ jobs:
           --exclude graphify-out
 
       - name: Set up reviewdog
-        uses: reviewdog/action-setup@d8edfce3dd5e1ec6978745e801f9c50b5ef80252 # v1.4.0
+        uses: reviewdog/action-setup@d8a7baabd7f3e8544ee4dbde3ee41d0011c3a93f # v1.5.0
         with:
           reviewdog_version: v0.21.0
 
