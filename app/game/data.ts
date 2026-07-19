@@ -1,4 +1,5 @@
 import type {
+  AiDifficulty,
   ArmorClass,
   BuildingKind,
   GridPoint,
@@ -54,8 +55,9 @@ export type AiBuildOrderStep = Readonly<{
 }>;
 
 export type AiProfile = Readonly<{
-  id: "normal";
+  id: AiDifficulty;
   reactionIntervalTicks: number;
+  actionRateLimitTicks: number;
   scoutIntervalTicks: number;
   attackIntervalTicks: number;
   attackStartTick: number;
@@ -64,6 +66,8 @@ export type AiProfile = Readonly<{
   defenseRadiusMilli: number;
   productionQueueTarget: number;
   expansionStartTick: number;
+  retreatHealthBasisPoints: number;
+  aggressionBasisPoints: number;
   buildOrder: readonly AiBuildOrderStep[];
   unitMix: readonly UnitKind[];
   scoutWaypoints: readonly GridPoint[];
@@ -75,6 +79,18 @@ const armorMultipliers = (
   heavy: number,
   siege: number,
 ) => ({ infantry, light, heavy, siege });
+
+const deriveAiProfile = (
+  canonical: AiProfile,
+  overrides: Partial<AiProfile> & Pick<AiProfile, "id">,
+): AiProfile =>
+  Object.freeze({
+    ...canonical,
+    ...overrides,
+    buildOrder: canonical.buildOrder,
+    unitMix: canonical.unitMix,
+    scoutWaypoints: canonical.scoutWaypoints,
+  });
 
 const weaponDefinitions = {
   miningLaser: {
@@ -344,6 +360,77 @@ const buildingDefinitions = {
   },
 } as const satisfies Record<BuildingKind, BuildingDefinition>;
 
+const normalAi = Object.freeze({
+  id: "normal",
+  reactionIntervalTicks: 40,
+  actionRateLimitTicks: 40,
+  scoutIntervalTicks: 360,
+  attackIntervalTicks: 1_200,
+  attackStartTick: 23_000,
+  solarLaunchStartTick: 24_000,
+  attackUnitThreshold: 6,
+  defenseRadiusMilli: 12_000,
+  productionQueueTarget: 2,
+  expansionStartTick: 2_400,
+  retreatHealthBasisPoints: 3_000,
+  aggressionBasisPoints: 10_000,
+  buildOrder: Object.freeze([
+    Object.freeze({ kind: "barracks", count: 1 }),
+    Object.freeze({ kind: "foundry", count: 1 }),
+    Object.freeze({ kind: "operationsCenter", count: 1 }),
+    Object.freeze({ kind: "reactor", count: 2 }),
+    Object.freeze({ kind: "turret", count: 2 }),
+  ]),
+  unitMix: Object.freeze([
+    "argusRifle",
+    "argusRifle",
+    "hermesScout",
+    "cyclopsRocket",
+    "atlasTank",
+    "argusRifle",
+    "gorgonWalker",
+  ]),
+  scoutWaypoints: Object.freeze(
+    [
+      { x: 46, y: 44 },
+      { x: 40, y: 39 },
+      { x: 35, y: 32 },
+      { x: 28, y: 31 },
+      { x: 21, y: 24 },
+      { x: 14, y: 15 },
+      { x: 8, y: 9 },
+    ].map((point) => Object.freeze(point)),
+  ),
+} satisfies AiProfile);
+
+const easyAi = deriveAiProfile(normalAi, {
+  id: "easy",
+  reactionIntervalTicks: 80,
+  actionRateLimitTicks: 100,
+  scoutIntervalTicks: 560,
+  attackIntervalTicks: 1_600,
+  attackStartTick: 25_000,
+  solarLaunchStartTick: 26_000,
+  attackUnitThreshold: 8,
+  expansionStartTick: 3_200,
+  retreatHealthBasisPoints: 4_500,
+  aggressionBasisPoints: 6_500,
+});
+
+const hardAi = deriveAiProfile(normalAi, {
+  id: "hard",
+  reactionIntervalTicks: 20,
+  actionRateLimitTicks: 20,
+  scoutIntervalTicks: 240,
+  attackIntervalTicks: 800,
+  attackStartTick: 21_000,
+  solarLaunchStartTick: 22_000,
+  attackUnitThreshold: 5,
+  expansionStartTick: 1_800,
+  retreatHealthBasisPoints: 1_800,
+  aggressionBasisPoints: 10_000,
+});
+
 export const gameData = Object.freeze({
   weapons: Object.freeze(weaponDefinitions),
   units: Object.freeze(unitDefinitions),
@@ -355,6 +442,7 @@ export const gameData = Object.freeze({
     unloadAmountPerTick: 100,
     repairHealthPerCredit: 4,
     productionQueueLimit: 5,
+    structureSellRefundBasisPoints: 5_000,
   }),
   solarSpear: Object.freeze({
     chargeTicks: 4_800,
@@ -363,44 +451,8 @@ export const gameData = Object.freeze({
     damage: 5_000,
   }),
   ai: Object.freeze({
-    normal: Object.freeze({
-      id: "normal",
-      reactionIntervalTicks: 40,
-      scoutIntervalTicks: 360,
-      attackIntervalTicks: 1_200,
-      attackStartTick: 23_000,
-      solarLaunchStartTick: 24_000,
-      attackUnitThreshold: 6,
-      defenseRadiusMilli: 12_000,
-      productionQueueTarget: 2,
-      expansionStartTick: 2_400,
-      buildOrder: Object.freeze([
-        Object.freeze({ kind: "barracks", count: 1 }),
-        Object.freeze({ kind: "foundry", count: 1 }),
-        Object.freeze({ kind: "operationsCenter", count: 1 }),
-        Object.freeze({ kind: "reactor", count: 2 }),
-        Object.freeze({ kind: "turret", count: 2 }),
-      ]),
-      unitMix: Object.freeze([
-        "argusRifle",
-        "argusRifle",
-        "hermesScout",
-        "cyclopsRocket",
-        "atlasTank",
-        "argusRifle",
-        "gorgonWalker",
-      ]),
-      scoutWaypoints: Object.freeze(
-        [
-          { x: 46, y: 44 },
-          { x: 40, y: 39 },
-          { x: 35, y: 32 },
-          { x: 28, y: 31 },
-          { x: 21, y: 24 },
-          { x: 14, y: 15 },
-          { x: 8, y: 9 },
-        ].map((point) => Object.freeze(point)),
-      ),
-    } satisfies AiProfile),
+    easy: easyAi,
+    normal: normalAi,
+    hard: hardAi,
   }),
 });

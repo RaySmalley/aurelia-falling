@@ -37,6 +37,7 @@ export type OrderKind =
   | "unload";
 export type MatchStatus = "active" | "victory" | "defeat" | "draw";
 export type SimulationScenario = "combat" | "economy" | "skirmish";
+export type AiDifficulty = "easy" | "normal" | "hard";
 export type VisibilityLevel = 0 | 1 | 2;
 export type SolarSpearState =
   | "unknown"
@@ -85,13 +86,18 @@ export type SimCommand =
       unitKind: UnitKind;
     }
   | { kind: "cancelProduction"; structureId: StructureId; queueIndex: number }
+  | { kind: "sellStructure"; structureId: StructureId }
   | { kind: "setRepair"; structureId: StructureId; enabled: boolean }
   | { kind: "launchSolarSpear"; target: GridPoint }
   | { kind: "surrender" }
   | { kind: "switchPlayer"; playerId: PlayerId }
   | { kind: "restartCombat"; seed?: number }
   | { kind: "restartEconomy"; seed?: number }
-  | { kind: "restartSkirmish"; seed?: number };
+  | {
+      kind: "restartSkirmish";
+      seed?: number;
+      difficulty?: AiDifficulty;
+    };
 
 export type UnitSnapshot = Readonly<{
   id: UnitId;
@@ -191,7 +197,7 @@ export type AiPhase =
 export type AiSnapshot = Readonly<{
   enabled: boolean;
   playerId: 2;
-  profile: "normal";
+  profile: AiDifficulty;
   phase: AiPhase;
   lastDecisionTick: number;
   knownEnemyUnits: number;
@@ -267,6 +273,7 @@ export type RuntimeSnapshot = Readonly<{
   solarTargeting: boolean;
   audioCue: AudioCueSnapshot | null;
   renderer: string;
+  cameraZoom: number;
 }>;
 
 export type RuntimeListener = (snapshot: RuntimeSnapshot) => void;
@@ -281,6 +288,8 @@ export type GameRuntime = {
   resume(): void;
   unlockAudio(): Promise<void>;
   setAudioSettings(settings: AudioSettings): void;
+  setCameraZoom(zoom: number): void;
+  setReducedScreenShake(reduced: boolean): void;
   centerCamera(): void;
   destroy(): void;
 };

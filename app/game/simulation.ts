@@ -1,5 +1,6 @@
 import {
   gameData,
+  type AiProfile,
   type WeaponDefinition,
 } from "./data";
 import {
@@ -15,6 +16,7 @@ import {
 } from "./pathfinding";
 import { VisibilityGrid, type VisibilitySource } from "./visibility";
 import type {
+  AiDifficulty,
   AiPhase,
   AiSnapshot,
   AureliteFieldSnapshot,
@@ -415,20 +417,24 @@ export class Simulation {
   private readonly onboardingConstructionIds = new Set<StructureId>();
   private aiPhase: AiPhase = "build";
   private aiLastDecisionTick = -1;
+  private aiLastActionTick = -1;
   private aiLastScoutTick = -1;
   private aiLastAttackTick = -1;
   private aiScoutWaypointIndex = 0;
   private aiUnitMixIndex = 0;
   private readonly aiKnownUnits = new Map<UnitId, EnemyMemory>();
   private readonly aiKnownStructures = new Map<StructureId, EnemyMemory>();
+  private aiDifficulty: AiDifficulty;
 
   constructor(
     seed = DEFAULT_COMBAT_SEED,
     scenario: SimulationScenario = "combat",
+    difficulty: AiDifficulty = "normal",
   ) {
     this.seed = seed >>> 0;
     this.rng = new DeterministicRng(this.seed);
     this.scenario = scenario;
+    this.aiDifficulty = difficulty;
     if (scenario === "combat") this.resetCombat(this.seed);
     else if (scenario === "skirmish") this.resetSkirmish(this.seed);
     else this.resetEconomy(this.seed);
@@ -691,7 +697,7 @@ export class Simulation {
     return Object.freeze({
       enabled: this.scenario === "skirmish",
       playerId: 2,
-      profile: "normal",
+      profile: this.aiDifficulty,
       phase: this.aiPhase,
       lastDecisionTick: this.aiLastDecisionTick,
       knownEnemyUnits: this.aiKnownUnits.size,
@@ -807,6 +813,7 @@ export class Simulation {
     this.onboardingConstructionIds.clear();
     this.aiPhase = "build";
     this.aiLastDecisionTick = -1;
+    this.aiLastActionTick = -1;
     this.aiLastScoutTick = -1;
     this.aiLastAttackTick = -1;
     this.aiScoutWaypointIndex = 0;
@@ -955,6 +962,7 @@ export class Simulation {
       return;
     }
     if (command.kind === "restartSkirmish") {
+      this.aiDifficulty = command.difficulty ?? this.aiDifficulty;
       this.resetSkirmish(command.seed ?? this.seed);
       this.commands.length = 0;
       return;
@@ -1036,6 +1044,10 @@ export class Simulation {
     }
     if (command.kind === "cancelProduction") {
       this.cancelProduction(command.structureId, command.queueIndex);
+      return;
+    }
+    if (command.kind === "sellStructure") {
+      this.sellStructure(command.structureId);
       return;
     }
     if (command.kind === "setRepair") {
@@ -1247,9 +1259,16 @@ export class Simulation {
   }
 
   private updateAi() {
-    const profile = gameData.ai.normal;
+    const profile = gameData.ai[this.aiDifficulty];
     if (this.tick % profile.reactionIntervalTicks !== 0) return;
+    if (
+      this.aiLastActionTick >= 0 &&
+      this.tick - this.aiLastActionTick < profile.actionRateLimitTicks
+    ) {
+      return;
+    }
     this.aiLastDecisionTick = this.tick;
+    this.aiLastActionTick = this.tick;
 
     const ownStructures = this.sortedStructures().filter(
       (structure) => structure.playerId === 2 && structure.health > 0,
@@ -1272,6 +1291,40 @@ export class Simulation {
           ),
       )
       .sort((left, right) => left.id - right.id);
+    const attackForce = this.aiAttackForce(combatUnits, profile);
+    const currentHealthBasisPoints =
+      combatUnits.length === 0
+        ? 10_000
+        : Math.floor(
+            combatUnits.reduce(
+              (total, unit) =>
+                total +
+                Math.floor(
+                  (unit.health * 10_000) /
+                    gameData.units[unit.kind].maxHealth,
+                ),
+              0,
+            ) /
+              combatUnits.length,
+          );
+    const homeCitadel = ownStructures.find(
+      (structure) => structure.kind === "citadel",
+    );
+
+    if (
+      this.aiPhase === "attack" &&
+      homeCitadel &&
+      currentHealthBasisPoints < profile.retreatHealthBasisPoints
+    ) {
+      this.aiPhase = "defend";
+      this.aiCommands.push({
+        kind: "orderUnits",
+        unitIds: combatUnits.map((unit) => unit.id),
+        target: { ...homeCitadel.tile },
+        mode: "move",
+      });
+      return;
+    }
 
     if (
       this.tick >= profile.solarLaunchStartTick &&
@@ -1393,7 +1446,7 @@ export class Simulation {
         this.aiLastAttackTick = this.tick;
         this.aiCommands.push({
           kind: "attackStructure",
-          unitIds: combatUnits.map((unit) => unit.id),
+          unitIds: attackForce.map((unit) => unit.id),
           targetStructureId: visibleStructure.id,
         });
         return;
@@ -1403,7 +1456,7 @@ export class Simulation {
         this.aiLastAttackTick = this.tick;
         this.aiCommands.push({
           kind: "attackUnit",
-          unitIds: combatUnits.map((unit) => unit.id),
+          unitIds: attackForce.map((unit) => unit.id),
           targetUnitId: visibleUnit.id,
         });
         return;
@@ -1422,7 +1475,7 @@ export class Simulation {
         this.aiLastAttackTick = this.tick;
         this.aiCommands.push({
           kind: "orderUnits",
-          unitIds: combatUnits.map((unit) => unit.id),
+          unitIds: attackForce.map((unit) => unit.id),
           target: { ...rememberedTarget.tile },
           mode: "attackMove",
         });
@@ -1456,7 +1509,7 @@ export class Simulation {
   }
 
   private queueAiProduction() {
-    const profile = gameData.ai.normal;
+    const profile = gameData.ai[this.aiDifficulty];
     for (const structure of this.sortedStructures()) {
       if (
         structure.playerId !== 2 ||
@@ -1488,6 +1541,19 @@ export class Simulation {
         break;
       }
     }
+  }
+
+  private aiAttackForce(
+    combatUnits: readonly UnitState[],
+    profile: AiProfile,
+  ) {
+    const desired = Math.max(
+      profile.attackUnitThreshold,
+      Math.floor(
+        (combatUnits.length * profile.aggressionBasisPoints) / 10_000,
+      ),
+    );
+    return combatUnits.slice(0, Math.min(combatUnits.length, desired));
   }
 
   private findAiPlacement(
@@ -2439,6 +2505,33 @@ export class Simulation {
     const [cancelled] = structure.queue.splice(queueIndex, 1);
     this.players[structure.playerId].credits +=
       gameData.units[cancelled.unitKind].cost;
+  }
+
+  private sellStructure(structureId: StructureId) {
+    const structure = this.structureById(structureId);
+    if (
+      !structure ||
+      structure.playerId !== this.controlledPlayer ||
+      structure.kind === "citadel"
+    ) {
+      return;
+    }
+    const queuedRefund = structure.queue.reduce(
+      (total, item) => total + gameData.units[item.unitKind].cost,
+      0,
+    );
+    const structureRefund = Math.floor(
+      (gameData.buildings[structure.kind].cost *
+        gameData.economy.structureSellRefundBasisPoints) /
+        10_000,
+    );
+    this.players[structure.playerId].credits +=
+      structureRefund + queuedRefund;
+    this.structures = this.structures.filter(
+      (candidate) => candidate.id !== structureId,
+    );
+    this.onboardingConstructionIds.delete(structureId);
+    this.updateConnectivityAndPower();
   }
 
   private hasCompletedStructure(

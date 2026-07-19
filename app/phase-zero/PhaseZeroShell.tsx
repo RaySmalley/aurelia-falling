@@ -8,6 +8,7 @@ import {
 } from "react";
 import { gameData } from "../game/data";
 import type {
+  AiDifficulty,
   AudioSettings,
   BuildingKind,
   GameRuntime,
@@ -71,7 +72,7 @@ const INITIAL_SNAPSHOT: RuntimeSnapshot = {
       lastDecisionTick: -1,
       knownEnemyUnits: 0,
       knownEnemyStructures: 0,
-      cheats: false,
+    cheats: false,
     },
     solarSpears: {
       1: EMPTY_SOLAR(1),
@@ -97,6 +98,7 @@ const INITIAL_SNAPSHOT: RuntimeSnapshot = {
   solarTargeting: false,
   audioCue: null,
   renderer: "initializing",
+  cameraZoom: 1,
 };
 
 const BUILD_ORDER: readonly BuildingKind[] = [
@@ -129,6 +131,7 @@ const SOLAR_MESSAGES = {
 type AppSettings = AudioSettings &
   Readonly<{
     uiScale: number;
+    cameraZoom: number;
     subtitles: boolean;
     reducedMotion: boolean;
     onboarding: boolean;
@@ -139,6 +142,7 @@ const DEFAULT_SETTINGS: AppSettings = Object.freeze({
   musicVolume: 0.35,
   effectsVolume: 0.75,
   uiScale: 1,
+  cameraZoom: 1,
   subtitles: true,
   reducedMotion: false,
   onboarding: true,
@@ -146,6 +150,7 @@ const DEFAULT_SETTINGS: AppSettings = Object.freeze({
 
 const SETTINGS_KEY = "aurelia-falling.settings.v1";
 const ONBOARDING_KEY = "aurelia-falling.onboarding.v1";
+const CAMERA_ZOOM_LEVELS = [0.75, 0.9, 1, 1.1, 1.25] as const;
 
 const TUTORIAL_STEPS = [
   {
@@ -231,6 +236,9 @@ function loadSettings(): AppSettings {
       uiScale: [0.9, 1, 1.1].includes(stored.uiScale)
         ? stored.uiScale
         : DEFAULT_SETTINGS.uiScale,
+      cameraZoom: [0.75, 0.9, 1, 1.1, 1.25].includes(stored.cameraZoom)
+        ? stored.cameraZoom
+        : DEFAULT_SETTINGS.cameraZoom,
       subtitles:
         typeof stored.subtitles === "boolean"
           ? stored.subtitles
@@ -271,7 +279,9 @@ export default function SkirmishShell() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [settingsHydrated, setSettingsHydrated] = useState(false);
   const [runtimeReady, setRuntimeReady] = useState(false);
+  const [runtimeAttempt, setRuntimeAttempt] = useState(0);
   const [seedInput, setSeedInput] = useState("4115");
+  const [difficulty, setDifficulty] = useState<AiDifficulty>("normal");
   const [tutorialProgress, setTutorialProgress] =
     useState<TutorialProgress>(EMPTY_TUTORIAL_PROGRESS);
 
@@ -291,6 +301,8 @@ export default function SkirmishShell() {
     settingsRef.current = settings;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     runtimeRef.current?.setAudioSettings(settings);
+    runtimeRef.current?.setCameraZoom(settings.cameraZoom);
+    runtimeRef.current?.setReducedScreenShake(settings.reducedMotion);
   }, [settings, settingsHydrated]);
 
   useEffect(() => {
@@ -298,6 +310,8 @@ export default function SkirmishShell() {
     let unsubscribe = () => {};
     async function start() {
       try {
+        setLoadError(null);
+        setRuntimeReady(false);
         const { createGameRuntime } = await import("../game/bootstrap");
         if (!hostRef.current || disposed) return;
         const runtime = await createGameRuntime(hostRef.current);
@@ -308,6 +322,8 @@ export default function SkirmishShell() {
         runtimeRef.current = runtime;
         setRuntimeReady(true);
         runtime.setAudioSettings(settingsRef.current);
+        runtime.setCameraZoom(settingsRef.current.cameraZoom);
+        runtime.setReducedScreenShake(settingsRef.current.reducedMotion);
         runtime.pause("manual");
         unsubscribe = runtime.subscribe(setSnapshot);
       } catch (error) {
@@ -326,7 +342,7 @@ export default function SkirmishShell() {
       runtimeRef.current?.destroy();
       runtimeRef.current = null;
     };
-  }, []);
+  }, [runtimeAttempt]);
 
   useEffect(() => {
     const unlock = () => void runtimeRef.current?.unlockAudio();
@@ -426,7 +442,11 @@ export default function SkirmishShell() {
     const seed = Number.isFinite(parsed) ? parsed >>> 0 : 4_115;
     setSeedInput(String(seed));
     runtimeRef.current?.clearTargetingModes();
-    runtimeRef.current?.enqueue({ kind: "restartSkirmish", seed });
+    runtimeRef.current?.enqueue({
+      kind: "restartSkirmish",
+      seed,
+      difficulty,
+    });
     runtimeRef.current?.resume();
     setScreen("playing");
   };
@@ -436,6 +456,7 @@ export default function SkirmishShell() {
     runtimeRef.current?.enqueue({
       kind: "restartSkirmish",
       seed: simulation.seed,
+      difficulty: simulation.ai.profile,
     });
     runtimeRef.current?.resume();
   };
@@ -473,6 +494,27 @@ export default function SkirmishShell() {
     setTutorialProgress(reset);
     localStorage.setItem(ONBOARDING_KEY, JSON.stringify(reset));
     setSettings((current) => ({ ...current, onboarding: true }));
+  };
+
+  const adjustCameraZoom = (direction: -1 | 1) => {
+    setSettings((current) => {
+      const closestIndex = CAMERA_ZOOM_LEVELS.reduce(
+        (best, zoom, index) =>
+          Math.abs(zoom - current.cameraZoom) <
+          Math.abs(CAMERA_ZOOM_LEVELS[best] - current.cameraZoom)
+            ? index
+            : best,
+        0,
+      );
+      const nextIndex = Math.max(
+        0,
+        Math.min(CAMERA_ZOOM_LEVELS.length - 1, closestIndex + direction),
+      );
+      return {
+        ...current,
+        cameraZoom: CAMERA_ZOOM_LEVELS[nextIndex],
+      };
+    });
   };
 
   const shellStyle = {
@@ -519,8 +561,8 @@ export default function SkirmishShell() {
             </button>
           )}
           <div className="phase-badge">
-            <span>PHASE 5</span>
-            <strong>FEATURE-COMPLETE V1</strong>
+            <span>PHASE 6</span>
+            <strong>POLISHED RELEASE</strong>
           </div>
         </div>
       </header>
@@ -531,6 +573,9 @@ export default function SkirmishShell() {
           <div className="fatal-panel" role="alert">
             <strong>Simulation link failed</strong>
             <span>{loadError}</span>
+            <button onClick={() => setRuntimeAttempt((attempt) => attempt + 1)}>
+              Retry tactical payload
+            </button>
           </div>
         )}
 
@@ -545,7 +590,10 @@ export default function SkirmishShell() {
               </div>
               <div>
                 <span>OPPOSITION</span>
-                <strong>Normal AI · Rules legal</strong>
+                <strong>
+                  {difficulty[0].toUpperCase() + difficulty.slice(1)} AI ·
+                  Rules legal
+                </strong>
               </div>
               <div>
                 <span>VICTORY</span>
@@ -559,6 +607,19 @@ export default function SkirmishShell() {
                 inputMode="numeric"
                 onChange={(event) => setSeedInput(event.target.value)}
               />
+            </label>
+            <label className="seed-field">
+              <span>AI pacing profile</span>
+              <select
+                value={difficulty}
+                onChange={(event) =>
+                  setDifficulty(event.target.value as AiDifficulty)
+                }
+              >
+                <option value="easy">Easy · deliberate and cautious</option>
+                <option value="normal">Normal · canonical balance</option>
+                <option value="hard">Hard · faster and aggressive</option>
+              </select>
             </label>
             <label className="toggle-row">
               <input
@@ -580,6 +641,14 @@ export default function SkirmishShell() {
             >
               Begin operation
             </button>
+            <div className="payload-status" aria-live="polite">
+              <span>
+                {runtimeReady
+                  ? "TACTICAL PAYLOAD READY"
+                  : "PRELOADING TACTICAL PAYLOAD"}
+              </span>
+              <i style={{ width: runtimeReady ? "100%" : "34%" }} />
+            </div>
           </div>
         )}
 
@@ -703,6 +772,24 @@ export default function SkirmishShell() {
                   <option value="1.1">110%</option>
                 </select>
               </label>
+              <label>
+                <span>Battlefield zoom</span>
+                <select
+                  value={settings.cameraZoom}
+                  onChange={(event) =>
+                    setSettings((current) => ({
+                      ...current,
+                      cameraZoom: Number(event.target.value),
+                    }))
+                  }
+                >
+                  <option value="0.75">75% · strategic</option>
+                  <option value="0.9">90%</option>
+                  <option value="1">100%</option>
+                  <option value="1.1">110%</option>
+                  <option value="1.25">125% · tactical</option>
+                </select>
+              </label>
               <label className="toggle-row">
                 <input
                   type="checkbox"
@@ -727,7 +814,7 @@ export default function SkirmishShell() {
                     }))
                   }
                 />
-                Reduce interface motion
+                Reduce interface motion and screen shake
               </label>
             </div>
             <div className="overlay-actions">
@@ -810,13 +897,33 @@ export default function SkirmishShell() {
         </aside>
 
         <section className="selection-panel">
-          <div className="panel-heading">
-            <p className="eyebrow">SELECTED ASSET</p>
-            <h2>
-              {selectedStructure?.displayName ??
-                leadUnit?.displayName ??
-                "No asset selected"}
-            </h2>
+          <div className="selection-heading">
+            {leadUnit ? (
+              <div
+                className={`asset-portrait unit-portrait portrait-${leadUnit.kind}`}
+                role="img"
+                aria-label={`${leadUnit.displayName} portrait`}
+              />
+            ) : selectedStructure ? (
+              <div
+                className={`asset-portrait structure-portrait portrait-${selectedStructure.kind}`}
+                aria-hidden="true"
+              >
+                {selectedStructure.displayName
+                  .split(" ")
+                  .map((word) => word[0])
+                  .join("")
+                  .slice(0, 3)}
+              </div>
+            ) : null}
+            <div className="panel-heading">
+              <p className="eyebrow">SELECTED ASSET</p>
+              <h2>
+                {selectedStructure?.displayName ??
+                  leadUnit?.displayName ??
+                  "No asset selected"}
+              </h2>
+            </div>
           </div>
           {selectedStructure ? (
             <>
@@ -890,6 +997,36 @@ export default function SkirmishShell() {
               >
                 {selectedStructure.repairing ? "Stop repairs" : "Repair"}
               </button>
+              {selectedStructure.kind !== "citadel" && (
+                <button
+                  className="sell-action"
+                  onClick={() => {
+                    const refund = Math.floor(
+                      (gameData.buildings[selectedStructure.kind].cost *
+                        gameData.economy.structureSellRefundBasisPoints) /
+                        10_000,
+                    );
+                    if (
+                      window.confirm(
+                        `Sell ${selectedStructure.displayName} for ${refund} credits plus full queued-unit refunds?`,
+                      )
+                    ) {
+                      runtimeRef.current?.enqueue({
+                        kind: "sellStructure",
+                        structureId: selectedStructure.id,
+                      });
+                    }
+                  }}
+                >
+                  Sell ·{" "}
+                  {Math.floor(
+                    (gameData.buildings[selectedStructure.kind].cost *
+                      gameData.economy.structureSellRefundBasisPoints) /
+                      10_000,
+                  )}{" "}
+                  cr
+                </button>
+              )}
             </>
           ) : leadUnit ? (
             <dl className="asset-stats">
@@ -975,6 +1112,16 @@ export default function SkirmishShell() {
             <button onClick={() => runtimeRef.current?.centerCamera()}>
               Recenter
             </button>
+            <button
+              onClick={() => adjustCameraZoom(-1)}
+            >
+              Zoom −
+            </button>
+            <button
+              onClick={() => adjustCameraZoom(1)}
+            >
+              Zoom +
+            </button>
           </div>
           <dl className="mini-telemetry">
             <div>
@@ -1005,6 +1152,10 @@ export default function SkirmishShell() {
             <div>
               <dt>INTEL</dt>
               <dd>{visibleEnemies} CONTACTS</dd>
+            </div>
+            <div>
+              <dt>OPPOSITION</dt>
+              <dd>{simulation.ai.profile.toUpperCase()}</dd>
             </div>
             <div>
               <dt>EXPLORED</dt>
