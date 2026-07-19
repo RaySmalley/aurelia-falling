@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import PhaseZeroShell from "./phase-zero/PhaseZeroShell";
 
 export const metadata: Metadata = {
-  title: "Combat Slice | Aurelia Falling",
+  title: "Economy and Base Slice | Aurelia Falling",
   description:
-    "Command a Meridian Coalition strike group in a deterministic Golden Scar combat exercise.",
+    "Build a powered Meridian Coalition base, harvest Aurelite, and destroy the opposing Citadel.",
 };
 
 export default function Page() {
