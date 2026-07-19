@@ -1,7 +1,10 @@
 import { BLOCKED_TILES, MAP_SIZE, TILE_MILLI } from "./map";
 import { gameData } from "./data";
 import { SIM_STEP_MS, Simulation } from "./simulation";
-import { ProceduralAudio } from "./audio";
+import {
+  isContinuousAudioTransition,
+  ProceduralAudio,
+} from "./audio";
 import type {
   AudioCueSnapshot,
   AudioSettings,
@@ -310,7 +313,11 @@ export async function createGameRuntime(
           previousSnapshot = lastSnapshot;
           simulation.step();
           lastSnapshot = simulation.snapshot();
-          proceduralAudio.observe(previousSnapshot, lastSnapshot);
+          if (isContinuousAudioTransition(previousSnapshot, lastSnapshot)) {
+            proceduralAudio.observe(previousSnapshot, lastSnapshot);
+          } else {
+            previousSnapshot = lastSnapshot;
+          }
           accumulator -= SIM_STEP_MS;
         }
       }

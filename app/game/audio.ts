@@ -6,6 +6,13 @@ import type {
 const clampVolume = (value: number) =>
   Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
 
+export const isContinuousAudioTransition = (
+  previous: SimulationSnapshot,
+  current: SimulationSnapshot,
+) =>
+  current.seed === previous.seed &&
+  current.tick === previous.tick + 1;
+
 export class ProceduralAudio {
   private context: AudioContext | null = null;
   private masterGain: GainNode | null = null;

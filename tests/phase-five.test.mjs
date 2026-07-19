@@ -9,10 +9,12 @@ const vite = await createServer({
   configFile: false,
   server: { middlewareMode: true },
 });
-const [dataModule, simulationModule] = await Promise.all([
+const [audioModule, dataModule, simulationModule] = await Promise.all([
+  vite.ssrLoadModule("/app/game/audio.ts"),
   vite.ssrLoadModule("/app/game/data.ts"),
   vite.ssrLoadModule("/app/game/simulation.ts"),
 ]);
+const { isContinuousAudioTransition } = audioModule;
 const { gameData } = dataModule;
 const { Simulation } = simulationModule;
 
@@ -196,6 +198,32 @@ test("surrender and seeded restart stay inside the fixed-step command queue", ()
   assert.equal(restarted.solarSpears[1].launches, 0);
 });
 
+test("audio observation skips snapshot discontinuities across restarts", () => {
+  const simulation = new Simulation(5_007, "skirmish");
+  const initial = simulation.snapshot();
+  simulation.step();
+  const continuous = simulation.snapshot();
+  assert.equal(isContinuousAudioTransition(initial, continuous), true);
+
+  step(simulation, 4);
+  const previousMatch = simulation.snapshot();
+  simulation.enqueue({ kind: "restartSkirmish", seed: 5_007 });
+  simulation.step();
+  const sameSeedRestart = simulation.snapshot();
+  assert.equal(
+    isContinuousAudioTransition(previousMatch, sameSeedRestart),
+    false,
+  );
+
+  simulation.enqueue({ kind: "restartSkirmish", seed: 5_008 });
+  simulation.step();
+  const newSeedRestart = simulation.snapshot();
+  assert.equal(
+    isContinuousAudioTransition(sameSeedRestart, newSeedRestart),
+    false,
+  );
+});
+
 test("runtime targeting state stays synchronized across clicks and restarts", async () => {
   const [bootstrap, shell, types] = await Promise.all([
     readFile(new URL("../app/game/bootstrap.ts", import.meta.url), "utf8"),
@@ -240,6 +268,11 @@ test("Phase 5 shell persists settings and synthesizes audio without simulation r
   assert.match(audio, /createOscillator\(\)/);
   assert.match(audio, /createBuffer\(/);
   assert.match(audio, /startAmbient\(\)/);
+  assert.match(bootstrap, /isContinuousAudioTransition/);
+  assert.match(
+    bootstrap,
+    /else \{\s*previousSnapshot = lastSnapshot;\s*\}/,
+  );
   assert.match(bootstrap, /beginSolarTargeting/);
   assert.match(bootstrap, /proceduralAudio\.observe/);
   assert.match(shell, /localStorage\.setItem\(SETTINGS_KEY/);
