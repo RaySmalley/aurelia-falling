@@ -120,6 +120,33 @@ test("Harvesters honor explicit move, attack-move, and hold orders", () => {
   assert.ok(harvester.path.length > 0);
 });
 
+test("Harvesters recover from move orders targeting their current tile", () => {
+  const simulation = new Simulation(9_003, "economy");
+  simulation.enqueue({
+    kind: "selectUnits",
+    unitIds: [1],
+    additive: false,
+  });
+  simulation.enqueue({
+    kind: "move",
+    target: { x: 14, y: 15 },
+    mode: "move",
+  });
+
+  simulation.step();
+  let harvester = simulation
+    .snapshot()
+    .units.find((unit) => unit.id === 1);
+  assert.equal(harvester.order, "idle");
+  assert.equal(harvester.destination, null);
+  assert.deepEqual(harvester.path, []);
+
+  simulation.step();
+  harvester = simulation.snapshot().units.find((unit) => unit.id === 1);
+  assert.equal(harvester.order, "harvest");
+  assert.ok(harvester.path.length > 0);
+});
+
 test("Placement enforces prerequisites, terrain, build radius, and credits", () => {
   const simulation = new Simulation(33, "economy");
 

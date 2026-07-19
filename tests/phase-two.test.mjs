@@ -53,6 +53,15 @@ test("the seeded PRNG repeats exactly without Math.random", () => {
   assert.notDeepEqual(firstSequence, sample(different));
 });
 
+test("zero is honored as an explicit deterministic PRNG seed", () => {
+  const zeroSeeded = new DeterministicRng(0);
+
+  assert.deepEqual(
+    Array.from({ length: 8 }, () => zeroSeeded.nextUint32()),
+    Array(8).fill(0),
+  );
+});
+
 test("manual targeting stays queued and produces combat ordnance", () => {
   const simulation = new Simulation(451);
   simulation.enqueue({

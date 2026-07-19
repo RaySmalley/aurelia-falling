@@ -277,8 +277,8 @@ const gridDistanceSquared = (left: GridPoint, right: GridPoint) => {
 export class DeterministicRng {
   private state: number;
 
-  constructor(seed: number) {
-    this.state = (seed >>> 0) || DEFAULT_COMBAT_SEED;
+  constructor(seed = DEFAULT_COMBAT_SEED) {
+    this.state = seed >>> 0;
   }
 
   nextUint32() {
@@ -1130,7 +1130,13 @@ export class Simulation {
   }
 
   private moveUnit(unit: UnitState) {
-    if (unit.pathIndex >= unit.path.length) return;
+    if (unit.pathIndex >= unit.path.length) {
+      if (unit.order === "move" && unit.destination) {
+        this.clearPath(unit);
+        unit.order = "idle";
+      }
+      return;
+    }
     const waypoint = tileCenter(unit.path[unit.pathIndex]);
     const dx = waypoint.x - unit.position.x;
     const dy = waypoint.y - unit.position.y;
