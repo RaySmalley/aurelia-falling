@@ -37,6 +37,7 @@ export const TICKS_PER_SECOND = 20;
 export const SIM_STEP_MS = 1_000 / TICKS_PER_SECOND;
 export const DEFAULT_COMBAT_SEED = 0xa11e_1a;
 
+const ZERO_SEED_RNG_STATE = 0x6d2b_79f5;
 const SEPARATION_MILLI = 420;
 const SEPARATION_STEP = 24;
 const CHASE_REPATH_TICKS = 8;
@@ -278,7 +279,9 @@ export class DeterministicRng {
   private state: number;
 
   constructor(seed = DEFAULT_COMBAT_SEED) {
-    this.state = seed >>> 0;
+    const normalizedSeed = seed >>> 0;
+    this.state =
+      normalizedSeed === 0 ? ZERO_SEED_RNG_STATE : normalizedSeed;
   }
 
   nextUint32() {
