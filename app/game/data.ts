@@ -1,5 +1,6 @@
 import type {
   ArmorClass,
+  BuildingKind,
   UnitKind,
   WeaponId,
 } from "./types";
@@ -23,7 +24,34 @@ export type UnitDefinition = Readonly<{
   speedMilliPerTick: number;
   visionMilli: number;
   weaponId: WeaponId;
+  cost: number;
+  buildTicks: number;
+  producedAt: BuildingKind;
+  prerequisites: readonly BuildingKind[];
+  cargoCapacity: number;
 }>;
+
+export type BuildingDefinition = Readonly<{
+  id: BuildingKind;
+  displayName: string;
+  maxHealth: number;
+  armor: ArmorClass;
+  cost: number;
+  buildTicks: number;
+  prerequisites: readonly BuildingKind[];
+  powerGenerated: number;
+  powerConsumed: number;
+  buildRadius: number;
+  produces: readonly UnitKind[];
+  weaponId: WeaponId | null;
+}>;
+
+const armorMultipliers = (
+  infantry: number,
+  light: number,
+  heavy: number,
+  siege: number,
+) => ({ infantry, light, heavy, siege });
 
 const weaponDefinitions = {
   miningLaser: {
@@ -34,12 +62,7 @@ const weaponDefinitions = {
     rangeMilli: 1_800,
     projectileSpeedMilli: 900,
     accuracyBasisPoints: 9_500,
-    armorMultipliers: {
-      infantry: 1_200,
-      light: 1_000,
-      heavy: 450,
-      siege: 700,
-    },
+    armorMultipliers: armorMultipliers(1_200, 1_000, 450, 700),
   },
   argusRifle: {
     id: "argusRifle",
@@ -49,12 +72,7 @@ const weaponDefinitions = {
     rangeMilli: 3_400,
     projectileSpeedMilli: 850,
     accuracyBasisPoints: 9_100,
-    armorMultipliers: {
-      infantry: 1_500,
-      light: 850,
-      heavy: 400,
-      siege: 650,
-    },
+    armorMultipliers: armorMultipliers(1_500, 850, 400, 650),
   },
   cyclopsRockets: {
     id: "cyclopsRockets",
@@ -64,12 +82,7 @@ const weaponDefinitions = {
     rangeMilli: 5_400,
     projectileSpeedMilli: 520,
     accuracyBasisPoints: 8_600,
-    armorMultipliers: {
-      infantry: 650,
-      light: 1_250,
-      heavy: 1_700,
-      siege: 1_100,
-    },
+    armorMultipliers: armorMultipliers(650, 1_250, 1_700, 1_100),
   },
   hermesAutocannon: {
     id: "hermesAutocannon",
@@ -79,12 +92,7 @@ const weaponDefinitions = {
     rangeMilli: 3_800,
     projectileSpeedMilli: 960,
     accuracyBasisPoints: 8_900,
-    armorMultipliers: {
-      infantry: 1_250,
-      light: 1_350,
-      heavy: 600,
-      siege: 750,
-    },
+    armorMultipliers: armorMultipliers(1_250, 1_350, 600, 750),
   },
   atlasCannon: {
     id: "atlasCannon",
@@ -94,12 +102,7 @@ const weaponDefinitions = {
     rangeMilli: 5_700,
     projectileSpeedMilli: 640,
     accuracyBasisPoints: 9_300,
-    armorMultipliers: {
-      infantry: 850,
-      light: 1_250,
-      heavy: 1_350,
-      siege: 1_000,
-    },
+    armorMultipliers: armorMultipliers(850, 1_250, 1_350, 1_000),
   },
   gorgonMortar: {
     id: "gorgonMortar",
@@ -109,12 +112,17 @@ const weaponDefinitions = {
     rangeMilli: 8_200,
     projectileSpeedMilli: 420,
     accuracyBasisPoints: 8_200,
-    armorMultipliers: {
-      infantry: 1_000,
-      light: 900,
-      heavy: 1_100,
-      siege: 1_550,
-    },
+    armorMultipliers: armorMultipliers(1_000, 900, 1_100, 1_550),
+  },
+  cerberusPulse: {
+    id: "cerberusPulse",
+    displayName: "Cerberus Pulse Battery",
+    damage: 78,
+    cooldownTicks: 20,
+    rangeMilli: 6_500,
+    projectileSpeedMilli: 760,
+    accuracyBasisPoints: 9_400,
+    armorMultipliers: armorMultipliers(1_150, 1_200, 950, 900),
   },
 } as const satisfies Record<WeaponId, WeaponDefinition>;
 
@@ -127,6 +135,11 @@ const unitDefinitions = {
     speedMilliPerTick: 82,
     visionMilli: 6_500,
     weaponId: "miningLaser",
+    cost: 900,
+    buildTicks: 240,
+    producedAt: "refinery",
+    prerequisites: ["refinery"],
+    cargoCapacity: 500,
   },
   argusRifle: {
     id: "argusRifle",
@@ -136,6 +149,11 @@ const unitDefinitions = {
     speedMilliPerTick: 126,
     visionMilli: 7_000,
     weaponId: "argusRifle",
+    cost: 250,
+    buildTicks: 90,
+    producedAt: "barracks",
+    prerequisites: ["barracks"],
+    cargoCapacity: 0,
   },
   cyclopsRocket: {
     id: "cyclopsRocket",
@@ -145,6 +163,11 @@ const unitDefinitions = {
     speedMilliPerTick: 104,
     visionMilli: 7_400,
     weaponId: "cyclopsRockets",
+    cost: 450,
+    buildTicks: 130,
+    producedAt: "barracks",
+    prerequisites: ["barracks", "operationsCenter"],
+    cargoCapacity: 0,
   },
   hermesScout: {
     id: "hermesScout",
@@ -154,6 +177,11 @@ const unitDefinitions = {
     speedMilliPerTick: 178,
     visionMilli: 9_200,
     weaponId: "hermesAutocannon",
+    cost: 650,
+    buildTicks: 150,
+    producedAt: "foundry",
+    prerequisites: ["foundry"],
+    cargoCapacity: 0,
   },
   atlasTank: {
     id: "atlasTank",
@@ -163,6 +191,11 @@ const unitDefinitions = {
     speedMilliPerTick: 78,
     visionMilli: 7_200,
     weaponId: "atlasCannon",
+    cost: 1_200,
+    buildTicks: 260,
+    producedAt: "foundry",
+    prerequisites: ["foundry", "operationsCenter"],
+    cargoCapacity: 0,
   },
   gorgonWalker: {
     id: "gorgonWalker",
@@ -172,10 +205,125 @@ const unitDefinitions = {
     speedMilliPerTick: 56,
     visionMilli: 9_500,
     weaponId: "gorgonMortar",
+    cost: 1_800,
+    buildTicks: 360,
+    producedAt: "foundry",
+    prerequisites: ["foundry", "operationsCenter"],
+    cargoCapacity: 0,
   },
 } as const satisfies Record<UnitKind, UnitDefinition>;
+
+const buildingDefinitions = {
+  citadel: {
+    id: "citadel",
+    displayName: "Citadel Command Hub",
+    maxHealth: 5_000,
+    armor: "heavy",
+    cost: 0,
+    buildTicks: 0,
+    prerequisites: [],
+    powerGenerated: 20,
+    powerConsumed: 0,
+    buildRadius: 8,
+    produces: [],
+    weaponId: null,
+  },
+  reactor: {
+    id: "reactor",
+    displayName: "Prometheus Reactor",
+    maxHealth: 1_500,
+    armor: "heavy",
+    cost: 700,
+    buildTicks: 160,
+    prerequisites: ["citadel"],
+    powerGenerated: 100,
+    powerConsumed: 0,
+    buildRadius: 6,
+    produces: [],
+    weaponId: null,
+  },
+  refinery: {
+    id: "refinery",
+    displayName: "Midas Refinery",
+    maxHealth: 2_000,
+    armor: "heavy",
+    cost: 1_500,
+    buildTicks: 260,
+    prerequisites: ["reactor"],
+    powerGenerated: 0,
+    powerConsumed: 15,
+    buildRadius: 6,
+    produces: ["midasHarvester"],
+    weaponId: null,
+  },
+  barracks: {
+    id: "barracks",
+    displayName: "Aegis Barracks",
+    maxHealth: 1_350,
+    armor: "heavy",
+    cost: 900,
+    buildTicks: 190,
+    prerequisites: ["reactor"],
+    powerGenerated: 0,
+    powerConsumed: 15,
+    buildRadius: 5,
+    produces: ["argusRifle", "cyclopsRocket"],
+    weaponId: null,
+  },
+  foundry: {
+    id: "foundry",
+    displayName: "Vulcan Foundry",
+    maxHealth: 2_200,
+    armor: "heavy",
+    cost: 1_800,
+    buildTicks: 300,
+    prerequisites: ["reactor", "barracks"],
+    powerGenerated: 0,
+    powerConsumed: 30,
+    buildRadius: 6,
+    produces: ["hermesScout", "atlasTank", "gorgonWalker"],
+    weaponId: null,
+  },
+  operationsCenter: {
+    id: "operationsCenter",
+    displayName: "Oracle Operations Center",
+    maxHealth: 1_600,
+    armor: "heavy",
+    cost: 2_200,
+    buildTicks: 340,
+    prerequisites: ["foundry"],
+    powerGenerated: 0,
+    powerConsumed: 35,
+    buildRadius: 6,
+    produces: [],
+    weaponId: null,
+  },
+  turret: {
+    id: "turret",
+    displayName: "Cerberus Turret",
+    maxHealth: 1_250,
+    armor: "heavy",
+    cost: 800,
+    buildTicks: 180,
+    prerequisites: ["barracks"],
+    powerGenerated: 0,
+    powerConsumed: 10,
+    buildRadius: 0,
+    produces: [],
+    weaponId: "cerberusPulse",
+  },
+} as const satisfies Record<BuildingKind, BuildingDefinition>;
 
 export const gameData = Object.freeze({
   weapons: Object.freeze(weaponDefinitions),
   units: Object.freeze(unitDefinitions),
+  buildings: Object.freeze(buildingDefinitions),
+  economy: Object.freeze({
+    startingCredits: 4_500,
+    harvestAmount: 25,
+    harvestIntervalTicks: 10,
+    unloadAmountPerTick: 100,
+    repairHealthPerCredit: 4,
+    productionQueueLimit: 5,
+  }),
 });

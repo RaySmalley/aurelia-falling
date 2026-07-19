@@ -1,11 +1,14 @@
 import { BLOCKED_TILES, MAP_SIZE, TILE_MILLI } from "./map";
 import { SIM_STEP_MS, Simulation } from "./simulation";
 import type {
+  AureliteFieldSnapshot,
+  BuildingKind,
   GameRuntime,
   RuntimeListener,
   RuntimeSnapshot,
   SimCommand,
   SimulationSnapshot,
+  StructureSnapshot,
   UnitSnapshot,
   Vec2,
 } from "./types";
@@ -39,7 +42,7 @@ export async function createGameRuntime(
   host: HTMLDivElement,
 ): Promise<GameRuntime> {
   const Phaser = await import("phaser");
-  const simulation = new Simulation();
+  const simulation = new Simulation(undefined, "economy");
   const listeners = new Set<RuntimeListener>();
   let paused = false;
   let pauseReason: RuntimeSnapshot["pauseReason"] = null;
@@ -70,10 +73,14 @@ export async function createGameRuntime(
     private routeGraphics!: Phaser.GameObjects.Graphics;
     private rallyGraphics!: Phaser.GameObjects.Graphics;
     private projectileGraphics!: Phaser.GameObjects.Graphics;
+    private buildRadiusGraphics!: Phaser.GameObjects.Graphics;
     private orderMarker!: Phaser.GameObjects.Arc;
     private dragStart: Phaser.Math.Vector2 | null = null;
     private unitViews = new Map<number, Phaser.GameObjects.Container>();
+    private structureViews = new Map<number, Phaser.GameObjects.Container>();
+    private fieldViews = new Map<number, Phaser.GameObjects.Container>();
     private pendingOrder: "move" | "attackMove" | "rally" = "move";
+    public pendingBuilding: BuildingKind | null = null;
 
     constructor() {
       super("operations");
@@ -85,6 +92,7 @@ export async function createGameRuntime(
       this.routeGraphics = this.add.graphics().setDepth(8);
       this.rallyGraphics = this.add.graphics().setDepth(7);
       this.projectileGraphics = this.add.graphics().setDepth(24);
+      this.buildRadiusGraphics = this.add.graphics().setDepth(6);
       this.selectionBox = this.add.graphics().setDepth(100);
       this.orderMarker = this.add
         .circle(0, 0, 9, 0x000000, 0)
@@ -92,6 +100,8 @@ export async function createGameRuntime(
         .setDepth(30)
         .setVisible(false);
       this.syncUnitViews(lastSnapshot);
+      this.syncStructureViews(lastSnapshot);
+      this.syncFieldViews(lastSnapshot);
 
       const worldWidth = MAP_SIZE * TILE_WIDTH + 900;
       const worldHeight = MAP_SIZE * TILE_HEIGHT + 440;
@@ -147,11 +157,35 @@ export async function createGameRuntime(
             x: Math.round(targetGrid.x),
             y: Math.round(targetGrid.y),
           };
-          const targetedEnemy = this.unitAtWorldPoint(world, 2);
+          if (this.pendingBuilding) {
+            simulation.enqueue({
+              kind: "placeBuilding",
+              buildingKind: this.pendingBuilding,
+              tile: target,
+            });
+            this.pendingBuilding = null;
+            return;
+          }
+          const enemyPlayer =
+            lastSnapshot.controlledPlayer === 1 ? 2 : 1;
+          const targetedEnemy = this.unitAtWorldPoint(world, enemyPlayer);
+          const targetedStructure = this.structureAtWorldPoint(
+            world,
+            enemyPlayer,
+          );
           if (targetedEnemy && this.pendingOrder !== "rally") {
             simulation.enqueue({
               kind: "attackUnit",
               targetUnitId: targetedEnemy.id,
+            });
+            this.orderMarker
+              .setPosition(world.x, world.y)
+              .setStrokeStyle(2, 0xf06d5c, 0.95)
+              .setVisible(true);
+          } else if (targetedStructure && this.pendingOrder !== "rally") {
+            simulation.enqueue({
+              kind: "attackStructure",
+              targetStructureId: targetedStructure.id,
             });
             this.orderMarker
               .setPosition(world.x, world.y)
@@ -219,6 +253,8 @@ export async function createGameRuntime(
 
       this.updateCamera(delta);
       this.syncUnitViews(lastSnapshot);
+      this.syncStructureViews(lastSnapshot);
+      this.syncFieldViews(lastSnapshot);
       this.renderUnits(
         previousSnapshot,
         lastSnapshot,
@@ -226,6 +262,7 @@ export async function createGameRuntime(
       );
       this.drawRoutes(lastSnapshot);
       this.drawProjectiles(lastSnapshot);
+      this.drawBuildRadii(lastSnapshot);
 
       if (
         lastSnapshot.tick !== lastEmittedTick &&
@@ -287,6 +324,176 @@ export async function createGameRuntime(
             );
           }
         }
+      }
+    }
+
+    private createFieldView(field: AureliteFieldSnapshot) {
+      const body = this.add.graphics();
+      body.fillStyle(field.contested ? 0xf0bf57 : 0x78dfd0, 0.86);
+      body.lineStyle(2, 0xe8ffff, 0.82);
+      body.fillTriangle(-19, 10, 0, -23, 19, 10);
+      body.strokeTriangle(-19, 10, 0, -23, 19, 10);
+      body.fillStyle(0xffffff, 0.68);
+      body.fillTriangle(-6, 1, 0, -15, 6, 1);
+      const amount = this.add.graphics().setName("amount");
+      const world = gridToWorld(field.tile);
+      const container = this.add
+        .container(world.x, world.y, [body, amount])
+        .setDepth(5 + world.y / 10_000)
+        .setName(`field-${field.id}`);
+      this.fieldViews.set(field.id, container);
+    }
+
+    private createStructureView(structure: StructureSnapshot) {
+      const teamColor = structure.playerId === 1 ? 0xe4a33a : 0x4ccac0;
+      const outline = structure.playerId === 1 ? 0xffd78a : 0xb6fff5;
+      const body = this.add.graphics().setName("body");
+      body.fillStyle(teamColor, structure.completed ? 0.95 : 0.44);
+      body.lineStyle(2, outline, structure.connected ? 0.95 : 0.55);
+      if (structure.kind === "citadel") {
+        body.fillRoundedRect(-27, -25, 54, 45, 6);
+        body.strokeRoundedRect(-27, -25, 54, 45, 6);
+        body.fillTriangle(-18, -25, 0, -43, 18, -25);
+        body.strokeTriangle(-18, -25, 0, -43, 18, -25);
+      } else if (structure.kind === "reactor") {
+        body.fillCircle(0, -6, 22);
+        body.strokeCircle(0, -6, 22);
+        body.fillStyle(0xe8ffff, 0.72);
+        body.fillCircle(0, -6, 7);
+      } else if (structure.kind === "refinery") {
+        body.fillRoundedRect(-26, -18, 52, 38, 5);
+        body.strokeRoundedRect(-26, -18, 52, 38, 5);
+        body.lineBetween(-19, -18, -10, -36);
+        body.lineBetween(-10, -36, -2, -18);
+      } else if (structure.kind === "barracks") {
+        body.fillRect(-24, -19, 48, 39);
+        body.strokeRect(-24, -19, 48, 39);
+        body.strokeTriangle(-24, -19, 0, -34, 24, -19);
+      } else if (structure.kind === "foundry") {
+        body.fillRoundedRect(-29, -20, 58, 42, 4);
+        body.strokeRoundedRect(-29, -20, 58, 42, 4);
+        body.fillStyle(0x172226, 0.92);
+        body.fillRect(-13, -30, 10, 18);
+        body.fillRect(7, -36, 10, 24);
+      } else if (structure.kind === "operationsCenter") {
+        body.fillTriangle(-25, 18, 25, 18, 0, -31);
+        body.strokeTriangle(-25, 18, 25, 18, 0, -31);
+        body.fillStyle(0xe8ffff, 0.76);
+        body.fillCircle(0, -5, 7);
+      } else {
+        body.fillCircle(0, -4, 20);
+        body.strokeCircle(0, -4, 20);
+        body.lineBetween(0, -9, 26, -25);
+      }
+      const status = this.add.graphics().setName("status");
+      const selection = this.add
+        .ellipse(0, 17, 65, 30)
+        .setStrokeStyle(2, 0xf4f0b5, 0.98)
+        .setName("selection")
+        .setVisible(structure.selected);
+      const world = gridToWorld(structure.tile);
+      const container = this.add
+        .container(world.x, world.y, [selection, body, status])
+        .setDepth(9 + world.y / 10_000)
+        .setName(`structure-${structure.id}`);
+      this.structureViews.set(structure.id, container);
+    }
+
+    private syncFieldViews(snapshot: SimulationSnapshot) {
+      const activeIds = new Set(snapshot.fields.map((field) => field.id));
+      for (const [id, view] of this.fieldViews) {
+        if (activeIds.has(id)) continue;
+        view.destroy(true);
+        this.fieldViews.delete(id);
+      }
+      for (const field of snapshot.fields) {
+        if (!this.fieldViews.has(field.id)) this.createFieldView(field);
+        const amount = this.fieldViews
+          .get(field.id)
+          ?.getByName("amount") as Phaser.GameObjects.Graphics | null;
+        if (!amount) continue;
+        amount.clear();
+        amount.fillStyle(0x071318, 0.92);
+        amount.fillRect(-22, 14, 44, 5);
+        amount.fillStyle(field.contested ? 0xf0bf57 : 0x78dfd0, 1);
+        amount.fillRect(
+          -21,
+          15,
+          Math.ceil(42 * (field.amount / field.capacity)),
+          3,
+        );
+      }
+    }
+
+    private syncStructureViews(snapshot: SimulationSnapshot) {
+      const activeIds = new Set(
+        snapshot.structures.map((structure) => structure.id),
+      );
+      for (const [id, view] of this.structureViews) {
+        if (activeIds.has(id)) continue;
+        view.destroy(true);
+        this.structureViews.delete(id);
+      }
+      for (const structure of snapshot.structures) {
+        if (!this.structureViews.has(structure.id)) {
+          this.createStructureView(structure);
+        }
+        const view = this.structureViews.get(structure.id)!;
+        (
+          view.getByName("selection") as Phaser.GameObjects.Ellipse | null
+        )?.setVisible(structure.selected);
+        const status = view.getByName(
+          "status",
+        ) as Phaser.GameObjects.Graphics | null;
+        if (!status) continue;
+        status.clear();
+        status.fillStyle(0x071318, 0.92);
+        status.fillRect(-25, -49, 50, 6);
+        const ratio = structure.health / structure.maxHealth;
+        status.fillStyle(
+          ratio > 0.55 ? 0x79e0d3 : ratio > 0.25 ? 0xe6a63f : 0xf06d5c,
+          1,
+        );
+        status.fillRect(-24, -48, Math.ceil(48 * ratio), 4);
+        if (!structure.completed) {
+          const progress =
+            1 -
+            structure.constructionRemainingTicks /
+              Math.max(1, structure.constructionTotalTicks);
+          status.fillStyle(0x071318, 0.92);
+          status.fillRect(-25, 25, 50, 6);
+          status.fillStyle(0xe6a63f, 1);
+          status.fillRect(-24, 26, Math.ceil(48 * progress), 4);
+        } else if (!structure.powered) {
+          status.lineStyle(2, 0xf06d5c, 1);
+          status.strokeCircle(0, -8, 29);
+          status.lineBetween(-19, -29, 19, 13);
+        } else if (!structure.connected) {
+          status.lineStyle(2, 0xe6a63f, 0.9);
+          status.strokeCircle(0, -8, 28);
+        }
+      }
+    }
+
+    private drawBuildRadii(snapshot: SimulationSnapshot) {
+      this.buildRadiusGraphics.clear();
+      for (const structure of snapshot.structures) {
+        if (
+          structure.playerId !== snapshot.controlledPlayer ||
+          !structure.completed ||
+          structure.buildRadius <= 0
+        ) {
+          continue;
+        }
+        const world = gridToWorld(structure.tile);
+        const color = structure.connected ? 0x79e0d3 : 0xe6a63f;
+        this.buildRadiusGraphics.lineStyle(1, color, 0.16);
+        this.buildRadiusGraphics.strokeEllipse(
+          world.x,
+          world.y,
+          structure.buildRadius * TILE_WIDTH * 2,
+          structure.buildRadius * TILE_HEIGHT * 2,
+        );
       }
     }
 
@@ -476,7 +683,9 @@ export async function createGameRuntime(
       let unitIds: number[] = [];
       if (click) {
         const nearest = lastSnapshot.units
-          .filter((unit) => unit.playerId === 1)
+          .filter(
+            (unit) => unit.playerId === lastSnapshot.controlledPlayer,
+          )
           .map((unit) => {
             const world = fixedToWorld(unit.position);
             const dx = world.x - end.x;
@@ -489,10 +698,22 @@ export async function createGameRuntime(
               a.distanceSquared - b.distanceSquared || a.id - b.id,
           )[0];
         unitIds = nearest ? [nearest.id] : [];
+        if (unitIds.length === 0) {
+          const structure = this.structureAtWorldPoint(
+            end,
+            lastSnapshot.controlledPlayer,
+          );
+          simulation.enqueue({
+            kind: "selectStructures",
+            structureIds: structure ? [structure.id] : [],
+            additive: this.shiftKey.isDown,
+          });
+          return;
+        }
       } else {
         unitIds = lastSnapshot.units
           .filter((unit) => {
-            if (unit.playerId !== 1) return false;
+            if (unit.playerId !== lastSnapshot.controlledPlayer) return false;
             const world = fixedToWorld(unit.position);
             return (
               world.x >= x &&
@@ -529,6 +750,29 @@ export async function createGameRuntime(
             left.unit.id - right.unit.id,
         )[0]?.unit;
     }
+
+    private structureAtWorldPoint(
+      point: Phaser.Math.Vector2,
+      playerId: 1 | 2,
+    ) {
+      return lastSnapshot.structures
+        .filter((structure) => structure.playerId === playerId)
+        .map((structure) => {
+          const world = gridToWorld(structure.tile);
+          const dx = world.x - point.x;
+          const dy = world.y - point.y;
+          return {
+            structure,
+            distanceSquared: dx * dx + dy * dy,
+          };
+        })
+        .filter((candidate) => candidate.distanceSquared <= 38 * 38)
+        .sort(
+          (left, right) =>
+            left.distanceSquared - right.distanceSquared ||
+            left.structure.id - right.structure.id,
+        )[0]?.structure;
+    }
   }
 
   const game = new Phaser.Game({
@@ -555,6 +799,12 @@ export async function createGameRuntime(
     },
     enqueue(command: SimCommand) {
       simulation.enqueue(command);
+    },
+    beginPlacement(buildingKind) {
+      const scene = game.scene.getScene(
+        "operations",
+      ) as OperationsScene | null;
+      if (scene) scene.pendingBuilding = buildingKind;
     },
     pause(reason) {
       paused = true;

@@ -58,11 +58,21 @@ is dynamically imported behind the client-only React boundary in
 
 ## Current milestone
 
-Phase 1, the Movement Sandbox, is implemented on the 64×64 Golden Scar map.
-It includes deterministic fixed-point unit motion, grid A*, shared formation
-routes, dynamic occupancy, blocked-destination fallback, local separation,
-drag selection, contextual movement, attack-move, stop/hold, rally markers,
-control groups, and bounded camera navigation.
+Phase 3, the Economy and Base Slice, is implemented on the 64×64 Golden Scar
+map. Both local sides can be controlled for debugging. Each side can harvest
+Aurelite, construct the complete seven-structure build tree, manage power and
+production queues, repair structures, field all six unit types, and win by
+destroying the opposing Citadel.
+
+The earlier deterministic movement and combat slices remain available through
+the same simulation module and acceptance suite. Gameplay commands continue to
+enter the 20 Hz fixed-step simulation through a queue; React and Phaser consume
+frozen snapshots and never mutate simulation state.
+
+In the Phase 3 sandbox, select the active Gold or Cyan side from the top bar.
+Choose a structure in the construction grid, then right-click a legal tile
+inside the connected build-radius overlay. Select production structures to
+queue units, and right-click enemy units or structures to attack.
 
 ## Hosting
 

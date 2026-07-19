@@ -1,6 +1,7 @@
 export type Vec2 = Readonly<{ x: number; y: number }>;
 export type GridPoint = Vec2;
 export type UnitId = number;
+export type StructureId = number;
 export type PlayerId = 1 | 2;
 export type UnitKind =
   | "midasHarvester"
@@ -9,6 +10,14 @@ export type UnitKind =
   | "hermesScout"
   | "atlasTank"
   | "gorgonWalker";
+export type BuildingKind =
+  | "citadel"
+  | "reactor"
+  | "refinery"
+  | "barracks"
+  | "foundry"
+  | "operationsCenter"
+  | "turret";
 export type ArmorClass = "infantry" | "light" | "heavy" | "siege";
 export type WeaponId =
   | "miningLaser"
@@ -16,14 +25,37 @@ export type WeaponId =
   | "cyclopsRockets"
   | "hermesAutocannon"
   | "atlasCannon"
-  | "gorgonMortar";
-export type OrderKind = "idle" | "move" | "attackMove" | "attack" | "hold";
+  | "gorgonMortar"
+  | "cerberusPulse";
+export type OrderKind =
+  | "idle"
+  | "move"
+  | "attackMove"
+  | "attack"
+  | "hold"
+  | "harvest"
+  | "unload";
 export type MatchStatus = "active" | "victory" | "defeat" | "draw";
+export type SimulationScenario = "combat" | "economy";
+export type PlacementFailure =
+  | "outsideMap"
+  | "blockedTerrain"
+  | "occupied"
+  | "resourceField"
+  | "outsideBuildRadius"
+  | "missingPrerequisite"
+  | "insufficientCredits"
+  | "citadelUnique";
 
 export type SimCommand =
   | {
       kind: "selectUnits";
       unitIds: readonly UnitId[];
+      additive: boolean;
+    }
+  | {
+      kind: "selectStructures";
+      structureIds: readonly StructureId[];
       additive: boolean;
     }
   | { kind: "move"; target: GridPoint; mode: "move" | "attackMove" }
@@ -33,7 +65,18 @@ export type SimCommand =
   | { kind: "recallControlGroup"; group: number }
   | { kind: "setRally"; target: GridPoint }
   | { kind: "attackUnit"; targetUnitId: UnitId }
-  | { kind: "restartCombat"; seed?: number };
+  | { kind: "attackStructure"; targetStructureId: StructureId }
+  | { kind: "placeBuilding"; buildingKind: BuildingKind; tile: GridPoint }
+  | {
+      kind: "queueUnit";
+      structureId: StructureId;
+      unitKind: UnitKind;
+    }
+  | { kind: "cancelProduction"; structureId: StructureId; queueIndex: number }
+  | { kind: "setRepair"; structureId: StructureId; enabled: boolean }
+  | { kind: "switchPlayer"; playerId: PlayerId }
+  | { kind: "restartCombat"; seed?: number }
+  | { kind: "restartEconomy"; seed?: number };
 
 export type UnitSnapshot = Readonly<{
   id: UnitId;
@@ -52,7 +95,53 @@ export type UnitSnapshot = Readonly<{
   maxHealth: number;
   weaponId: WeaponId;
   targetId: UnitId | null;
+  targetStructureId: StructureId | null;
   cooldownTicks: number;
+  cargo: number;
+  cargoCapacity: number;
+}>;
+
+export type ProductionItemSnapshot = Readonly<{
+  unitKind: UnitKind;
+  remainingTicks: number;
+  totalTicks: number;
+}>;
+
+export type StructureSnapshot = Readonly<{
+  id: StructureId;
+  playerId: PlayerId;
+  kind: BuildingKind;
+  displayName: string;
+  tile: GridPoint;
+  selected: boolean;
+  health: number;
+  maxHealth: number;
+  constructionRemainingTicks: number;
+  constructionTotalTicks: number;
+  completed: boolean;
+  powered: boolean;
+  connected: boolean;
+  repairing: boolean;
+  powerGenerated: number;
+  powerConsumed: number;
+  buildRadius: number;
+  queue: readonly ProductionItemSnapshot[];
+}>;
+
+export type AureliteFieldSnapshot = Readonly<{
+  id: number;
+  tile: GridPoint;
+  amount: number;
+  capacity: number;
+  contested: boolean;
+}>;
+
+export type PlayerSnapshot = Readonly<{
+  id: PlayerId;
+  credits: number;
+  powerGenerated: number;
+  powerConsumed: number;
+  lowPower: boolean;
 }>;
 
 export type ProjectileSnapshot = Readonly<{
@@ -60,7 +149,8 @@ export type ProjectileSnapshot = Readonly<{
   playerId: PlayerId;
   weaponId: WeaponId;
   position: Vec2;
-  targetId: UnitId;
+  targetType: "unit" | "structure";
+  targetId: number;
 }>;
 
 export type RallySnapshot = Readonly<{
@@ -70,14 +160,21 @@ export type RallySnapshot = Readonly<{
 
 export type SimulationSnapshot = Readonly<{
   tick: number;
+  scenario: SimulationScenario;
+  controlledPlayer: PlayerId;
   units: readonly UnitSnapshot[];
+  structures: readonly StructureSnapshot[];
+  fields: readonly AureliteFieldSnapshot[];
+  players: Readonly<Record<PlayerId, PlayerSnapshot>>;
   projectiles: readonly ProjectileSnapshot[];
   selectedUnitIds: readonly UnitId[];
+  selectedStructureIds: readonly StructureId[];
   rallies: readonly RallySnapshot[];
   status: MatchStatus;
   winner: PlayerId | null;
   kills: Readonly<Record<PlayerId, number>>;
   seed: number;
+  lastPlacementFailure: PlacementFailure | null;
 }>;
 
 export type RuntimeSnapshot = Readonly<{
@@ -93,6 +190,7 @@ export type RuntimeListener = (snapshot: RuntimeSnapshot) => void;
 export type GameRuntime = {
   subscribe(listener: RuntimeListener): () => void;
   enqueue(command: SimCommand): void;
+  beginPlacement(buildingKind: BuildingKind | null): void;
   pause(reason: "hidden" | "manual"): void;
   resume(): void;
   unlockAudio(): Promise<void>;
