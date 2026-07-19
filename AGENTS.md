@@ -10,6 +10,8 @@
 
 ## Pull request review workflow
 
+- Large changes must use a `codex/*` branch and merge through a pull request. Large changes include new phases or features, architecture or simulation changes, and substantial multi-file refactors.
+- Small, low-risk maintenance such as focused documentation, configuration, or typo fixes may be committed directly to `main` after appropriate verification.
 - When addressing a pull request review comment, implement and verify the fix first. Once the issue is resolved, reply in the original review thread with a concise summary of the change and verification performed, then mark the thread as resolved.
 
 ## graphify

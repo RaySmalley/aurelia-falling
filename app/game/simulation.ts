@@ -13,7 +13,10 @@ import {
   nearestWalkable,
   translateSharedPath,
 } from "./pathfinding";
+import { VisibilityGrid, type VisibilitySource } from "./visibility";
 import type {
+  AiPhase,
+  AiSnapshot,
   AureliteFieldSnapshot,
   BuildingKind,
   GridPoint,
@@ -61,6 +64,7 @@ type UnitState = {
   targetId: UnitId | null;
   targetStructureId: StructureId | null;
   forcedTarget: boolean;
+  aiScout: boolean;
   cargo: number;
   harvestFieldId: number | null;
 };
@@ -128,6 +132,45 @@ type StartingStructure = Readonly<{
   kind: BuildingKind;
   tile: GridPoint;
 }>;
+
+type AiCommand =
+  | Readonly<{
+      kind: "placeBuilding";
+      buildingKind: BuildingKind;
+      tile: GridPoint;
+    }>
+  | Readonly<{
+      kind: "queueUnit";
+      structureId: StructureId;
+      unitKind: UnitKind;
+    }>
+  | Readonly<{
+      kind: "orderUnits";
+      unitIds: readonly UnitId[];
+      target: GridPoint;
+      mode: "move" | "attackMove";
+      scout?: boolean;
+    }>
+  | Readonly<{
+      kind: "attackUnit";
+      unitIds: readonly UnitId[];
+      targetUnitId: UnitId;
+    }>
+  | Readonly<{
+      kind: "attackStructure";
+      unitIds: readonly UnitId[];
+      targetStructureId: StructureId;
+    }>
+  | Readonly<{
+      kind: "repair";
+      structureId: StructureId;
+    }>;
+
+type EnemyMemory = {
+  id: number;
+  tile: GridPoint;
+  lastSeenTick: number;
+};
 
 const UNIT_KINDS: readonly UnitKind[] = Object.freeze([
   "midasHarvester",
@@ -303,6 +346,7 @@ export class Simulation {
   private seed: number;
   private rng: DeterministicRng;
   private readonly commands: SimCommand[] = [];
+  private readonly aiCommands: AiCommand[] = [];
   private scenario: SimulationScenario;
   private controlledPlayer: PlayerId = 1;
   private units: UnitState[] = [];
@@ -322,6 +366,15 @@ export class Simulation {
   private status: SimulationSnapshot["status"] = "active";
   private winner: PlayerId | null = null;
   private lastPlacementFailure: PlacementFailure | null = null;
+  private visibility!: Record<PlayerId, VisibilityGrid>;
+  private aiPhase: AiPhase = "build";
+  private aiLastDecisionTick = -1;
+  private aiLastScoutTick = -1;
+  private aiLastAttackTick = -1;
+  private aiScoutWaypointIndex = 0;
+  private aiUnitMixIndex = 0;
+  private readonly aiKnownUnits = new Map<UnitId, EnemyMemory>();
+  private readonly aiKnownStructures = new Map<StructureId, EnemyMemory>();
 
   constructor(
     seed = DEFAULT_COMBAT_SEED,
@@ -330,8 +383,9 @@ export class Simulation {
     this.seed = seed >>> 0;
     this.rng = new DeterministicRng(this.seed);
     this.scenario = scenario;
-    if (scenario === "economy") this.resetEconomy(this.seed);
-    else this.resetCombat(this.seed);
+    if (scenario === "combat") this.resetCombat(this.seed);
+    else if (scenario === "skirmish") this.resetSkirmish(this.seed);
+    else this.resetEconomy(this.seed);
   }
 
   enqueue(command: SimCommand) {
@@ -342,12 +396,15 @@ export class Simulation {
     for (const command of this.commands.splice(0)) {
       this.applyCommand(command);
     }
+    for (const command of this.aiCommands.splice(0)) {
+      this.applyAiCommand(command);
+    }
     if (this.status !== "active") {
       this.tick += 1;
       return;
     }
 
-    if (this.scenario === "economy") {
+    if (this.scenario !== "combat") {
       this.updateConstruction();
       this.updateConnectivityAndPower();
       this.updateRepairs();
@@ -357,23 +414,30 @@ export class Simulation {
 
     for (const unit of this.sortedUnits()) {
       if (unit.cooldownTicks > 0) unit.cooldownTicks -= 1;
-      if (this.scenario === "economy" && unit.kind === "midasHarvester") {
+      if (this.scenario !== "combat" && unit.kind === "midasHarvester") {
         this.updateHarvester(unit);
       } else {
         this.updateCombatOrder(unit);
       }
     }
-    if (this.scenario === "economy") this.updateTurrets();
+    if (this.scenario !== "combat") this.updateTurrets();
     for (const unit of this.sortedUnits()) this.moveUnit(unit);
     this.applyLocalSeparation();
     this.updateProjectiles();
     this.removeDestroyedEntities();
+    this.updateVisibility();
+    if (this.scenario === "skirmish") this.updateAiMemory();
     this.resolveMatch();
+    if (this.status === "active" && this.scenario === "skirmish") {
+      this.updateAi();
+    }
     this.tick += 1;
   }
 
   snapshot(): SimulationSnapshot {
-    const units = this.sortedUnits().map((unit) => {
+    const units = this.sortedUnits()
+      .filter((unit) => this.isUnitVisibleTo(this.controlledPlayer, unit))
+      .map((unit) => {
       const definition = gameData.units[unit.kind];
       return Object.freeze({
         id: unit.id,
@@ -397,15 +461,33 @@ export class Simulation {
         health: unit.health,
         maxHealth: definition.maxHealth,
         weaponId: definition.weaponId,
-        targetId: unit.targetId,
-        targetStructureId: unit.targetStructureId,
+        targetId:
+          unit.targetId !== null &&
+          this.isUnitVisibleTo(
+            this.controlledPlayer,
+            this.unitById(unit.targetId),
+          )
+            ? unit.targetId
+            : null,
+        targetStructureId:
+          unit.targetStructureId !== null &&
+          this.isStructureVisibleTo(
+            this.controlledPlayer,
+            this.structureById(unit.targetStructureId),
+          )
+            ? unit.targetStructureId
+            : null,
         cooldownTicks: unit.cooldownTicks,
         cargo: unit.cargo,
         cargoCapacity: definition.cargoCapacity,
       });
     });
     const structures: readonly StructureSnapshot[] = Object.freeze(
-      this.sortedStructures().map((structure) => {
+      this.sortedStructures()
+        .filter((structure) =>
+          this.isStructureVisibleTo(this.controlledPlayer, structure),
+        )
+        .map((structure) => {
         const definition = gameData.buildings[structure.kind];
         const completed = structure.constructionRemainingTicks === 0;
         return Object.freeze({
@@ -442,6 +524,11 @@ export class Simulation {
       this.fields
         .slice()
         .sort((a, b) => a.id - b.id)
+        .filter(
+          (field) =>
+            this.scenario !== "skirmish" ||
+            this.visibility[this.controlledPlayer].isVisible(field.tile),
+        )
         .map((field) =>
           Object.freeze({
             id: field.id,
@@ -460,6 +547,14 @@ export class Simulation {
       this.projectiles
         .slice()
         .sort((a, b) => a.id - b.id)
+        .filter(
+          (projectile) =>
+            projectile.playerId === this.controlledPlayer ||
+            this.scenario !== "skirmish" ||
+            this.visibility[this.controlledPlayer].isVisible(
+              toTile(projectile.position),
+            ),
+        )
         .map((projectile) =>
           Object.freeze({
             id: projectile.id,
@@ -503,6 +598,21 @@ export class Simulation {
       kills: Object.freeze({ ...this.kills }),
       seed: this.seed,
       lastPlacementFailure: this.lastPlacementFailure,
+      visibility: this.visibility[this.controlledPlayer].snapshot(),
+      ai: this.aiSnapshot(),
+    });
+  }
+
+  private aiSnapshot(): AiSnapshot {
+    return Object.freeze({
+      enabled: this.scenario === "skirmish",
+      playerId: 2,
+      profile: "normal",
+      phase: this.aiPhase,
+      lastDecisionTick: this.aiLastDecisionTick,
+      knownEnemyUnits: this.aiKnownUnits.size,
+      knownEnemyStructures: this.aiKnownStructures.size,
+      cheats: false,
     });
   }
 
@@ -515,6 +625,65 @@ export class Simulation {
       powerConsumed: player.powerConsumed,
       lowPower: player.powerConsumed > player.powerGenerated,
     });
+  }
+
+  private isUnitVisibleTo(
+    playerId: PlayerId,
+    unit: UnitState | undefined,
+  ) {
+    if (!unit) return false;
+    return (
+      this.scenario !== "skirmish" ||
+      unit.playerId === playerId ||
+      this.visibility[playerId].isVisible(toTile(unit.position))
+    );
+  }
+
+  private isStructureVisibleTo(
+    playerId: PlayerId,
+    structure: StructureState | undefined,
+  ) {
+    if (!structure) return false;
+    return (
+      this.scenario !== "skirmish" ||
+      structure.playerId === playerId ||
+      this.visibility[playerId].isVisible(structure.tile)
+    );
+  }
+
+  private visibilitySources(playerId: PlayerId): VisibilitySource[] {
+    return [
+      ...this.sortedUnits()
+        .filter((unit) => unit.playerId === playerId && unit.health > 0)
+        .map((unit) => ({
+          id: unit.id,
+          kind: "unit" as const,
+          tile: toTile(unit.position),
+          visionMilli: gameData.units[unit.kind].visionMilli,
+        })),
+      ...this.sortedStructures()
+        .filter(
+          (structure) =>
+            structure.playerId === playerId &&
+            structure.health > 0 &&
+            structure.constructionRemainingTicks === 0,
+        )
+        .map((structure) => ({
+          id: structure.id,
+          kind: "structure" as const,
+          tile: { ...structure.tile },
+          visionMilli: gameData.buildings[structure.kind].visionMilli,
+        })),
+    ];
+  }
+
+  private updateVisibility(force = false) {
+    for (const playerId of [1, 2] as const) {
+      this.visibility[playerId].update(
+        this.visibilitySources(playerId),
+        force,
+      );
+    }
   }
 
   private resetShared(seed: number, scenario: SimulationScenario) {
@@ -531,6 +700,7 @@ export class Simulation {
       2: { id: 2, credits: 0, powerGenerated: 0, powerConsumed: 0 },
     };
     this.projectiles = [];
+    this.aiCommands.length = 0;
     this.nextUnitId = 100;
     this.nextStructureId = 100;
     this.nextProjectileId = 1;
@@ -540,6 +710,18 @@ export class Simulation {
     this.status = "active";
     this.winner = null;
     this.lastPlacementFailure = null;
+    this.visibility = {
+      1: new VisibilityGrid(scenario === "skirmish"),
+      2: new VisibilityGrid(scenario === "skirmish"),
+    };
+    this.aiPhase = "build";
+    this.aiLastDecisionTick = -1;
+    this.aiLastScoutTick = -1;
+    this.aiLastAttackTick = -1;
+    this.aiScoutWaypointIndex = 0;
+    this.aiUnitMixIndex = 0;
+    this.aiKnownUnits.clear();
+    this.aiKnownStructures.clear();
   }
 
   private resetCombat(seed: number) {
@@ -559,10 +741,22 @@ export class Simulation {
       unit.attackMoveDestination = { x: 21, y: 31 };
     }
     this.issueSideMove(2, { x: 21, y: 31 }, "attackMove");
+    this.updateVisibility(true);
   }
 
   private resetEconomy(seed: number) {
-    this.resetShared(seed, "economy");
+    this.resetEconomyState(seed, "economy");
+  }
+
+  private resetSkirmish(seed: number) {
+    this.resetEconomyState(seed, "skirmish");
+  }
+
+  private resetEconomyState(
+    seed: number,
+    scenario: "economy" | "skirmish",
+  ) {
+    this.resetShared(seed, scenario);
     this.players[1].credits = gameData.economy.startingCredits;
     this.players[2].credits = gameData.economy.startingCredits;
     this.structures = ECONOMY_STRUCTURES.map((starting) =>
@@ -598,6 +792,8 @@ export class Simulation {
     this.nextUnitId = 3;
     this.nextStructureId = 7;
     this.updateConnectivityAndPower();
+    this.updateVisibility(true);
+    if (scenario === "skirmish") this.updateAiMemory();
   }
 
   private createUnitState(
@@ -625,6 +821,7 @@ export class Simulation {
       targetId: null,
       targetStructureId: null,
       forcedTarget: false,
+      aiScout: false,
       cargo: 0,
       harvestFieldId: null,
     };
@@ -666,9 +863,15 @@ export class Simulation {
       this.commands.length = 0;
       return;
     }
+    if (command.kind === "restartSkirmish") {
+      this.resetSkirmish(command.seed ?? this.seed);
+      this.commands.length = 0;
+      return;
+    }
     if (this.status !== "active") return;
 
     if (command.kind === "switchPlayer") {
+      if (this.scenario === "skirmish") return;
       this.controlledPlayer = command.playerId;
       this.clearSelections();
       this.lastPlacementFailure = null;
@@ -679,7 +882,7 @@ export class Simulation {
       if (!command.additive) this.clearSelections();
       for (const unit of this.units) {
         if (
-          this.scenario === "economy" &&
+          this.scenario !== "combat" &&
           unit.playerId !== this.controlledPlayer
         ) {
           continue;
@@ -695,7 +898,7 @@ export class Simulation {
       if (!command.additive) this.clearSelections();
       for (const structure of this.structures) {
         if (
-          this.scenario === "economy" &&
+          this.scenario !== "combat" &&
           structure.playerId !== this.controlledPlayer
         ) {
           continue;
@@ -715,7 +918,11 @@ export class Simulation {
       return;
     }
     if (command.kind === "queueUnit") {
-      this.queueUnit(command.structureId, command.unitKind);
+      this.queueUnit(
+        this.controlledPlayer,
+        command.structureId,
+        command.unitKind,
+      );
       return;
     }
     if (command.kind === "cancelProduction") {
@@ -757,6 +964,7 @@ export class Simulation {
         unit.targetId = null;
         unit.targetStructureId = null;
         unit.forcedTarget = false;
+        unit.aiScout = false;
         unit.attackMoveDestination = null;
         unit.order = command.kind === "hold" ? "hold" : "idle";
       }
@@ -774,7 +982,13 @@ export class Simulation {
     }
     if (command.kind === "attackUnit") {
       const target = this.unitById(command.targetUnitId);
-      if (!target || target.playerId === this.controlledPlayer) return;
+      if (
+        !target ||
+        target.playerId === this.controlledPlayer ||
+        !this.isUnitVisibleTo(this.controlledPlayer, target)
+      ) {
+        return;
+      }
       for (const unit of this.selectedUnits()) {
         unit.targetId = target.id;
         unit.targetStructureId = null;
@@ -787,7 +1001,13 @@ export class Simulation {
     }
     if (command.kind === "attackStructure") {
       const target = this.structureById(command.targetStructureId);
-      if (!target || target.playerId === this.controlledPlayer) return;
+      if (
+        !target ||
+        target.playerId === this.controlledPlayer ||
+        !this.isStructureVisibleTo(this.controlledPlayer, target)
+      ) {
+        return;
+      }
       for (const unit of this.selectedUnits()) {
         unit.targetId = null;
         unit.targetStructureId = target.id;
@@ -801,6 +1021,364 @@ export class Simulation {
     if (command.kind === "move") {
       this.issueFormationMove(command.target, command.mode);
     }
+  }
+
+  private applyAiCommand(command: AiCommand) {
+    if (this.scenario !== "skirmish" || this.status !== "active") return;
+    if (command.kind === "placeBuilding") {
+      this.placeBuilding(2, command.buildingKind, command.tile, false);
+      return;
+    }
+    if (command.kind === "queueUnit") {
+      this.queueUnit(2, command.structureId, command.unitKind);
+      return;
+    }
+    if (command.kind === "repair") {
+      const structure = this.structureById(command.structureId);
+      if (
+        structure?.playerId === 2 &&
+        structure.constructionRemainingTicks === 0
+      ) {
+        structure.repairing = true;
+      }
+      return;
+    }
+    const units = command.unitIds
+      .map((unitId) => this.unitById(unitId))
+      .filter(
+        (unit): unit is UnitState =>
+          unit?.playerId === 2 && unit.health > 0,
+      )
+      .sort((left, right) => left.id - right.id);
+    if (units.length === 0) return;
+    if (command.kind === "orderUnits") {
+      this.issueFormationMoveFor(
+        units,
+        command.target,
+        command.mode,
+      );
+      for (const unit of units) unit.aiScout = command.scout === true;
+      return;
+    }
+    if (command.kind === "attackUnit") {
+      const target = this.unitById(command.targetUnitId);
+      if (!this.isUnitVisibleTo(2, target) || target?.playerId !== 1) return;
+      for (const unit of units) {
+        unit.targetId = target.id;
+        unit.targetStructureId = null;
+        unit.forcedTarget = true;
+        unit.aiScout = false;
+        unit.attackMoveDestination = null;
+        unit.order = "attack";
+        this.planChase(unit, target.position);
+      }
+      return;
+    }
+    const target = this.structureById(command.targetStructureId);
+    if (!this.isStructureVisibleTo(2, target) || target?.playerId !== 1) {
+      return;
+    }
+    for (const unit of units) {
+      unit.targetId = null;
+      unit.targetStructureId = target.id;
+      unit.forcedTarget = true;
+      unit.aiScout = false;
+      unit.attackMoveDestination = null;
+      unit.order = "attack";
+      this.planChase(unit, tileCenter(target.tile));
+    }
+  }
+
+  private updateAiMemory() {
+    for (const unit of this.sortedUnits()) {
+      if (unit.playerId !== 1 || !this.isUnitVisibleTo(2, unit)) continue;
+      this.aiKnownUnits.set(unit.id, {
+        id: unit.id,
+        tile: toTile(unit.position),
+        lastSeenTick: this.tick,
+      });
+    }
+    for (const structure of this.sortedStructures()) {
+      if (
+        structure.playerId !== 1 ||
+        !this.isStructureVisibleTo(2, structure)
+      ) {
+        continue;
+      }
+      this.aiKnownStructures.set(structure.id, {
+        id: structure.id,
+        tile: { ...structure.tile },
+        lastSeenTick: this.tick,
+      });
+    }
+    for (const [id, memory] of this.aiKnownUnits) {
+      const visibleUnit = this.unitById(id);
+      if (visibleUnit && this.isUnitVisibleTo(2, visibleUnit)) continue;
+      if (this.visibility[2].isVisible(memory.tile)) {
+        this.aiKnownUnits.delete(id);
+      }
+    }
+    for (const [id, memory] of this.aiKnownStructures) {
+      const visibleStructure = this.structureById(id);
+      if (
+        visibleStructure &&
+        this.isStructureVisibleTo(2, visibleStructure)
+      ) {
+        continue;
+      }
+      if (this.visibility[2].isVisible(memory.tile)) {
+        this.aiKnownStructures.delete(id);
+      }
+    }
+  }
+
+  private updateAi() {
+    const profile = gameData.ai.normal;
+    if (this.tick % profile.reactionIntervalTicks !== 0) return;
+    this.aiLastDecisionTick = this.tick;
+
+    const ownStructures = this.sortedStructures().filter(
+      (structure) => structure.playerId === 2 && structure.health > 0,
+    );
+    const combatUnits = this.sortedUnits().filter(
+      (unit) =>
+        unit.playerId === 2 &&
+        unit.kind !== "midasHarvester" &&
+        unit.health > 0,
+    );
+    const visibleThreats = this.sortedUnits()
+      .filter(
+        (unit) =>
+          unit.playerId === 1 &&
+          this.isUnitVisibleTo(2, unit) &&
+          ownStructures.some(
+            (structure) =>
+              distanceSquared(unit.position, tileCenter(structure.tile)) <=
+              profile.defenseRadiusMilli * profile.defenseRadiusMilli,
+          ),
+      )
+      .sort((left, right) => left.id - right.id);
+
+    const damaged = ownStructures.find(
+      (structure) =>
+        structure.constructionRemainingTicks === 0 &&
+        structure.health < gameData.buildings[structure.kind].maxHealth &&
+        !structure.repairing &&
+        this.players[2].credits > 500,
+    );
+    if (damaged) {
+      this.aiCommands.push({ kind: "repair", structureId: damaged.id });
+    }
+
+    if (visibleThreats.length > 0 && combatUnits.length > 0) {
+      this.aiPhase = "defend";
+      this.aiCommands.push({
+        kind: "attackUnit",
+        unitIds: combatUnits.map((unit) => unit.id),
+        targetUnitId: visibleThreats[0].id,
+      });
+      return;
+    }
+
+    const buildStep = profile.buildOrder.find(
+      (step) =>
+        ownStructures.filter((structure) => structure.kind === step.kind)
+          .length < step.count,
+    );
+    if (buildStep) {
+      const tile = this.findAiPlacement(buildStep.kind);
+      if (tile) {
+        this.aiPhase = "build";
+        this.aiCommands.push({
+          kind: "placeBuilding",
+          buildingKind: buildStep.kind,
+          tile,
+        });
+        return;
+      }
+    }
+
+    const refineries = ownStructures.filter(
+      (structure) => structure.kind === "refinery",
+    );
+    const exploredField = this.fields
+      .filter(
+        (field) =>
+          field.contested && this.visibility[2].isExplored(field.tile),
+      )
+      .sort((left, right) => left.id - right.id)[0];
+    const expansionNeeded =
+      this.tick >= profile.expansionStartTick &&
+      refineries.length < 2 &&
+      exploredField !== undefined;
+    if (expansionNeeded) {
+      const tile = this.findAiPlacement("refinery", exploredField.tile);
+      if (tile) {
+        this.aiPhase = "expand";
+        this.aiCommands.push({
+          kind: "placeBuilding",
+          buildingKind: "refinery",
+          tile,
+        });
+      }
+      this.aiPhase = "expand";
+      return;
+    }
+
+    if (!buildStep) this.queueAiProduction();
+
+    if (
+      this.tick >= profile.attackStartTick &&
+      combatUnits.length >= profile.attackUnitThreshold &&
+      this.tick - this.aiLastAttackTick >= profile.attackIntervalTicks
+    ) {
+      const visibleUnit = this.sortedUnits().find(
+        (unit) => unit.playerId === 1 && this.isUnitVisibleTo(2, unit),
+      );
+      const visibleStructure = this.sortedStructures().find(
+        (structure) =>
+          structure.playerId === 1 &&
+          this.isStructureVisibleTo(2, structure),
+      );
+      if (visibleStructure) {
+        this.aiPhase = "attack";
+        this.aiLastAttackTick = this.tick;
+        this.aiCommands.push({
+          kind: "attackStructure",
+          unitIds: combatUnits.map((unit) => unit.id),
+          targetStructureId: visibleStructure.id,
+        });
+        return;
+      }
+      if (visibleUnit) {
+        this.aiPhase = "attack";
+        this.aiLastAttackTick = this.tick;
+        this.aiCommands.push({
+          kind: "attackUnit",
+          unitIds: combatUnits.map((unit) => unit.id),
+          targetUnitId: visibleUnit.id,
+        });
+        return;
+      }
+      const rememberedTarget =
+        [...this.aiKnownStructures.values()].sort(
+          (left, right) =>
+            right.lastSeenTick - left.lastSeenTick || left.id - right.id,
+        )[0] ??
+        [...this.aiKnownUnits.values()].sort(
+          (left, right) =>
+            right.lastSeenTick - left.lastSeenTick || left.id - right.id,
+        )[0];
+      if (rememberedTarget) {
+        this.aiPhase = "attack";
+        this.aiLastAttackTick = this.tick;
+        this.aiCommands.push({
+          kind: "orderUnits",
+          unitIds: combatUnits.map((unit) => unit.id),
+          target: { ...rememberedTarget.tile },
+          mode: "attackMove",
+        });
+        return;
+      }
+    }
+
+    if (
+      combatUnits.length > 0 &&
+      this.tick - this.aiLastScoutTick >= profile.scoutIntervalTicks
+    ) {
+      const scout =
+        combatUnits.find((unit) => unit.kind === "hermesScout") ??
+        combatUnits.find((unit) => unit.kind === "argusRifle") ??
+        combatUnits[0];
+      const waypoint =
+        profile.scoutWaypoints[
+          this.aiScoutWaypointIndex % profile.scoutWaypoints.length
+        ];
+      this.aiScoutWaypointIndex += 1;
+      this.aiLastScoutTick = this.tick;
+      this.aiPhase = "scout";
+      this.aiCommands.push({
+        kind: "orderUnits",
+        unitIds: [scout.id],
+        target: { ...waypoint },
+        mode: "move",
+        scout: true,
+      });
+    }
+  }
+
+  private queueAiProduction() {
+    const profile = gameData.ai.normal;
+    for (const structure of this.sortedStructures()) {
+      if (
+        structure.playerId !== 2 ||
+        structure.constructionRemainingTicks > 0 ||
+        !structure.powered ||
+        structure.queue.length >= profile.productionQueueTarget
+      ) {
+        continue;
+      }
+      for (let offset = 0; offset < profile.unitMix.length; offset += 1) {
+        const index = (this.aiUnitMixIndex + offset) % profile.unitMix.length;
+        const unitKind = profile.unitMix[index];
+        const definition = gameData.units[unitKind];
+        if (
+          definition.producedAt !== structure.kind ||
+          definition.prerequisites.some(
+            (required) => !this.hasCompletedStructure(2, required),
+          ) ||
+          this.players[2].credits < definition.cost
+        ) {
+          continue;
+        }
+        this.aiUnitMixIndex = (index + 1) % profile.unitMix.length;
+        this.aiCommands.push({
+          kind: "queueUnit",
+          structureId: structure.id,
+          unitKind,
+        });
+        break;
+      }
+    }
+  }
+
+  private findAiPlacement(
+    buildingKind: BuildingKind,
+    preferred?: GridPoint,
+  ) {
+    const citadel = this.sortedStructures().find(
+      (structure) =>
+        structure.playerId === 2 &&
+        structure.kind === "citadel" &&
+        structure.health > 0,
+    );
+    const ownedCount = this.structures.filter(
+      (structure) =>
+        structure.playerId === 2 && structure.kind === buildingKind,
+    ).length;
+    const target =
+      preferred ??
+      (citadel
+        ? {
+            x: Math.max(0, citadel.tile.x - 4 - ownedCount * 2),
+            y: Math.max(0, citadel.tile.y - 3 - ownedCount * 2),
+          }
+        : { x: MAP_SIZE - 1, y: MAP_SIZE - 1 });
+    const candidates: GridPoint[] = [];
+    for (let y = 0; y < MAP_SIZE; y += 1) {
+      for (let x = 0; x < MAP_SIZE; x += 1) {
+        const tile = { x, y };
+        if (this.placementFailure(2, buildingKind, tile) === null) {
+          candidates.push(tile);
+        }
+      }
+    }
+    return candidates.sort(
+      (left, right) =>
+        gridDistanceSquared(left, target) -
+          gridDistanceSquared(right, target) ||
+        tileKeyOf(left) - tileKeyOf(right),
+    )[0];
   }
 
   private clearSelections() {
@@ -854,10 +1432,20 @@ export class Simulation {
     this.issueFormationMoveFor(this.selectedUnits(), target, mode);
   }
 
-  private occupiedTiles(excludedUnitIds = new Set<number>()) {
+  private occupiedTiles(
+    excludedUnitIds = new Set<number>(),
+    observer?: PlayerId,
+  ) {
     return new Set([
       ...this.units
-        .filter((unit) => !excludedUnitIds.has(unit.id))
+        .filter(
+          (unit) =>
+            !excludedUnitIds.has(unit.id) &&
+            (!observer ||
+              this.scenario !== "skirmish" ||
+              unit.playerId === observer ||
+              this.isUnitVisibleTo(observer, unit)),
+        )
         .map((unit) => tileKeyOf(toTile(unit.position))),
       ...this.structures.map((structure) => tileKeyOf(structure.tile)),
       ...this.fields.map((field) => tileKeyOf(field.tile)),
@@ -872,7 +1460,7 @@ export class Simulation {
     const selected = selectedInput.slice().sort((a, b) => a.id - b.id);
     if (selected.length === 0) return;
     const selectedIds = new Set(selected.map((unit) => unit.id));
-    const occupied = this.occupiedTiles(selectedIds);
+    const occupied = this.occupiedTiles(selectedIds, selected[0].playerId);
     const anchorStart = {
       x: Math.floor(
         selected.reduce((total, unit) => total + toTile(unit.position).x, 0) /
@@ -921,6 +1509,7 @@ export class Simulation {
       unit.targetStructureId = null;
       unit.harvestFieldId = null;
       unit.forcedTarget = false;
+      unit.aiScout = false;
       unit.order = mode;
       reserved.add(tileKeyOf(destination));
     }
@@ -939,7 +1528,8 @@ export class Simulation {
     if (
       !unitTarget ||
       unitTarget.playerId === unit.playerId ||
-      unitTarget.health <= 0
+      unitTarget.health <= 0 ||
+      !this.isUnitVisibleTo(unit.playerId, unitTarget)
     ) {
       unit.targetId = null;
       unitTarget = undefined;
@@ -947,7 +1537,8 @@ export class Simulation {
     if (
       !structureTarget ||
       structureTarget.playerId === unit.playerId ||
-      structureTarget.health <= 0
+      structureTarget.health <= 0 ||
+      !this.isStructureVisibleTo(unit.playerId, structureTarget)
     ) {
       unit.targetStructureId = null;
       structureTarget = undefined;
@@ -972,7 +1563,7 @@ export class Simulation {
     ) {
       unitTarget = this.acquireUnitTarget(unit, definition.visionMilli);
       if (unitTarget) unit.targetId = unitTarget.id;
-      else if (this.scenario === "economy") {
+      else if (this.scenario !== "combat") {
         structureTarget = this.acquireStructureTarget(
           unit,
           definition.visionMilli,
@@ -1090,7 +1681,10 @@ export class Simulation {
   }
 
   private planPath(unit: UnitState, requestedTarget: GridPoint) {
-    const occupied = this.occupiedTiles(new Set([unit.id]));
+    const occupied = this.occupiedTiles(
+      new Set([unit.id]),
+      unit.playerId,
+    );
     const destination = nearestWalkable(requestedTarget, { occupied });
     if (!destination) return;
     const path = findPath(toTile(unit.position), destination, { occupied });
@@ -1101,7 +1695,9 @@ export class Simulation {
   }
 
   private nearestOpenAdjacentTile(tile: GridPoint, unitId: number) {
-    const occupied = this.occupiedTiles(new Set([unitId]));
+    const unit = this.unitById(unitId);
+    if (!unit) return undefined;
+    const occupied = this.occupiedTiles(new Set([unitId]), unit.playerId);
     return [
       { x: tile.x - 1, y: tile.y },
       { x: tile.x + 1, y: tile.y },
@@ -1117,9 +1713,9 @@ export class Simulation {
       )
       .sort(
         (left, right) =>
-          gridDistanceSquared(toTile(this.unitById(unitId)!.position), left) -
+          gridDistanceSquared(toTile(unit.position), left) -
             gridDistanceSquared(
-              toTile(this.unitById(unitId)!.position),
+              toTile(unit.position),
               right,
             ) ||
           tileKeyOf(left) - tileKeyOf(right),
@@ -1136,7 +1732,8 @@ export class Simulation {
     if (unit.pathIndex >= unit.path.length) {
       if (unit.order === "move" && unit.destination) {
         this.clearPath(unit);
-        unit.order = "idle";
+        unit.order = unit.aiScout ? "hold" : "idle";
+        unit.aiScout = false;
       }
       return;
     }
@@ -1150,7 +1747,10 @@ export class Simulation {
       unit.pathIndex += 1;
       if (unit.pathIndex >= unit.path.length) {
         this.clearPath(unit);
-        if (unit.order === "move") unit.order = "idle";
+        if (unit.order === "move") {
+          unit.order = unit.aiScout ? "hold" : "idle";
+          unit.aiScout = false;
+        }
       }
       return;
     }
@@ -1405,6 +2005,7 @@ export class Simulation {
         .filter(
           (unit) =>
             unit.playerId !== structure.playerId &&
+            this.isUnitVisibleTo(structure.playerId, unit) &&
             distanceSquared(position, unit.position) <=
               weapon.rangeMilli * weapon.rangeMilli,
         )
@@ -1437,6 +2038,12 @@ export class Simulation {
       return "outsideMap";
     }
     if (isTerrainBlocked(tile)) return "blockedTerrain";
+    if (
+      this.scenario === "skirmish" &&
+      !this.visibility[playerId].isVisible(tile)
+    ) {
+      return "unexplored";
+    }
     if (
       this.units.some((unit) => tileKeyOf(toTile(unit.position)) === tileKeyOf(tile)) ||
       this.structures.some(
@@ -1490,9 +2097,10 @@ export class Simulation {
     playerId: PlayerId,
     buildingKind: BuildingKind,
     tile: GridPoint,
+    reportFailure = playerId === this.controlledPlayer,
   ) {
     const failure = this.placementFailure(playerId, buildingKind, tile);
-    this.lastPlacementFailure = failure;
+    if (reportFailure) this.lastPlacementFailure = failure;
     if (failure) return;
     const definition = gameData.buildings[buildingKind];
     this.players[playerId].credits -= definition.cost;
@@ -1508,11 +2116,15 @@ export class Simulation {
     this.nextStructureId += 1;
   }
 
-  private queueUnit(structureId: number, unitKind: UnitKind) {
+  private queueUnit(
+    playerId: PlayerId,
+    structureId: number,
+    unitKind: UnitKind,
+  ) {
     const structure = this.structureById(structureId);
     if (
       !structure ||
-      structure.playerId !== this.controlledPlayer ||
+      structure.playerId !== playerId ||
       structure.constructionRemainingTicks > 0 ||
       structure.queue.length >= gameData.economy.productionQueueLimit
     ) {
@@ -1566,7 +2178,10 @@ export class Simulation {
   }
 
   private spawnUnit(structure: StructureState, unitKind: UnitKind) {
-    const spawnTile = this.nearestSpawnTile(structure.tile);
+    const spawnTile = this.nearestSpawnTile(
+      structure.tile,
+      structure.playerId,
+    );
     if (!spawnTile) return false;
     const unit = this.createUnitState(
       this.nextUnitId,
@@ -1584,8 +2199,8 @@ export class Simulation {
     return true;
   }
 
-  private nearestSpawnTile(tile: GridPoint) {
-    const occupied = this.occupiedTiles();
+  private nearestSpawnTile(tile: GridPoint, playerId: PlayerId) {
+    const occupied = this.occupiedTiles(new Set(), playerId);
     const candidates: GridPoint[] = [];
     for (let radius = 1; radius <= 3; radius += 1) {
       for (let y = tile.y - radius; y <= tile.y + radius; y += 1) {

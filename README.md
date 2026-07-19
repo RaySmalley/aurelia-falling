@@ -58,21 +58,22 @@ is dynamically imported behind the client-only React boundary in
 
 ## Current milestone
 
-Phase 3, the Economy and Base Slice, is implemented on the 64×64 Golden Scar
-map. Both local sides can be controlled for debugging. Each side can harvest
-Aurelite, construct the complete seven-structure build tree, manage power and
-production queues, repair structures, field all six unit types, and win by
-destroying the opposing Citadel.
+Phase 4, the Complete Skirmish, is implemented on the 64×64 Golden Scar map.
+The Gold player now fights a deterministic, build-order-driven Normal AI
+through explored terrain and current-visibility fog of war. The AI scouts,
+defends, rebuilds, expands, produces mixed armies, and attacks using the same
+credits, prerequisites, placement rules, production time, and visibility
+memory as the player.
 
 The earlier deterministic movement and combat slices remain available through
 the same simulation module and acceptance suite. Gameplay commands continue to
 enter the 20 Hz fixed-step simulation through a queue; React and Phaser consume
 frozen snapshots and never mutate simulation state.
 
-In the Phase 3 sandbox, select the active Gold or Cyan side from the top bar.
-Choose a structure in the construction grid, then right-click a legal tile
-inside the connected build-radius overlay. Select production structures to
-queue units, and right-click enemy units or structures to attack.
+In the Phase 4 skirmish, choose a structure in the construction grid, then
+right-click a visible legal tile inside the connected build-radius overlay.
+Select production structures to queue units, scout to reveal the map, and
+right-click currently visible enemy units or structures to attack.
 
 ## Hosting
 

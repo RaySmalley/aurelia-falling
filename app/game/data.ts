@@ -1,6 +1,7 @@
 import type {
   ArmorClass,
   BuildingKind,
+  GridPoint,
   UnitKind,
   WeaponId,
 } from "./types";
@@ -41,9 +42,30 @@ export type BuildingDefinition = Readonly<{
   prerequisites: readonly BuildingKind[];
   powerGenerated: number;
   powerConsumed: number;
+  visionMilli: number;
   buildRadius: number;
   produces: readonly UnitKind[];
   weaponId: WeaponId | null;
+}>;
+
+export type AiBuildOrderStep = Readonly<{
+  kind: BuildingKind;
+  count: number;
+}>;
+
+export type AiProfile = Readonly<{
+  id: "normal";
+  reactionIntervalTicks: number;
+  scoutIntervalTicks: number;
+  attackIntervalTicks: number;
+  attackStartTick: number;
+  attackUnitThreshold: number;
+  defenseRadiusMilli: number;
+  productionQueueTarget: number;
+  expansionStartTick: number;
+  buildOrder: readonly AiBuildOrderStep[];
+  unitMix: readonly UnitKind[];
+  scoutWaypoints: readonly GridPoint[];
 }>;
 
 const armorMultipliers = (
@@ -224,6 +246,7 @@ const buildingDefinitions = {
     prerequisites: [],
     powerGenerated: 20,
     powerConsumed: 0,
+    visionMilli: 10_000,
     buildRadius: 8,
     produces: [],
     weaponId: null,
@@ -238,6 +261,7 @@ const buildingDefinitions = {
     prerequisites: ["citadel"],
     powerGenerated: 100,
     powerConsumed: 0,
+    visionMilli: 5_500,
     buildRadius: 6,
     produces: [],
     weaponId: null,
@@ -252,6 +276,7 @@ const buildingDefinitions = {
     prerequisites: ["reactor"],
     powerGenerated: 0,
     powerConsumed: 15,
+    visionMilli: 6_000,
     buildRadius: 6,
     produces: ["midasHarvester"],
     weaponId: null,
@@ -266,6 +291,7 @@ const buildingDefinitions = {
     prerequisites: ["reactor"],
     powerGenerated: 0,
     powerConsumed: 15,
+    visionMilli: 6_500,
     buildRadius: 5,
     produces: ["argusRifle", "cyclopsRocket"],
     weaponId: null,
@@ -280,6 +306,7 @@ const buildingDefinitions = {
     prerequisites: ["reactor", "barracks"],
     powerGenerated: 0,
     powerConsumed: 30,
+    visionMilli: 7_000,
     buildRadius: 6,
     produces: ["hermesScout", "atlasTank", "gorgonWalker"],
     weaponId: null,
@@ -294,6 +321,7 @@ const buildingDefinitions = {
     prerequisites: ["foundry"],
     powerGenerated: 0,
     powerConsumed: 35,
+    visionMilli: 12_000,
     buildRadius: 6,
     produces: [],
     weaponId: null,
@@ -308,6 +336,7 @@ const buildingDefinitions = {
     prerequisites: ["barracks"],
     powerGenerated: 0,
     powerConsumed: 10,
+    visionMilli: 7_000,
     buildRadius: 0,
     produces: [],
     weaponId: "cerberusPulse",
@@ -325,5 +354,45 @@ export const gameData = Object.freeze({
     unloadAmountPerTick: 100,
     repairHealthPerCredit: 4,
     productionQueueLimit: 5,
+  }),
+  ai: Object.freeze({
+    normal: Object.freeze({
+      id: "normal",
+      reactionIntervalTicks: 40,
+      scoutIntervalTicks: 360,
+      attackIntervalTicks: 1_200,
+      attackStartTick: 23_000,
+      attackUnitThreshold: 6,
+      defenseRadiusMilli: 12_000,
+      productionQueueTarget: 2,
+      expansionStartTick: 2_400,
+      buildOrder: Object.freeze([
+        Object.freeze({ kind: "barracks", count: 1 }),
+        Object.freeze({ kind: "foundry", count: 1 }),
+        Object.freeze({ kind: "operationsCenter", count: 1 }),
+        Object.freeze({ kind: "reactor", count: 2 }),
+        Object.freeze({ kind: "turret", count: 2 }),
+      ]),
+      unitMix: Object.freeze([
+        "argusRifle",
+        "argusRifle",
+        "hermesScout",
+        "cyclopsRocket",
+        "atlasTank",
+        "argusRifle",
+        "gorgonWalker",
+      ]),
+      scoutWaypoints: Object.freeze(
+        [
+          { x: 46, y: 44 },
+          { x: 40, y: 39 },
+          { x: 35, y: 32 },
+          { x: 28, y: 31 },
+          { x: 21, y: 24 },
+          { x: 14, y: 15 },
+          { x: 8, y: 9 },
+        ].map((point) => Object.freeze(point)),
+      ),
+    } satisfies AiProfile),
   }),
 });
