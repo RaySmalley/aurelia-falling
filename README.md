@@ -35,22 +35,16 @@ npm run lint
 
 ## Automated pull request review
 
-Every non-draft pull request runs the workflows in `.github/workflows/`:
+Every non-draft pull request runs one deterministic CI job that installs the
+locked dependencies, typechecks, lints, builds, and runs the complete test
+suite. The same job runs after pushes to `main`, and it can be started manually.
 
-- ESLint and Semgrep findings are converted into inline review comments by
-  reviewdog.
-- TypeScript typechecking, the production build, and the deterministic test
-  suite run as required-status-check candidates.
-- CodeQL scans JavaScript and TypeScript when the repository is public.
+Automatic Codex reviews provide diff-focused code review using the repository's
+`AGENTS.md` guardrails. Codex complements CI: review catches contextual risks,
+while CI provides the reproducible pass/fail signal.
 
-This setup does not require GitHub Copilot or a paid Copilot plan. GitHub Free
-only provides CodeQL code scanning for public repositories, so the CodeQL job
-is intentionally skipped when the repository is private. The other checks
-continue to work within the repository's normal GitHub Actions allowance.
-
-For pull requests from forks, GitHub gives the workflow token read-only access.
-Reviewdog therefore falls back to workflow annotations when it cannot create a
-PR review comment.
+Dependabot checks npm dependencies weekly and GitHub Actions monthly. Minor and
+patch updates are grouped to reduce pull request noise.
 
 The fixed-step simulation and gameplay modules live under `app/game/`. Phaser
 is dynamically imported behind the client-only React boundary in
