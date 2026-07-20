@@ -26,3 +26,12 @@ test("Phase 0 preserves command queue and fixed-step architecture", async () => 
   assert.match(shell, /visibilitychange/);
   assert.match(shell, /pause\("hidden"\)/);
 });
+
+test("the economy command HUD stays hidden until the match starts", async () => {
+  const shell = await read("app/phase-zero/PhaseZeroShell.tsx");
+
+  assert.match(
+    shell,
+    /\{screen === "playing" && \(\s*<section className="economy-deck"/,
+  );
+});

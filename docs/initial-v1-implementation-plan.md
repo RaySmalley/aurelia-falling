@@ -1,4 +1,10 @@
-# Aurelia Falling — Phased Browser RTS Plan
+# Aurelia Falling — Initial v1 Implementation Plan
+
+Status: Historical baseline; Phases 0-6 are implemented.
+
+This document records the original plan that established the playable browser
+RTS and polished v1 baseline. Current sequencing continues in
+[development-roadmap.md](./development-roadmap.md).
 
 ## Summary
 

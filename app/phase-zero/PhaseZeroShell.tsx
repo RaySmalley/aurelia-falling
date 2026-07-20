@@ -863,7 +863,8 @@ export default function SkirmishShell() {
         )}
       </section>
 
-      <section className="economy-deck" aria-label="Economy command HUD">
+      {screen === "playing" && (
+        <section className="economy-deck" aria-label="Economy command HUD">
         <aside className="build-sidebar">
           <div className="panel-heading">
             <p className="eyebrow">CONSTRUCTION GRID</p>
@@ -1171,7 +1172,8 @@ export default function SkirmishShell() {
             </div>
           </dl>
         </aside>
-      </section>
+        </section>
+      )}
     </main>
   );
 }

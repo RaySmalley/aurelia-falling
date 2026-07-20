@@ -75,6 +75,15 @@ Phase 6 compressed assets are verified with `npm run assets:validate`. The menu
 transfer remains below 3 MB, the complete match payload below 20 MB, and every
 atlas edge below 2048 pixels.
 
+## Planning
+
+The implemented Phase 0-6 baseline is recorded in the
+[initial v1 implementation plan](docs/initial-v1-implementation-plan.md).
+Current work is sequenced in the
+[development roadmap](docs/development-roadmap.md), with detailed supporting
+plans for viewport fit, four-player scaling, and the deferred TypeScript 7
+transition under `docs/`.
+
 ## Hosting
 
 The project uses Codex Sites with the project identity recorded in
