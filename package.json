@@ -10,7 +10,8 @@
     "build": "vinext build",
     "start": "vinext start --port 4000",
     "test": "npm run build && npm run test:unit",
-    "test:unit": "node --test --test-concurrency=1 tests/phase-zero.test.mjs tests/phase-one.test.mjs tests/phase-two.test.mjs tests/phase-three.test.mjs tests/phase-four.test.mjs tests/phase-five.test.mjs",
+    "test:unit": "node --test --test-concurrency=1 tests/phase-zero.test.mjs tests/phase-one.test.mjs tests/phase-two.test.mjs tests/phase-three.test.mjs tests/phase-four.test.mjs tests/phase-five.test.mjs tests/phase-six.test.mjs",
+    "assets:validate": "node scripts/validate-phase-six-assets.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"

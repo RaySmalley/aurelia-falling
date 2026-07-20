@@ -58,11 +58,13 @@ is dynamically imported behind the client-only React boundary in
 
 ## Current milestone
 
-Phase 5, the feature-complete v1, is implemented on the 64×64 Golden Scar map.
-The complete deterministic skirmish now includes match setup, pause, surrender,
-restart, results, persistent settings, contextual first-match onboarding, and
-the Solar Spear superweapon. A powered Oracle charges the weapon; launch
-requires current vision and creates a public four-second warning before impact.
+Phase 6, the polished release, is implemented on the 64×64 Golden Scar map.
+The deterministic skirmish now adds a validated 8-facing industrial unit atlas,
+runtime Gold/Cyan team markers, stale fog silhouettes, structure selling,
+persistent battlefield zoom, reduced screen shake, promotional key art, and
+Easy/Normal/Hard AI pacing profiles derived from the canonical Normal ruleset.
+Phaser retries match assets twice and retains procedural unit silhouettes as a
+missing-asset fallback.
 
 The browser audio layer synthesizes original radio tones, selection and
 construction alerts, weapon and explosion effects, warnings, and an industrial
@@ -72,8 +74,12 @@ interface scale, reduced motion, and onboarding progress persist locally.
 All gameplay commands—including Solar Spear launch and surrender—continue to
 enter the 20 Hz fixed-step simulation through a queue. React and Phaser consume
 frozen snapshots and never mutate simulation state. Choose a deterministic seed
-in match setup, then build through the Oracle, keep it powered, and arm the
-Solar Spear before selecting currently visible ground.
+and AI pacing profile in match setup, then build through the Oracle, keep it
+powered, and arm the Solar Spear before selecting currently visible ground.
+
+Phase 6 compressed assets are verified with `npm run assets:validate`. The menu
+transfer remains below 3 MB, the complete match payload below 20 MB, and every
+atlas edge below 2048 pixels.
 
 ## Hosting
 
