@@ -27,5 +27,6 @@ Rules:
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run all required tests, type checking, linting, and the production build before updating graphify.
 - Only after every required verification command passes, run `graphify update .` as the final verification step (AST-only, no API cost).
+- On native Windows, run Graphify commands with sandbox escalation so the uv launcher can access its installation directory. Do not substitute the recorded Python interpreter unless the escalated launcher also fails.
 - Do not report the task complete, commit, or push until the graphify update succeeds.
 - If the graphify update fails, report the task as incomplete and include the failure.
