@@ -95,6 +95,50 @@ test("structure selling is queued, rules-legal, and refunds queued units", () =>
   );
 });
 
+test("selling the sole vision source blocks later same-tick Solar Spear launches", () => {
+  const simulation = new Simulation(6_004, "skirmish");
+  const oracle = simulation.createStructureState(
+    90,
+    1,
+    "operationsCenter",
+    { x: 8, y: 12 },
+    true,
+  );
+  const forwardReactor = simulation.createStructureState(
+    91,
+    1,
+    "reactor",
+    { x: 40, y: 40 },
+    true,
+  );
+  simulation.structures.push(oracle, forwardReactor);
+  simulation.updateConnectivityAndPower();
+  simulation.updateVisibility(true);
+  simulation.solarSpears[1].chargeTicks = gameData.solarSpear.chargeTicks;
+  assert.equal(simulation.visibility[1].isVisible({ x: 40, y: 40 }), true);
+
+  simulation.enqueue({
+    kind: "sellStructure",
+    structureId: forwardReactor.id,
+  });
+  simulation.enqueue({
+    kind: "launchSolarSpear",
+    target: { x: 40, y: 40 },
+  });
+  simulation.step();
+
+  const result = simulation.snapshot();
+  assert.equal(
+    result.structures.some(
+      (structure) => structure.id === forwardReactor.id,
+    ),
+    false,
+  );
+  assert.equal(result.lastSolarFailure, "notVisible");
+  assert.equal(result.solarSpears[1].state, "ready");
+  assert.equal(result.solarSpears[1].launches, 0);
+});
+
 test("Phase 6 presentation, keyboard focus, and retry hooks are integrated", async () => {
   const [bootstrap, shell, styles] = await Promise.all([
     readFile(new URL("../app/game/bootstrap.ts", import.meta.url), "utf8"),

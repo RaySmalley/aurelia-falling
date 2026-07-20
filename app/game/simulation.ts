@@ -2532,6 +2532,7 @@ export class Simulation {
     );
     this.onboardingConstructionIds.delete(structureId);
     this.updateConnectivityAndPower();
+    this.updateVisibility();
   }
 
   private hasCompletedStructure(
