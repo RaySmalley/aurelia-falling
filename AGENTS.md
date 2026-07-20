@@ -14,6 +14,14 @@
 - Small, low-risk maintenance such as focused documentation, configuration, or typo fixes may be committed directly to `main` after appropriate verification.
 - When addressing a pull request review comment, implement and verify the fix first. Once the issue is resolved, reply in the original review thread with a concise summary of the change and verification performed, then mark the thread as resolved.
 
+## Post-merge Sites cleanup
+
+- When `.openai/hosting.json` exists, cleanup after every GitHub merge into `main` is incomplete until the same merged `main` commit is synchronized and deployed to Sites.
+- Fast-forward local `main` to `origin/main`, verify the production build, and use the exact resulting `HEAD` for the Sites source push, saved version, and deployment. Never publish a feature branch, a stale Sites branch, or uncommitted work.
+- Push the exact validated commit to the dedicated Sites repository's `main` branch with a short-lived Sites source credential. Package the build from that same commit, save one Sites version with its commit SHA, and deploy that saved version.
+- Prefer the owner-only/private deployment path when the site's access policy permits it. Poll the deployment to a terminal state and confirm the production URL before declaring merge cleanup complete.
+- A successful GitHub merge does not automatically update Sites. If the Sites source push, version save, or deployment fails, report cleanup as incomplete and include the failure instead of silently leaving production stale.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
