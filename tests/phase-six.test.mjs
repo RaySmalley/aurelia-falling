@@ -172,7 +172,12 @@ test("Phase 6 presentation, keyboard focus, and retry hooks are integrated", asy
   assert.match(bootstrap, /disableGlobalCapture\(\)/);
   assert.match(bootstrap, /enableGlobalCapture\(\)/);
   assert.match(bootstrap, /resetKeys\(\)/);
-  assert.match(bootstrap, /keyboard\.enabled = !formControlFocused/);
+  assert.match(bootstrap, /target\.matches\("input, select, textarea"\)/);
+  assert.doesNotMatch(
+    bootstrap,
+    /target\.matches\([^)]*button[^)]*\)/,
+  );
+  assert.match(bootstrap, /keyboard\.enabled = !textEntryFocused/);
   assert.match(bootstrap, /addEventListener\("keydown", guardFormKey, true\)/);
   assert.match(bootstrap, /addEventListener\("keyup", guardFormKey, true\)/);
   assert.match(bootstrap, /detachKeyboardCaptureGuard\(\)/);

@@ -221,14 +221,14 @@ export async function createGameRuntime(
       );
       const keyboard = this.input.keyboard!;
       const ownerWindow = host.ownerDocument.defaultView!;
-      const isFormControl = (target: EventTarget | null) =>
+      const isTextEntryControl = (target: EventTarget | null) =>
         target instanceof ownerWindow.HTMLElement &&
-        (target.matches("input, select, textarea, button") ||
+        (target.matches("input, select, textarea") ||
           target.isContentEditable);
       const guardFormKey = (event: KeyboardEvent) => {
-        const formControlFocused = isFormControl(event.target);
-        keyboard.enabled = !formControlFocused;
-        if (formControlFocused) {
+        const textEntryFocused = isTextEntryControl(event.target);
+        keyboard.enabled = !textEntryFocused;
+        if (textEntryFocused) {
           keyboard.resetKeys();
           keyboard.disableGlobalCapture();
         } else {
