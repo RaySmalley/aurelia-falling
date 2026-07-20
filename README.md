@@ -43,6 +43,11 @@ Automatic Codex reviews provide diff-focused code review using the repository's
 `AGENTS.md` guardrails. Codex complements CI: review catches contextual risks,
 while CI provides the reproducible pass/fail signal.
 
+An advisory code-review-graph workflow also posts one updated PR comment with
+structural risk, blast-radius, affected-flow, and apparent test-gap findings. It
+does not gate merges. Its scope is limited to PR deltas; Graphify remains the
+repository-wide architecture and codebase-navigation system.
+
 Dependabot checks npm dependencies weekly and GitHub Actions monthly. Minor and
 patch updates are grouped to reduce pull request noise.
 
