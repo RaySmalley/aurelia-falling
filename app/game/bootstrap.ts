@@ -1137,19 +1137,26 @@ export async function createGameRuntime(
   const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: host,
-    width: 1280,
-    height: 720,
     backgroundColor: "#071318",
     disableContextMenu: true,
     scene: OperationsScene,
     render: { antialias: true, pixelArt: false, pathDetailThreshold: 1 },
     scale: {
+      parent: host,
+      width: 1280,
+      height: 720,
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
+      expandParent: false,
     },
     audio: { disableWebAudio: false },
     loader: { maxRetries: 2 },
   });
+  const resizeObserver = new ResizeObserver(() => {
+    game.scale.getParentBounds();
+    game.scale.refresh();
+  });
+  resizeObserver.observe(host);
 
   return {
     subscribe(listener) {
@@ -1216,6 +1223,7 @@ export async function createGameRuntime(
     },
     destroy() {
       listeners.clear();
+      resizeObserver.disconnect();
       detachKeyboardCaptureGuard();
       proceduralAudio.destroy();
       game.destroy(true);

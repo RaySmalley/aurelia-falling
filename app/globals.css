@@ -16,8 +16,12 @@
 
 html,
 body {
-  min-height: 100%;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
   margin: 0;
+  overflow: hidden;
   background:
     radial-gradient(circle at 20% 0%, #16343a 0, transparent 34rem),
     linear-gradient(135deg, #050c10, #09171b 55%, #050b0f);
@@ -59,11 +63,14 @@ button:disabled {
 
 .operations-shell {
   width: min(1500px, 100%);
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  min-width: 0;
+  min-height: 0;
   margin: 0 auto;
   padding: clamp(0.75rem, 2vw, 1.5rem);
   display: grid;
-  grid-template-rows: auto minmax(350px, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 0.75rem;
   zoom: var(--ui-scale, 1);
 }
@@ -179,7 +186,8 @@ h2 {
 .battlefield-frame {
   position: relative;
   overflow: hidden;
-  min-height: 420px;
+  min-width: 0;
+  min-height: 0;
   border: 1px solid #47696e;
   background: #071318;
 }
@@ -206,12 +214,12 @@ h2 {
   );
 }
 
-.game-host,
-.game-host canvas {
-  width: 100% !important;
-  height: 100% !important;
-  min-height: 420px;
-  display: block;
+.game-host {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .fatal-panel,
@@ -490,6 +498,8 @@ button.danger {
   display: grid;
   grid-template-columns: minmax(260px, 0.95fr) minmax(360px, 1.35fr) minmax(280px, 0.9fr);
   gap: 1px;
+  max-height: clamp(15rem, 42dvh, 22rem);
+  overflow: auto;
   border: 1px solid var(--line);
   background: var(--line);
   box-shadow: inset 0 1px #7de4d31a, 0 18px 50px #0008;
@@ -813,7 +823,7 @@ kbd {
 
 @media (max-width: 900px) {
   .operations-shell {
-    grid-template-rows: auto minmax(380px, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
   }
 
   .command-deck {

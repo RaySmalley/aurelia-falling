@@ -11,6 +11,7 @@
     "start": "vinext start --port 4000",
     "test": "npm run build && npm run test:unit",
     "test:unit": "node --test --test-concurrency=1 tests/phase-zero.test.mjs tests/phase-one.test.mjs tests/phase-two.test.mjs tests/phase-three.test.mjs tests/phase-four.test.mjs tests/phase-five.test.mjs tests/phase-six.test.mjs",
+    "test:viewport": "node scripts/run-viewport-tests.mjs",
     "assets:validate": "node scripts/validate-phase-six-assets.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
@@ -26,6 +27,7 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.45.1",
     "@cloudflare/workers-types": "5.20260719.1",
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "4.3.3",
     "@types/node": "24.13.3",
     "@types/react": "19.2.17",
