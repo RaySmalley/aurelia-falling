@@ -58,6 +58,14 @@ function fixedToWorld(point: Vec2) {
   });
 }
 
+function canCreateWebGLContext() {
+  try {
+    return Boolean(document.createElement("canvas").getContext("webgl"));
+  } catch {
+    return false;
+  }
+}
+
 function worldToGrid(point: Vec2): Vec2 {
   return {
     x: point.x / TILE_WIDTH + point.y / TILE_HEIGHT,
@@ -1134,29 +1142,33 @@ export async function createGameRuntime(
     }
   }
 
+  const canvas = document.createElement("canvas");
+  host.appendChild(canvas);
   const game = new Phaser.Game({
-    type: Phaser.AUTO,
-    parent: host,
+    type: canCreateWebGLContext() ? Phaser.WEBGL : Phaser.CANVAS,
+    canvas,
+    parent: null,
     backgroundColor: "#071318",
     disableContextMenu: true,
     scene: OperationsScene,
     render: { antialias: true, pixelArt: false, pathDetailThreshold: 1 },
     scale: {
-      parent: host,
+      parent: null,
       width: 1280,
       height: 720,
       mode: Phaser.Scale.FIT,
-      autoCenter: Phaser.Scale.CENTER_BOTH,
+      autoCenter: Phaser.Scale.NO_CENTER,
       expandParent: false,
     },
     audio: { disableWebAudio: false },
     loader: { maxRetries: 2 },
   });
-  const resizeObserver = new ResizeObserver(() => {
-    game.scale.getParentBounds();
-    game.scale.refresh();
-  });
+  const syncCanvasSize = () => {
+    game.scale.setParentSize(host.clientWidth, host.clientHeight);
+  };
+  const resizeObserver = new ResizeObserver(syncCanvasSize);
   resizeObserver.observe(host);
+  syncCanvasSize();
 
   return {
     subscribe(listener) {
