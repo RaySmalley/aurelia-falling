@@ -5,6 +5,7 @@ const VIEWPORTS = [
   { name: "laptop", width: 1366, height: 650 },
   { name: "minimum", width: 1024, height: 640 },
 ] as const;
+const SETTINGS_KEY = "aurelia-falling.settings.v1";
 
 type Rect = {
   top: number;
@@ -25,11 +26,24 @@ type LayoutMetrics = {
   commandDock: Rect | null;
 };
 
-async function loadSetup(page: Page) {
-  await page.addInitScript(() => localStorage.clear());
+async function loadSetup(page: Page, uiScale = 1) {
+  await page.addInitScript(
+    ({ settingsKey, scale }) => {
+      localStorage.clear();
+      localStorage.setItem(settingsKey, JSON.stringify({ uiScale: scale }));
+    },
+    { settingsKey: SETTINGS_KEY, scale: uiScale },
+  );
   await page.goto("/");
   await expect(page.getByRole("button", { name: "Begin operation" })).toBeEnabled();
   await expect(page.locator(".game-host canvas")).toBeVisible();
+  await expect
+    .poll(() =>
+      page
+        .locator(".operations-shell")
+        .evaluate((element) => getComputedStyle(element).zoom),
+    )
+    .toBe(String(uiScale));
 }
 
 async function readLayout(page: Page): Promise<LayoutMetrics> {
@@ -89,6 +103,41 @@ async function capture(page: Page, testInfo: TestInfo, state: string) {
     fullPage: true,
   });
 }
+
+test("persisted 110% UI scale stays reachable at the minimum viewport", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1024, height: 640 });
+  await loadSetup(page, 1.1);
+
+  expectViewportContract(await readLayout(page));
+
+  await page.getByRole("button", { name: "Begin operation" }).click();
+  await expect(page.locator(".economy-deck")).toBeVisible();
+  expectViewportContract(await readLayout(page));
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  const settingsDialog = page.getByRole("dialog");
+  await expect(settingsDialog).toBeVisible();
+  const doneButton = page.getByRole("button", { name: "Done" });
+  await doneButton.scrollIntoViewIfNeeded();
+  await expect(doneButton).toBeInViewport();
+
+  const shellBounds = (await readLayout(page)).shell;
+  const dialogBounds = await settingsDialog.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return {
+      top: bounds.top,
+      right: bounds.right,
+      bottom: bounds.bottom,
+      left: bounds.left,
+      width: bounds.width,
+      height: bounds.height,
+    };
+  });
+  expectContained(dialogBounds, shellBounds);
+  await capture(page, testInfo, "minimum-110-percent-settings");
+});
 
 test("records the known Phase 6 overflow baseline", () => {
   expect(baseline.measurements).toHaveLength(3);

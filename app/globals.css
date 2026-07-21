@@ -62,9 +62,9 @@ button:disabled {
 }
 
 .operations-shell {
-  width: min(1500px, 100%);
-  height: 100vh;
-  height: 100dvh;
+  width: min(var(--ui-shell-max-width, 1500px), 100%);
+  height: var(--ui-shell-height-fallback, 100vh);
+  height: var(--ui-shell-height, 100dvh);
   min-width: 0;
   min-height: 0;
   margin: 0 auto;
@@ -220,6 +220,8 @@ h2 {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  display: grid;
+  place-items: center;
 }
 
 .fatal-panel,
@@ -259,6 +261,9 @@ h2 {
 }
 
 .settings-curtain {
+  place-content: start center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background:
     radial-gradient(circle at 50% 22%, #173b40 0, transparent 25rem),
     #061015f2;
