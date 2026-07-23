@@ -52,6 +52,9 @@ export function eligibility(x) {
 export function nextState(x) {
   if (x.merged === true) {
     if (x.localSyncSafe !== true) return result(STATES.BLOCKED, "local synchronization would risk user work");
+    if (typeof x.deploymentConfigured !== "boolean" || typeof x.deploymentRequired !== "boolean" ||
+        (x.deploymentConfigured && !x.deploymentRequired))
+      return result(STATES.FINALIZING, "establish the repository deployment requirement");
     if (x.deploymentRequired && x.deploymentFailed)
       return result(STATES.BLOCKED, "required deployment failed");
     if (x.finalized !== true || (x.deploymentRequired && x.deploymentSucceeded !== true))
@@ -63,14 +66,17 @@ export function nextState(x) {
   if ((x.repairCycles ?? 0) > (x.maxRepairCycles ?? 3))
     return result(STATES.BLOCKED, "repair-cycle limit exceeded");
   if ((x.sameFindingFixes ?? 0) >= 2) return result(STATES.BLOCKED, "substantive finding repeated twice");
-  if ((x.reviewWaitMinutes ?? 0) >= 30 && !currentReview(x)) return result(STATES.BLOCKED, "current-head review timed out");
+  const hasActionableThreads =
+    Number.isInteger(x.unresolvedActionableThreads) && x.unresolvedActionableThreads > 0;
+  if ((x.reviewWaitMinutes ?? 0) >= 30 && !currentReview(x) && !hasActionableThreads)
+    return result(STATES.BLOCKED, "current-head review timed out");
   if ((x.sameCheckFailures ?? 0) >= 2) return result(STATES.BLOCKED, "same required check failed twice");
   if (x.ambiguousFeedback || x.contradictoryFeedback) return result(STATES.BLOCKED, "feedback requires a decision");
   if (x.protectionUnsatisfied || x.rollbackUnsafe) return result(STATES.BLOCKED, "required protection or rollback gate failed");
   if (x.mergeable === false) return result(STATES.BLOCKED, "pull request has conflicts");
   if (x.mergeable !== true)
     return result(STATES.WAITING_FOR_REREVIEW, "pull request mergeability is still unknown");
-  if (Number.isInteger(x.unresolvedActionableThreads) && x.unresolvedActionableThreads > 0)
+  if (hasActionableThreads)
     return result(STATES.ADDRESSING_FEEDBACK, "repair unresolved actionable review threads");
   if (!currentReview(x)) {
     return result(

@@ -56,5 +56,7 @@ Stop the babysitter and notify only for `BLOCKED` or successful `COMPLETE`.
 Confirm the GitHub merge/base SHA and remote topic-branch deletion. Inspect every worktree and
 status before changing local branches. Fetch/prune, switch only if safe, fast-forward the default
 branch, verify it contains the merge, and delete the local topic branch only if unpushed-work and
-checkout checks pass. Perform repository-required post-merge deployment/health checks from the
-exact merged commit. Delete the scheduled task last, then mark `COMPLETE`.
+checkout checks pass. Record whether deployment configuration exists and whether repository policy
+requires deployment; treat missing or inconsistent evidence as unfinished. Perform required
+post-merge deployment/health checks from the exact merged commit. Delete the scheduled task last,
+then mark `COMPLETE`.

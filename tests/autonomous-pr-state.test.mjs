@@ -9,6 +9,7 @@ const base = (overrides = {}) => ({
   reviewCompleted: true, unresolvedActionableThreads: 0, checks: ["success"],
   reviewRequestCreatedAt: "2026-07-23T12:00:00Z",
   codexReactionCreatedAt: "2026-07-23T12:01:00Z",
+  deploymentConfigured: false, deploymentRequired: false,
   ready: true, reviewsSatisfied: true, conversationsResolved: true, baseCurrent: true,
   mergeable: true, stablePolls: 2, stableMinutes: 2, localSyncSafe: true, ...overrides,
 });
@@ -75,6 +76,13 @@ test("current-head actionable threads enter repair before clean review completio
     codexReaction: null,
     unresolvedActionableThreads: 1,
   })).state, STATES.ADDRESSING_FEEDBACK));
+test("actionable threads enter repair instead of timing out", () =>
+  assert.equal(nextState(base({
+    reviewCompleted: false,
+    reviewHeadSha: null,
+    unresolvedActionableThreads: 1,
+    reviewWaitMinutes: 30,
+  })).state, STATES.ADDRESSING_FEEDBACK));
 test("unknown review-thread state cannot become ready", () => {
   for (const unresolvedActionableThreads of [undefined, null, -1, 0.5]) {
     assert.equal(
@@ -130,5 +138,13 @@ test("dirty-checkout risk blocks local finalization", () =>
   assert.equal(nextState(base({ merged: true, localSyncSafe: false })).state, STATES.BLOCKED));
 test("required deployment keeps a merged PR finalizing", () =>
   assert.equal(nextState(base({ merged: true, finalized: true, deploymentRequired: true })).state, STATES.FINALIZING));
+test("deployment configuration must be explicit and consistent", () => {
+  assert.equal(nextState(base({
+    merged: true, finalized: true, deploymentConfigured: undefined,
+  })).state, STATES.FINALIZING);
+  assert.equal(nextState(base({
+    merged: true, finalized: true, deploymentConfigured: true, deploymentRequired: false,
+  })).state, STATES.FINALIZING);
+});
 test("successful merge finalization completes", () =>
   assert.equal(nextState(base({ merged: true, finalized: true })).state, STATES.COMPLETE));
