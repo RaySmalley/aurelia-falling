@@ -47,6 +47,14 @@ test("review evidence requires non-empty matching SHAs", () => {
 });
 test("unresolved actionable threads block readiness", () =>
   assert.equal(nextState(base({ unresolvedActionableThreads: 1 })).state, STATES.ADDRESSING_FEEDBACK));
+test("unknown review-thread state cannot become ready", () => {
+  for (const unresolvedActionableThreads of [undefined, null, -1, 0.5]) {
+    assert.equal(
+      nextState(base({ unresolvedActionableThreads })).state,
+      STATES.WAITING_FOR_REREVIEW,
+    );
+  }
+});
 test("failed CI retries once and blocks on the repeated cause", () => {
   assert.equal(nextState(base({ checks: ["failure"], sameCheckFailures: 1 })).state, STATES.ADDRESSING_FEEDBACK);
   assert.equal(nextState(base({ checks: ["failure"], sameCheckFailures: 2 })).state, STATES.BLOCKED);

@@ -69,7 +69,9 @@ export function nextState(x) {
       "await completed Codex review for current head SHA",
     );
   }
-  if ((x.unresolvedActionableThreads ?? 0) > 0)
+  if (!Number.isInteger(x.unresolvedActionableThreads) || x.unresolvedActionableThreads < 0)
+    return result(STATES.WAITING_FOR_REREVIEW, "review-thread state is missing or invalid");
+  if (x.unresolvedActionableThreads > 0)
     return result(STATES.ADDRESSING_FEEDBACK, "repair unresolved actionable review threads");
   if (!Array.isArray(x.checks) || x.checks.length === 0)
     return result(STATES.WAITING_FOR_REREVIEW, "required-check data is missing");

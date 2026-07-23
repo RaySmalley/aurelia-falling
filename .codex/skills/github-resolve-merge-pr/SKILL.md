@@ -43,7 +43,8 @@ stable polls, blocker reason, merge SHA, branch cleanup, local sync, task ID, an
 Re-fetch all state. Require the label, ready status, current-head completed Codex review, zero
 unresolved actionable threads, successful/skipped/neutral required checks, satisfied review and
 conversation rules, mergeability, required base currency, eligible risk, and two unchanged polls
-at least two minutes apart. Reset stability on review activity or SHA change. Use the repository's
+at least two minutes apart. Treat a missing, negative, or non-integer actionable-thread count as
+unknown and remain waiting. Reset stability on review activity or SHA change. Use the repository's
 documented merge method only in `READY_TO_MERGE`.
 
 Transition to `BLOCKED` for any repository hard blocker or a 30-minute current-head review wait.
