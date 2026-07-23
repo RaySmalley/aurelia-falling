@@ -43,6 +43,34 @@ const UNIT_ATLAS_SIZE = Object.freeze({
   atlasTank: [80, 104],
   gorgonWalker: [86, 112],
 } satisfies Record<UnitSnapshot["kind"], readonly [number, number]>);
+const STRUCTURE_ATLAS_FRAME = Object.freeze({
+  citadel: 0,
+  reactor: 1,
+  refinery: 2,
+  barracks: 3,
+  foundry: 4,
+  operationsCenter: 5,
+  turret: 6,
+} satisfies Record<BuildingKind, number>);
+const STRUCTURE_ATLAS_SIZE = Object.freeze({
+  citadel: [112, 126],
+  reactor: [104, 117],
+  refinery: [112, 126],
+  barracks: [102, 115],
+  foundry: [108, 122],
+  operationsCenter: [106, 126],
+  turret: [96, 108],
+} satisfies Record<BuildingKind, readonly [number, number]>);
+const BATTLEFIELD_ATLAS_FRAME = Object.freeze({
+  groundA: 0,
+  groundB: 1,
+  blockedA: 2,
+  blockedB: 3,
+  crater: 4,
+  fracture: 5,
+  aureliteField: 6,
+  aureliteIcon: 7,
+});
 
 function gridToWorld(point: Vec2) {
   return {
@@ -174,6 +202,26 @@ export async function createGameRuntime(
           frameHeight: 208,
           startFrame: 0,
           endFrame: 47,
+        },
+      );
+      this.load.spritesheet(
+        "structure-atlas",
+        "/assets/phase-nine/structure-atlas.webp",
+        {
+          frameWidth: 256,
+          frameHeight: 288,
+          startFrame: 0,
+          endFrame: 7,
+        },
+      );
+      this.load.spritesheet(
+        "battlefield-atlas",
+        "/assets/phase-nine/battlefield-atlas.webp",
+        {
+          frameWidth: 256,
+          frameHeight: 288,
+          startFrame: 0,
+          endFrame: 7,
         },
       );
     }
@@ -513,10 +561,57 @@ export async function createGameRuntime(
     }
 
     private drawTerrain() {
-      const graphics = this.add.graphics().setDepth(0);
       const blocked = new Set(
         BLOCKED_TILES.map((point) => point.y * MAP_SIZE + point.x),
       );
+      if (this.textures.exists("battlefield-atlas")) {
+        const terrain = this.add
+          .renderTexture(FOG_LEFT, FOG_TOP, FOG_WIDTH, FOG_HEIGHT)
+          .setOrigin(0, 0)
+          .setDepth(0)
+          .setName("battlefield-terrain-atlas");
+        for (let diagonal = 0; diagonal <= (MAP_SIZE - 1) * 2; diagonal += 1) {
+          const xStart = Math.max(0, diagonal - (MAP_SIZE - 1));
+          const xEnd = Math.min(MAP_SIZE - 1, diagonal);
+          for (let x = xStart; x <= xEnd; x += 1) {
+            const y = diagonal - x;
+            const point = gridToWorld({ x, y });
+            const localX = point.x - FOG_LEFT;
+            const localY = point.y - FOG_TOP;
+            const isBlocked = blocked.has(y * MAP_SIZE + x);
+            const variant = (x * 17 + y * 31) & 1;
+            const frame = isBlocked
+              ? variant === 0
+                ? BATTLEFIELD_ATLAS_FRAME.blockedA
+                : BATTLEFIELD_ATLAS_FRAME.blockedB
+              : variant === 0
+                ? BATTLEFIELD_ATLAS_FRAME.groundA
+                : BATTLEFIELD_ATLAS_FRAME.groundB;
+            terrain.stamp("battlefield-atlas", frame, localX, localY, {
+              scale: 0.275,
+            });
+            const decalHash = (x * 73 + y * 151 + x * y * 7) % 113;
+            if (!isBlocked && decalHash < 3) {
+              terrain.stamp(
+                "battlefield-atlas",
+                decalHash === 0
+                  ? BATTLEFIELD_ATLAS_FRAME.crater
+                  : BATTLEFIELD_ATLAS_FRAME.fracture,
+                localX,
+                localY,
+                { alpha: 0.58, scale: 0.25 },
+              );
+            }
+          }
+        }
+        terrain.render();
+        return;
+      }
+
+      const graphics = this.add
+        .graphics()
+        .setDepth(0)
+        .setName("procedural-terrain-fallback");
       for (let y = 0; y < MAP_SIZE; y += 1) {
         for (let x = 0; x < MAP_SIZE; x += 1) {
           const point = gridToWorld({ x, y });
@@ -596,17 +691,33 @@ export async function createGameRuntime(
     }
 
     private createFieldView(field: AureliteFieldSnapshot) {
-      const body = this.add.graphics();
+      const hasAtlas = this.textures.exists("battlefield-atlas");
+      const body = this.add.graphics().setVisible(!hasAtlas);
       body.fillStyle(field.contested ? 0xf0bf57 : 0x78dfd0, 0.86);
       body.lineStyle(2, 0xe8ffff, 0.82);
       body.fillTriangle(-19, 10, 0, -23, 19, 10);
       body.strokeTriangle(-19, 10, 0, -23, 19, 10);
       body.fillStyle(0xffffff, 0.68);
       body.fillTriangle(-6, 1, 0, -15, 6, 1);
+      const sprite = hasAtlas
+        ? this.add
+            .image(
+              0,
+              4,
+              "battlefield-atlas",
+              BATTLEFIELD_ATLAS_FRAME.aureliteField,
+            )
+            .setDisplaySize(92, 104)
+            .setOrigin(0.5, 0.78)
+            .setName("sprite")
+        : null;
       const amount = this.add.graphics().setName("amount");
       const world = gridToWorld(field.tile);
+      const children: Phaser.GameObjects.GameObject[] = [body];
+      if (sprite) children.push(sprite);
+      children.push(amount);
       const container = this.add
-        .container(world.x, world.y, [body, amount])
+        .container(world.x, world.y, children)
         .setDepth(5 + world.y / 10_000)
         .setName(`field-${field.id}`);
       this.fieldViews.set(field.id, container);
@@ -626,7 +737,11 @@ export async function createGameRuntime(
         : structure.playerId === 1
           ? 0xffd78a
           : 0xb6fff5;
-      const body = this.add.graphics().setName("body");
+      const hasAtlas = this.textures.exists("structure-atlas");
+      const body = this.add
+        .graphics()
+        .setName("body")
+        .setVisible(!hasAtlas);
       body.fillStyle(teamColor, structure.completed ? 0.95 : 0.44);
       body.lineStyle(2, outline, structure.connected ? 0.95 : 0.55);
       if (structure.kind === "citadel") {
@@ -664,15 +779,51 @@ export async function createGameRuntime(
         body.strokeCircle(0, -4, 20);
         body.lineBetween(0, -9, 26, -25);
       }
+      const [atlasWidth, atlasHeight] = STRUCTURE_ATLAS_SIZE[structure.kind];
+      const sprite = hasAtlas
+        ? this.add
+            .image(
+              0,
+              8,
+              "structure-atlas",
+              STRUCTURE_ATLAS_FRAME[structure.kind],
+            )
+            .setDisplaySize(atlasWidth, atlasHeight)
+            .setOrigin(0.5, 0.8)
+            .setTint(
+              stale
+                ? 0x8c9998
+                : structure.playerId === 1
+                  ? 0xffe4bd
+                  : 0xcafff8,
+            )
+            .setName("sprite")
+        : null;
       const status = this.add.graphics().setName("status");
+      const teamHalo = this.add
+        .ellipse(0, 17, 67, 30)
+        .setStrokeStyle(1.4, teamColor, stale ? 0.4 : 0.86)
+        .setName("team-halo");
       const selection = this.add
         .ellipse(0, 17, 65, 30)
         .setStrokeStyle(2, 0xf4f0b5, 0.98)
         .setName("selection")
         .setVisible(!stale && structure.selected);
       const world = gridToWorld(structure.tile);
+      const teamMark = this.add
+        .rectangle(0, 9, 9, 9, teamColor, stale ? 0.5 : 0.95)
+        .setStrokeStyle(1, outline, stale ? 0.55 : 1)
+        .setAngle(45)
+        .setName("team-mark");
+      const children: Phaser.GameObjects.GameObject[] = [
+        teamHalo,
+        selection,
+        body,
+      ];
+      if (sprite) children.push(sprite);
+      children.push(teamMark, status);
       const container = this.add
-        .container(world.x, world.y, [selection, body, status])
+        .container(world.x, world.y, children)
         .setDepth(9 + world.y / 10_000)
         .setName(
           stale
@@ -699,13 +850,23 @@ export async function createGameRuntime(
           .get(field.id)
           ?.getByName("amount") as Phaser.GameObjects.Graphics | null;
         if (!amount) continue;
+        const sprite = this.fieldViews
+          .get(field.id)
+          ?.getByName("sprite") as Phaser.GameObjects.Image | null;
+        sprite
+          ?.setTint(field.contested ? 0xffd59c : 0xffffff)
+          .setAlpha(
+            reducedScreenShake
+              ? 0.94
+              : 0.88 + Math.sin(snapshot.tick / 7) * 0.08,
+          );
         amount.clear();
         amount.fillStyle(0x071318, 0.92);
-        amount.fillRect(-22, 14, 44, 5);
+        amount.fillRect(-22, 20, 44, 5);
         amount.fillStyle(field.contested ? 0xf0bf57 : 0x78dfd0, 1);
         amount.fillRect(
           -21,
-          15,
+          21,
           Math.ceil(42 * (field.amount / field.capacity)),
           3,
         );
@@ -737,11 +898,33 @@ export async function createGameRuntime(
         status.fillStyle(0x071318, 0.92);
         status.fillRect(-25, -49, 50, 6);
         const ratio = structure.health / structure.maxHealth;
+        const sprite = view.getByName(
+          "sprite",
+        ) as Phaser.GameObjects.Image | null;
+        if (sprite) {
+          const baseTint =
+            structure.playerId === 1 ? 0xffe4bd : 0xcafff8;
+          sprite
+            .setAlpha(structure.completed ? 1 : 0.46)
+            .setTint(
+              ratio <= 0.25
+                ? 0xff9b85
+                : ratio <= 0.55
+                  ? 0xffcfad
+                  : baseTint,
+            );
+        }
         status.fillStyle(
           ratio > 0.55 ? 0x79e0d3 : ratio > 0.25 ? 0xe6a63f : 0xf06d5c,
           1,
         );
         status.fillRect(-24, -48, Math.ceil(48 * ratio), 4);
+        if (ratio <= 0.55) {
+          status.lineStyle(1.2, ratio <= 0.25 ? 0xff6d5c : 0xe6a63f, 0.8);
+          for (let offset = -18; offset <= 18; offset += 9) {
+            status.lineBetween(offset - 5, -35, offset + 5, -25);
+          }
+        }
         if (!structure.completed) {
           const progress =
             1 -
@@ -886,6 +1069,7 @@ export async function createGameRuntime(
         .setAngle(45);
       const core = this.add.circle(0, 0, 4, 0xe9ffff);
       const health = this.add.graphics().setName("health");
+      const cargo = this.add.graphics().setName("cargo");
       const ring = this.add
         .ellipse(0, 13, heavy ? 52 : 45, heavy ? 24 : 20)
         .setStrokeStyle(2, 0xf4f0b5, 0.98)
@@ -893,7 +1077,7 @@ export async function createGameRuntime(
         .setVisible(unit.selected);
       const children: Phaser.GameObjects.GameObject[] = [ring, body];
       if (sprite) children.push(sprite);
-      children.push(teamMark, core, health);
+      children.push(teamMark, core, health, cargo);
       const container = this.add
         .container(0, 0, children)
         .setDepth(10)
@@ -964,6 +1148,38 @@ export async function createGameRuntime(
             1,
           );
           health.fillRect(-width / 2, -26, Math.ceil(width * ratio), 3);
+        }
+        const cargo = view.getByName(
+          "cargo",
+        ) as Phaser.GameObjects.Graphics | null;
+        if (cargo) {
+          const showCargo =
+            unit.kind === "midasHarvester" &&
+            unit.playerId === current.controlledPlayer &&
+            (unit.selected || unit.cargo > 0);
+          cargo.clear().setVisible(showCargo);
+          if (showCargo) {
+            const width = 34;
+            const segments = 5;
+            const ratio =
+              unit.cargoCapacity > 0
+                ? Math.min(1, unit.cargo / unit.cargoCapacity)
+                : 0;
+            const segmentWidth = (width - (segments - 1) * 2) / segments;
+            for (let segment = 0; segment < segments; segment += 1) {
+              const x = -width / 2 + segment * (segmentWidth + 2);
+              cargo.fillStyle(0x071318, 0.94);
+              cargo.fillRect(x, -20, segmentWidth, 4);
+              const segmentFill = Math.max(
+                0,
+                Math.min(1, ratio * segments - segment),
+              );
+              if (segmentFill > 0) {
+                cargo.fillStyle(0xf0bf57, 1);
+                cargo.fillRect(x, -19, segmentWidth * segmentFill, 2);
+              }
+            }
+          }
         }
       }
     }

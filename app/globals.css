@@ -153,6 +153,23 @@ h2 {
   letter-spacing: 0.14em;
 }
 
+.resource-bar .resource-label {
+  display: flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+
+.aurelite-icon {
+  display: inline-block;
+  width: 0.78rem;
+  aspect-ratio: 8 / 9;
+  background-image: url("/assets/phase-nine/battlefield-atlas.webp");
+  background-repeat: no-repeat;
+  background-size: 400% 200%;
+  background-position: 100% 100%;
+  filter: drop-shadow(0 0 5px #f0bf5799);
+}
+
 .resource-bar strong {
   color: var(--teal);
   font-family: "Courier New", monospace;
@@ -624,15 +641,38 @@ button.danger {
 }
 
 .structure-portrait {
-  display: grid;
-  place-items: center;
   clip-path: polygon(50% 0, 100% 24%, 92% 84%, 50% 100%, 8% 84%, 0 24%);
-  color: #ffe3a7;
-  font: 900 0.78rem/1 "Courier New", monospace;
-  letter-spacing: 0.08em;
-  background:
-    linear-gradient(145deg, #e6a63f2b, transparent 55%),
-    repeating-linear-gradient(90deg, #173238 0 3px, #0b1b20 3px 7px);
+  background-image: url("/assets/phase-nine/structure-atlas.webp");
+  background-repeat: no-repeat;
+  background-size: 400% 200%;
+}
+
+.portrait-citadel {
+  background-position: 0 0;
+}
+
+.portrait-reactor {
+  background-position: 33.333% 0;
+}
+
+.portrait-refinery {
+  background-position: 66.667% 0;
+}
+
+.portrait-barracks {
+  background-position: 100% 0;
+}
+
+.portrait-foundry {
+  background-position: 0 100%;
+}
+
+.portrait-operationsCenter {
+  background-position: 33.333% 100%;
+}
+
+.portrait-turret {
+  background-position: 66.667% 100%;
 }
 
 .sell-action {

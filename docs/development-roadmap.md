@@ -2,8 +2,8 @@
 
 ## Status
 
-Current canonical roadmap following completion of the initial Phase 0-6 browser
-RTS plan.
+Current canonical roadmap following completion of Phases 7-9. Phase 10 is the
+next implementation phase.
 
 This document defines the order of the next ten phases. Detailed technical
 design remains in the supporting plans:
@@ -19,7 +19,7 @@ acceptance criteria inside its assigned phase.
 
 ## Current baseline
 
-The implemented Phase 6 release provides:
+The implemented release through Phase 9 provides:
 
 - A deterministic 20 Hz two-player simulation on the 64 x 64 Golden Scar map.
 - Six units, seven structures, economy, power, production, repairs, selling,
@@ -27,20 +27,17 @@ The implemented Phase 6 release provides:
 - Easy, Normal, and Hard pacing profiles derived from one rules-legal Normal
   AI.
 - A React command interface around a client-only Phaser 4.2.1 renderer.
-- An eight-facing texture atlas for all six units, setup key art, procedural
-  structure and terrain graphics, synthesized audio, settings, and onboarding.
+- A fixed-height browser shell, contained Phaser canvas, bounded command dock,
+  internal overflow regions, and supported 90-110% UI scaling.
+- Validated unit, structure, terrain, decal, and Aurelite atlases with
+  procedural missing-asset fallbacks.
+- Atlas-derived structure portraits, construction/damage treatment, stale fog
+  silhouettes, and friendly Harvester cargo meters.
+- Setup key art, synthesized audio, settings, and onboarding.
 - A production build and deployment path through Sites.
 
-The next work begins from several known presentation and scale limits:
+The next work begins from the remaining scale limits:
 
-- The command dock is now hidden before a match begins, but the complete
-  in-game document still exceeds common viewport heights.
-- The shell, Phaser canvas, command dock, overlays, and whole-shell UI scaling
-  do not yet share a fixed viewport-height contract.
-- Units have final-facing artwork, while structures, Aurelite fields, terrain,
-  and several portraits remain procedural or placeholder visuals.
-- Harvester cargo is available in immutable snapshots and the selection panel
-  but has no battlefield capacity indicator.
 - The simulation is deterministic but still optimized for a two-player,
   small-skirmish object count.
 - The simulation runs on the main thread and publishes full object-graph
