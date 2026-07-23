@@ -22,6 +22,7 @@ export function eligibility(x) {
   if (!x.authorized) return "missing explicit authorization";
   if (!x.labelled) return "missing codex-autonomous label";
   if (!x.sameRepository) return "head branch is not in the base repository";
+  if (x.ready !== true) return "pull request is not ready for review";
   if (!x.withinScope) return "change expanded beyond the approved request";
   if (!Number.isInteger(x.changedFiles) || !Number.isInteger(x.changedLines))
     return "changed-file and changed-line counts are required";
@@ -59,11 +60,13 @@ export function nextState(x) {
     return result(STATES.ADDRESSING_FEEDBACK, "repair unresolved actionable review threads");
   if (!Array.isArray(x.checks) || x.checks.length === 0)
     return result(STATES.WAITING_FOR_REREVIEW, "required-check data is missing");
-  const failed = x.checks.some((c) => c === "failure" || c === "cancelled");
-  const pending = x.checks?.some((c) => !["success", "skipped", "neutral"].includes(c));
+  const accepted = ["success", "skipped", "neutral"];
+  const running = ["queued", "in_progress", "pending", "requested", "waiting"];
+  const failed = x.checks.some((c) => !accepted.includes(c) && !running.includes(c));
+  const pending = x.checks.some((c) => running.includes(c));
   if (failed) return result(STATES.ADDRESSING_FEEDBACK, "repair or retry required checks");
   if (pending) return result(STATES.WAITING_FOR_REREVIEW, "required checks are still pending");
-  if (!x.ready || !x.reviewsSatisfied || !x.conversationsResolved || !x.baseCurrent)
+  if (!x.reviewsSatisfied || !x.conversationsResolved || !x.baseCurrent)
     return result(STATES.WAITING_FOR_REREVIEW, "merge gates are not yet satisfied");
   if ((x.stablePolls ?? 0) < 2 || (x.stableMinutes ?? 0) < 2)
     return result(STATES.WAITING_FOR_REREVIEW, "await the second unchanged poll");

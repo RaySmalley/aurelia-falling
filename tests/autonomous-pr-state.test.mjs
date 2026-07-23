@@ -32,6 +32,10 @@ test("unknown diff size is ineligible", () =>
   assert.equal(nextState(base({ changedLines: undefined })).state, STATES.BLOCKED));
 test("missing required-check data cannot become ready", () =>
   assert.equal(nextState(base({ checks: [] })).state, STATES.WAITING_FOR_REREVIEW));
+test("a draft or unready PR is ineligible", () =>
+  assert.equal(nextState(base({ ready: false, unresolvedActionableThreads: 1 })).state, STATES.BLOCKED));
+test("terminal non-success check conclusions enter repair", () =>
+  assert.equal(nextState(base({ checks: ["timed_out"] })).state, STATES.ADDRESSING_FEEDBACK));
 test("more than three repair cycles is terminal", () =>
   assert.equal(nextState(base({ repairCycles: 4 })).state, STATES.BLOCKED));
 test("dirty-checkout risk blocks local finalization", () =>
