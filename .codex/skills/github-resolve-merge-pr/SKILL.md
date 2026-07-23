@@ -24,11 +24,14 @@ stable polls, blocker reason, merge SHA, branch cleanup, local sync, task ID, an
 
 1. In `WAITING_FOR_REVIEW` or `WAITING_FOR_REREVIEW`, fetch PR metadata, checks, reviews, and
    thread-aware GraphQL state. A completed review by the repository-observed Codex Cloud bot counts
-   only when its `commit_id` equals the current head SHA. Absence of comments is not completion.
+   only when its `commit_id` equals the current head SHA. For a review request recorded against the
+   current head, the `eyes` reaction means reviewing, `+1` on the PR main post means completed with
+   no findings, and no Codex reaction is indeterminate unless a current-head review proves findings.
 2. Fetch every thread's node ID, `isResolved`, `isOutdated`, path/line, author, body, replies, and
    review commit. Ignore resolved, purely informational, duplicate, and non-actionable threads.
 3. In `ADDRESSING_FEEDBACK`, map each smallest correct edit to finding fingerprints. Stop on
-   ambiguity, contradiction, scope growth, a twice-returned substantive finding, or cycle four.
+   ambiguity, contradiction, scope growth, a twice-returned substantive finding, or a cycle beyond
+   the recorded maximum (default three). Only explicit user resumption may raise it by a bounded amount.
 4. Run focused validation and repository-required validation. Allow one focused and one full retry
    for environmental failure; never alter product behavior to hide it. Commit and push the repair.
 5. For each fixed thread, reply successfully with what changed, the repair commit SHA, and exact

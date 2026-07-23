@@ -16,7 +16,8 @@ export const FORBIDDEN_RISKS = Object.freeze([
 
 const result = (state, reason) => ({ state, reason });
 const currentReview = (x) =>
-  x.reviewCompleted && x.reviewHeadSha && x.reviewHeadSha === x.headSha;
+  (x.reviewCompleted && x.reviewHeadSha === x.headSha) ||
+  (x.codexReaction === "thumbs_up" && x.reviewRequestHeadSha === x.headSha);
 
 export function eligibility(x) {
   if (!x.authorized) return "missing explicit authorization";
@@ -48,13 +49,16 @@ export function nextState(x) {
   }
   const ineligible = eligibility(x);
   if (ineligible) return result(STATES.BLOCKED, ineligible);
-  if ((x.repairCycles ?? 0) > 3) return result(STATES.BLOCKED, "repair-cycle limit exceeded");
+  if ((x.repairCycles ?? 0) > (x.maxRepairCycles ?? 3))
+    return result(STATES.BLOCKED, "repair-cycle limit exceeded");
   if ((x.sameFindingFixes ?? 0) >= 2) return result(STATES.BLOCKED, "substantive finding repeated twice");
   if ((x.reviewWaitMinutes ?? 0) >= 30 && !currentReview(x)) return result(STATES.BLOCKED, "current-head review timed out");
   if ((x.sameCheckFailures ?? 0) >= 2) return result(STATES.BLOCKED, "same required check failed twice");
   if (x.ambiguousFeedback || x.contradictoryFeedback) return result(STATES.BLOCKED, "feedback requires a decision");
   if (x.protectionUnsatisfied || x.rollbackUnsafe) return result(STATES.BLOCKED, "required protection or rollback gate failed");
   if (x.mergeable === false) return result(STATES.BLOCKED, "pull request has conflicts");
+  if (x.mergeable !== true)
+    return result(STATES.WAITING_FOR_REREVIEW, "pull request mergeability is still unknown");
   if (!currentReview(x)) {
     return result(
       (x.repairCycles ?? 0) > 0 ? STATES.WAITING_FOR_REREVIEW : STATES.WAITING_FOR_REVIEW,

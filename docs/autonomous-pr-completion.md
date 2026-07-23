@@ -23,9 +23,11 @@ Node 24.18.0. Run focused checks first for repairs. After all pass, run `graphif
 
 ## GitHub and merge
 
-Codex Cloud reviews are observed from `chatgpt-codex-connector[bot]`; require a completed review
-whose commit matches the current head. Use thread-aware review state, not flat comments. Squash
-merge only after the two-poll stability gate. GitHub native auto-merge remains off.
+Codex Cloud reviews are observed from `chatgpt-codex-connector[bot]`. For a request recorded against
+the unchanged current head, 👀 on the PR means review in progress, 👍 means review completed with no
+findings, and no Codex reaction is indeterminate unless a current-head review/thread proves findings.
+Use thread-aware review state, not flat comments. Require positively known mergeability, then squash
+only after the two-poll stability gate. GitHub native auto-merge remains off.
 
 GitHub protections require pull requests, the real CI job, conversation resolution, and base
 currency without granting admin bypass. Repository branches are deleted automatically after merge.
