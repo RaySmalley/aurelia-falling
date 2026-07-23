@@ -7,6 +7,8 @@ const base = (overrides = {}) => ({
   changedFiles: 4, changedLines: 120, headSha: "new", reviewHeadSha: "new",
   riskAssessed: true, forbiddenRisks: [], rollbackSafe: true,
   reviewCompleted: true, unresolvedActionableThreads: 0, checks: ["success"],
+  reviewRequestCreatedAt: "2026-07-23T12:00:00Z",
+  codexReactionCreatedAt: "2026-07-23T12:01:00Z",
   ready: true, reviewsSatisfied: true, conversationsResolved: true, baseCurrent: true,
   mergeable: true, stablePolls: 2, stableMinutes: 2, localSyncSafe: true, ...overrides,
 });
@@ -31,6 +33,20 @@ test("normalized thumbs_up remains a completed clean review", () =>
     reviewCompleted: false, reviewHeadSha: null, codexReaction: "thumbs_up",
     reviewRequestHeadSha: "new",
   })).state, STATES.READY_TO_MERGE));
+test("stale or undated clean reactions cannot satisfy the current-head gate", () => {
+  assert.equal(nextState(base({
+    reviewCompleted: false, reviewHeadSha: null, codexReaction: "+1",
+    reviewRequestHeadSha: "new",
+    reviewRequestCreatedAt: "2026-07-23T12:01:00Z",
+    codexReactionCreatedAt: "2026-07-23T12:00:00Z",
+  })).state, STATES.WAITING_FOR_REVIEW);
+  for (const codexReactionCreatedAt of [undefined, "not-a-date"]) {
+    assert.equal(nextState(base({
+      reviewCompleted: false, reviewHeadSha: null, codexReaction: "+1",
+      reviewRequestHeadSha: "new", codexReactionCreatedAt,
+    })).state, STATES.WAITING_FOR_REVIEW);
+  }
+});
 test("eyes or no reaction remains waiting without a review", () => {
   assert.equal(nextState(base({
     reviewCompleted: false, reviewHeadSha: null, codexReaction: "eyes",

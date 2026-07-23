@@ -26,7 +26,8 @@ stable polls, blocker reason, merge SHA, branch cleanup, local sync, task ID, an
    thread-aware GraphQL state. A completed review by the repository-observed Codex Cloud bot counts
    only when its `commit_id` equals the current head SHA. For a review request recorded against the
    current head, the `eyes` reaction means reviewing, `+1` on the PR main post means completed with
-   no findings, and no Codex reaction is indeterminate unless a current-head review proves findings.
+   no findings only when that reaction was created at or after the recorded request, and no Codex
+   reaction is indeterminate unless a current-head review proves findings.
 2. Fetch every thread's node ID, `isResolved`, `isOutdated`, path/line, author, body, replies, and
    review commit. Ignore resolved, purely informational, duplicate, and non-actionable threads.
 3. In `ADDRESSING_FEEDBACK`, map each smallest correct edit to finding fingerprints. Stop on

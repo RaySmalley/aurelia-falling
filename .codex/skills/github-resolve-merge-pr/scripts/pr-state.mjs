@@ -17,12 +17,18 @@ export const FORBIDDEN_RISKS = Object.freeze([
 const result = (state, reason) => ({ state, reason });
 const hasSha = (value) => typeof value === "string" && value.trim().length > 0;
 const cleanCodexReaction = (value) => value === "+1" || value === "thumbs_up";
-const currentReview = (x) =>
-  hasSha(x.headSha) && (
-    (x.reviewCompleted === true && hasSha(x.reviewHeadSha) && x.reviewHeadSha === x.headSha) ||
-    (cleanCodexReaction(x.codexReaction) && hasSha(x.reviewRequestHeadSha) &&
-      x.reviewRequestHeadSha === x.headSha)
-  );
+const timestamp = (value) => typeof value === "string" ? Date.parse(value) : Number.NaN;
+const currentReview = (x) => {
+  if (!hasSha(x.headSha)) return false;
+  if (x.reviewCompleted === true && hasSha(x.reviewHeadSha) && x.reviewHeadSha === x.headSha)
+    return true;
+  const requestTime = timestamp(x.reviewRequestCreatedAt);
+  const reactionTime = timestamp(x.codexReactionCreatedAt);
+  return cleanCodexReaction(x.codexReaction) &&
+    hasSha(x.reviewRequestHeadSha) && x.reviewRequestHeadSha === x.headSha &&
+    Number.isFinite(requestTime) && Number.isFinite(reactionTime) &&
+    reactionTime >= requestTime;
+};
 
 export function eligibility(x) {
   if (x.authorized !== true) return "missing explicit authorization";
