@@ -30,7 +30,7 @@
       "width": 1024,
       "height": 576,
       "alpha": true,
-      "scopes": ["match"],
+      "scopes": ["menu", "match"],
       "atlas": {
         "columns": 4,
         "rows": 2,
@@ -43,7 +43,7 @@
       "width": 1024,
       "height": 576,
       "alpha": true,
-      "scopes": ["match"],
+      "scopes": ["menu", "match"],
       "atlas": {
         "columns": 4,
         "rows": 2,

@@ -104,3 +104,23 @@ test("Phase 9 assets satisfy alpha, cell, dimension, and payload budgets", () =>
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.match(result.stdout, /Assets valid/);
 });
+
+test("Phase 9 preloaded atlases count toward the menu payload", async () => {
+  const manifest = JSON.parse(
+    await readFile(
+      new URL("../public/assets/asset-manifest.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const phaseNineAtlases = manifest.assets.filter((asset) =>
+    asset.path.startsWith("public/assets/phase-nine/"),
+  );
+
+  assert.equal(phaseNineAtlases.length, 2);
+  for (const atlas of phaseNineAtlases) {
+    assert.ok(
+      atlas.scopes.includes("menu"),
+      `${atlas.path} is preloaded before startMatch and must count toward the menu budget`,
+    );
+  }
+});
