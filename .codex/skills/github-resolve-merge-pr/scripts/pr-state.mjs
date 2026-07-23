@@ -23,8 +23,10 @@ export function eligibility(x) {
   if (!x.labelled) return "missing codex-autonomous label";
   if (!x.sameRepository) return "head branch is not in the base repository";
   if (!x.withinScope) return "change expanded beyond the approved request";
-  if ((x.changedFiles ?? 0) > (x.maxFiles ?? 10)) return "changed-file limit exceeded";
-  if ((x.changedLines ?? 0) > (x.maxLines ?? 500)) return "changed-line limit exceeded";
+  if (!Number.isInteger(x.changedFiles) || !Number.isInteger(x.changedLines))
+    return "changed-file and changed-line counts are required";
+  if (x.changedFiles > (x.maxFiles ?? 10)) return "changed-file limit exceeded";
+  if (x.changedLines > (x.maxLines ?? 500)) return "changed-line limit exceeded";
   if (x.unexplainedGenerated) return "unexplained generated files";
   if (x.unrelatedRefactor) return "unrelated refactoring";
   if (x.forbiddenRisks?.length) return `forbidden risk: ${x.forbiddenRisks.join(", ")}`;
@@ -55,7 +57,9 @@ export function nextState(x) {
   }
   if ((x.unresolvedActionableThreads ?? 0) > 0)
     return result(STATES.ADDRESSING_FEEDBACK, "repair unresolved actionable review threads");
-  const failed = x.checks?.some((c) => c === "failure" || c === "cancelled");
+  if (!Array.isArray(x.checks) || x.checks.length === 0)
+    return result(STATES.WAITING_FOR_REREVIEW, "required-check data is missing");
+  const failed = x.checks.some((c) => c === "failure" || c === "cancelled");
   const pending = x.checks?.some((c) => !["success", "skipped", "neutral"].includes(c));
   if (failed) return result(STATES.ADDRESSING_FEEDBACK, "repair or retry required checks");
   if (pending) return result(STATES.WAITING_FOR_REREVIEW, "required checks are still pending");

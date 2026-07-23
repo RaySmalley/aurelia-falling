@@ -28,6 +28,10 @@ test("failed CI retries once and blocks on the repeated cause", () => {
 });
 test("forbidden risk is terminal", () =>
   assert.equal(nextState(base({ forbiddenRisks: ["deployment"] })).state, STATES.BLOCKED));
+test("unknown diff size is ineligible", () =>
+  assert.equal(nextState(base({ changedLines: undefined })).state, STATES.BLOCKED));
+test("missing required-check data cannot become ready", () =>
+  assert.equal(nextState(base({ checks: [] })).state, STATES.WAITING_FOR_REREVIEW));
 test("more than three repair cycles is terminal", () =>
   assert.equal(nextState(base({ repairCycles: 4 })).state, STATES.BLOCKED));
 test("dirty-checkout risk blocks local finalization", () =>
