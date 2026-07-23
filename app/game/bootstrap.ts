@@ -61,6 +61,9 @@ const STRUCTURE_ATLAS_SIZE = Object.freeze({
   operationsCenter: [106, 126],
   turret: [96, 108],
 } satisfies Record<BuildingKind, readonly [number, number]>);
+const STRUCTURE_ATLAS_OFFSET_Y = 8;
+const STRUCTURE_ATLAS_ORIGIN_Y = 0.8;
+const PROCEDURAL_STRUCTURE_HIT_RADIUS = 38;
 const BATTLEFIELD_ATLAS_FRAME = Object.freeze({
   groundA: 0,
   groundB: 1,
@@ -84,6 +87,31 @@ function fixedToWorld(point: Vec2) {
     x: point.x / TILE_MILLI,
     y: point.y / TILE_MILLI,
   });
+}
+
+export function structureContainsWorldPoint(
+  structure: Pick<StructureSnapshot, "kind" | "tile">,
+  point: Vec2,
+  atlasAvailable: boolean,
+) {
+  const world = gridToWorld(structure.tile);
+  const dx = point.x - world.x;
+  const dy = point.y - world.y;
+  if (!atlasAvailable) {
+    return (
+      dx * dx + dy * dy <=
+      PROCEDURAL_STRUCTURE_HIT_RADIUS * PROCEDURAL_STRUCTURE_HIT_RADIUS
+    );
+  }
+
+  const [width, height] = STRUCTURE_ATLAS_SIZE[structure.kind];
+  const spriteY = world.y + STRUCTURE_ATLAS_OFFSET_Y;
+  const localY = point.y - spriteY;
+  return (
+    Math.abs(dx) <= width / 2 &&
+    localY >= -height * STRUCTURE_ATLAS_ORIGIN_Y &&
+    localY <= height * (1 - STRUCTURE_ATLAS_ORIGIN_Y)
+  );
 }
 
 function canCreateWebGLContext() {
@@ -784,12 +812,12 @@ export async function createGameRuntime(
         ? this.add
             .image(
               0,
-              8,
+              STRUCTURE_ATLAS_OFFSET_Y,
               "structure-atlas",
               STRUCTURE_ATLAS_FRAME[structure.kind],
             )
             .setDisplaySize(atlasWidth, atlasHeight)
-            .setOrigin(0.5, 0.8)
+            .setOrigin(0.5, STRUCTURE_ATLAS_ORIGIN_Y)
             .setTint(
               stale
                 ? 0x8c9998
@@ -1347,9 +1375,14 @@ export async function createGameRuntime(
           return {
             structure,
             distanceSquared: dx * dx + dy * dy,
+            containsPoint: structureContainsWorldPoint(
+              structure,
+              point,
+              this.textures.exists("structure-atlas"),
+            ),
           };
         })
-        .filter((candidate) => candidate.distanceSquared <= 38 * 38)
+        .filter((candidate) => candidate.containsPoint)
         .sort(
           (left, right) =>
             left.distanceSquared - right.distanceSquared ||

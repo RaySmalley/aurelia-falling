@@ -3,8 +3,50 @@ import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
+const vite = await createServer({
+  root,
+  configFile: false,
+  server: { middlewareMode: true },
+});
+const { structureContainsWorldPoint } = await vite.ssrLoadModule(
+  "/app/game/bootstrap.ts",
+);
+
+test.after(() => vite.close());
+
+test("Phase 9 structure hit tests follow rendered atlas bounds", () => {
+  const citadel = { kind: "citadel", tile: { x: 10, y: 10 } };
+  const anchor = { x: 0, y: 320 };
+
+  assert.equal(
+    structureContainsWorldPoint(citadel, { x: 55, y: anchor.y }, true),
+    true,
+    "the visible side of the 112px-wide Citadel should be clickable",
+  );
+  assert.equal(
+    structureContainsWorldPoint(citadel, { x: 0, y: 228 }, true),
+    true,
+    "the visible roof should be clickable with the 0.8 atlas origin",
+  );
+  assert.equal(
+    structureContainsWorldPoint(citadel, { x: 57, y: anchor.y }, true),
+    false,
+    "points beyond the atlas width should not select the structure",
+  );
+  assert.equal(
+    structureContainsWorldPoint(citadel, { x: 0, y: 355 }, true),
+    false,
+    "points below the rendered sprite should not select the structure",
+  );
+  assert.equal(
+    structureContainsWorldPoint(citadel, { x: 55, y: anchor.y }, false),
+    false,
+    "the procedural fallback should retain its compact legacy radius",
+  );
+});
 
 test("Phase 9 atlases preserve deterministic procedural fallbacks", async () => {
   const bootstrap = await readFile(
