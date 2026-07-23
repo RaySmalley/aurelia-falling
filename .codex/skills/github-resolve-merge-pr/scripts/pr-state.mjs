@@ -15,9 +15,13 @@ export const FORBIDDEN_RISKS = Object.freeze([
 ]);
 
 const result = (state, reason) => ({ state, reason });
+const hasSha = (value) => typeof value === "string" && value.trim().length > 0;
 const currentReview = (x) =>
-  (x.reviewCompleted && x.reviewHeadSha === x.headSha) ||
-  (x.codexReaction === "thumbs_up" && x.reviewRequestHeadSha === x.headSha);
+  hasSha(x.headSha) && (
+    (x.reviewCompleted && hasSha(x.reviewHeadSha) && x.reviewHeadSha === x.headSha) ||
+    (x.codexReaction === "thumbs_up" && hasSha(x.reviewRequestHeadSha) &&
+      x.reviewRequestHeadSha === x.headSha)
+  );
 
 export function eligibility(x) {
   if (!x.authorized) return "missing explicit authorization";

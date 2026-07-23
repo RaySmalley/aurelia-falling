@@ -36,6 +36,15 @@ test("eyes or no reaction remains waiting without a review", () => {
     reviewRequestHeadSha: "new",
   })).state, STATES.WAITING_FOR_REVIEW);
 });
+test("review evidence requires non-empty matching SHAs", () => {
+  assert.equal(nextState(base({
+    headSha: undefined, reviewHeadSha: undefined, reviewCompleted: true,
+  })).state, STATES.WAITING_FOR_REVIEW);
+  assert.equal(nextState(base({
+    headSha: undefined, reviewCompleted: false, reviewHeadSha: null,
+    codexReaction: "thumbs_up", reviewRequestHeadSha: undefined,
+  })).state, STATES.WAITING_FOR_REVIEW);
+});
 test("unresolved actionable threads block readiness", () =>
   assert.equal(nextState(base({ unresolvedActionableThreads: 1 })).state, STATES.ADDRESSING_FEEDBACK));
 test("failed CI retries once and blocks on the repeated cause", () => {
