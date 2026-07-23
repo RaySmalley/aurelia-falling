@@ -5,6 +5,7 @@ import { nextState, STATES } from "../.codex/skills/github-resolve-merge-pr/scri
 const base = (overrides = {}) => ({
   authorized: true, labelled: true, sameRepository: true, withinScope: true,
   changedFiles: 4, changedLines: 120, headSha: "new", reviewHeadSha: "new",
+  riskAssessed: true, forbiddenRisks: [], rollbackSafe: true,
   reviewCompleted: true, unresolvedActionableThreads: 0, checks: ["success"],
   ready: true, reviewsSatisfied: true, conversationsResolved: true, baseCurrent: true,
   mergeable: true, stablePolls: 2, stableMinutes: 2, localSyncSafe: true, ...overrides,
@@ -28,6 +29,8 @@ test("failed CI retries once and blocks on the repeated cause", () => {
 });
 test("forbidden risk is terminal", () =>
   assert.equal(nextState(base({ forbiddenRisks: ["deployment"] })).state, STATES.BLOCKED));
+test("missing reviewed risk assessment is ineligible", () =>
+  assert.equal(nextState(base({ riskAssessed: undefined })).state, STATES.BLOCKED));
 test("unknown diff size is ineligible", () =>
   assert.equal(nextState(base({ changedLines: undefined })).state, STATES.BLOCKED));
 test("missing required-check data cannot become ready", () =>
@@ -40,5 +43,7 @@ test("more than three repair cycles is terminal", () =>
   assert.equal(nextState(base({ repairCycles: 4 })).state, STATES.BLOCKED));
 test("dirty-checkout risk blocks local finalization", () =>
   assert.equal(nextState(base({ merged: true, localSyncSafe: false })).state, STATES.BLOCKED));
+test("required deployment keeps a merged PR finalizing", () =>
+  assert.equal(nextState(base({ merged: true, finalized: true, deploymentRequired: true })).state, STATES.FINALIZING));
 test("successful merge finalization completes", () =>
   assert.equal(nextState(base({ merged: true, finalized: true })).state, STATES.COMPLETE));

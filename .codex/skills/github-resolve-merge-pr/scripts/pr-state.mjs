@@ -26,20 +26,25 @@ export function eligibility(x) {
   if (!x.withinScope) return "change expanded beyond the approved request";
   if (!Number.isInteger(x.changedFiles) || !Number.isInteger(x.changedLines))
     return "changed-file and changed-line counts are required";
+  if (x.riskAssessed !== true || !Array.isArray(x.forbiddenRisks))
+    return "reviewed risk assessment is required";
+  if (x.rollbackSafe !== true) return "safe rollback is not established";
   if (x.changedFiles > (x.maxFiles ?? 10)) return "changed-file limit exceeded";
   if (x.changedLines > (x.maxLines ?? 500)) return "changed-line limit exceeded";
   if (x.unexplainedGenerated) return "unexplained generated files";
   if (x.unrelatedRefactor) return "unrelated refactoring";
-  if (x.forbiddenRisks?.length) return `forbidden risk: ${x.forbiddenRisks.join(", ")}`;
+  if (x.forbiddenRisks.length) return `forbidden risk: ${x.forbiddenRisks.join(", ")}`;
   return null;
 }
 
 export function nextState(x) {
   if (x.merged) {
     if (!x.localSyncSafe) return result(STATES.BLOCKED, "local synchronization would risk user work");
-    return x.finalized
-      ? result(STATES.COMPLETE, "merge and safe finalization confirmed")
-      : result(STATES.FINALIZING, "merge confirmed; finalize branches, checkout, task, and deployment");
+    if (x.deploymentRequired && x.deploymentFailed)
+      return result(STATES.BLOCKED, "required deployment failed");
+    if (!x.finalized || (x.deploymentRequired && x.deploymentSucceeded !== true))
+      return result(STATES.FINALIZING, "merge confirmed; finalize branches, checkout, task, and deployment");
+    return result(STATES.COMPLETE, "merge and safe finalization confirmed");
   }
   const ineligible = eligibility(x);
   if (ineligible) return result(STATES.BLOCKED, ineligible);
