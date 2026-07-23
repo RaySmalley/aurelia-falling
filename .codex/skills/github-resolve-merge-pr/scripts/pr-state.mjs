@@ -16,7 +16,8 @@ export const FORBIDDEN_RISKS = Object.freeze([
 
 const result = (state, reason) => ({ state, reason });
 const hasSha = (value) => typeof value === "string" && value.trim().length > 0;
-const cleanCodexReaction = (value) => value === "+1" || value === "thumbs_up";
+const cleanCodexReaction = (value) =>
+  value === "+1" || value === "thumbs_up" || value === "THUMBS_UP";
 const timestamp = (value) => typeof value === "string" ? Date.parse(value) : Number.NaN;
 const currentReview = (x) => {
   if (!hasSha(x.headSha)) return false;

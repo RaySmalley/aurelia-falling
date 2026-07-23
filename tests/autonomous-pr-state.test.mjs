@@ -34,6 +34,11 @@ test("normalized thumbs_up remains a completed clean review", () =>
     reviewCompleted: false, reviewHeadSha: null, codexReaction: "thumbs_up",
     reviewRequestHeadSha: "new",
   })).state, STATES.READY_TO_MERGE));
+test("GraphQL THUMBS_UP is a completed clean review", () =>
+  assert.equal(nextState(base({
+    reviewCompleted: false, reviewHeadSha: null, codexReaction: "THUMBS_UP",
+    reviewRequestHeadSha: "new",
+  })).state, STATES.READY_TO_MERGE));
 test("stale or undated clean reactions cannot satisfy the current-head gate", () => {
   assert.equal(nextState(base({
     reviewCompleted: false, reviewHeadSha: null, codexReaction: "+1",
