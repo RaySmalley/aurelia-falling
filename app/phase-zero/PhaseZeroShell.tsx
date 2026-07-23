@@ -538,7 +538,10 @@ export default function SkirmishShell() {
         </div>
         <div className="resource-bar" aria-label="Economy status">
           <div>
-            <span>CREDITS</span>
+            <span className="resource-label">
+              <i className="aurelite-icon" aria-hidden="true" />
+              CREDITS
+            </span>
             <strong>{player.credits.toLocaleString()}</strong>
           </div>
           <div className={player.lowPower ? "warning" : ""}>
@@ -564,8 +567,8 @@ export default function SkirmishShell() {
             </button>
           )}
           <div className="phase-badge">
-            <span>PHASE 6</span>
-            <strong>POLISHED RELEASE</strong>
+            <span>PHASE 9</span>
+            <strong>BATTLEFIELD ART</strong>
           </div>
         </div>
       </header>
@@ -911,14 +914,9 @@ export default function SkirmishShell() {
             ) : selectedStructure ? (
               <div
                 className={`asset-portrait structure-portrait portrait-${selectedStructure.kind}`}
-                aria-hidden="true"
-              >
-                {selectedStructure.displayName
-                  .split(" ")
-                  .map((word) => word[0])
-                  .join("")
-                  .slice(0, 3)}
-              </div>
+                role="img"
+                aria-label={`${selectedStructure.displayName} portrait`}
+              />
             ) : null}
             <div className="panel-heading">
               <p className="eyebrow">SELECTED ASSET</p>

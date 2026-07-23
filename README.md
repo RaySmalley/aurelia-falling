@@ -57,13 +57,17 @@ is dynamically imported behind the client-only React boundary in
 
 ## Current milestone
 
-Phase 6, the polished release, is implemented on the 64×64 Golden Scar map.
-The deterministic skirmish now adds a validated 8-facing industrial unit atlas,
-runtime Gold/Cyan team markers, stale fog silhouettes, structure selling,
-persistent battlefield zoom, reduced screen shake, promotional key art, and
-Easy/Normal/Hard AI pacing profiles derived from the canonical Normal ruleset.
-Phaser retries match assets twice and retains procedural unit silhouettes as a
-missing-asset fallback.
+Phase 9, battlefield art and operational readability, is implemented on the
+64×64 Golden Scar map. The deterministic skirmish now uses validated unit,
+structure, terrain, decal, and Aurelite atlases; runtime Gold/Cyan identity
+marks; stale fog silhouettes; damaged and construction presentation; atlas-
+derived portraits; and a segmented Harvester cargo meter. Phaser retries match
+assets twice and retains procedural unit, structure, terrain, and resource
+renderers as missing-asset fallbacks.
+
+Phases 7 and 8 also established the fixed viewport-height contract, Phaser
+containment, bounded command dock, internal overflow regions, and 90–110% UI
+scaling across the supported 1024×640 minimum and 1366×650 laptop baselines.
 
 The browser audio layer synthesizes original radio tones, selection and
 construction alerts, weapon and explosion effects, warnings, and an industrial
@@ -76,15 +80,15 @@ frozen snapshots and never mutate simulation state. Choose a deterministic seed
 and AI pacing profile in match setup, then build through the Oracle, keep it
 powered, and arm the Solar Spear before selecting currently visible ground.
 
-Phase 6 compressed assets are verified with `npm run assets:validate`. The menu
+Compressed assets are verified with `npm run assets:validate`. The menu
 transfer remains below 3 MB, the complete match payload below 20 MB, and every
 atlas edge below 2048 pixels.
 
 ## Planning
 
-The implemented Phase 0-6 baseline is recorded in the
+The initial Phase 0-6 baseline is recorded in the
 [initial v1 implementation plan](docs/initial-v1-implementation-plan.md).
-Current work is sequenced in the
+The completed Phase 7-9 presentation work and next scaling phases are sequenced in the
 [development roadmap](docs/development-roadmap.md), with detailed supporting
 plans for viewport fit, four-player scaling, and the deferred TypeScript 7
 transition under `docs/`.

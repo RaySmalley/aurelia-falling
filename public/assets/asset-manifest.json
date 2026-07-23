@@ -1,0 +1,55 @@
+{
+  "version": 2,
+  "budgets": {
+    "maxAtlasDimension": 2048,
+    "menuCompressedBytes": 3145728,
+    "matchCompressedBytes": 20971520
+  },
+  "assets": [
+    {
+      "path": "public/assets/phase-six/golden-scar-key-art.webp",
+      "width": 1672,
+      "height": 941,
+      "scopes": ["menu"]
+    },
+    {
+      "path": "public/assets/phase-six/unit-facing-atlas.webp",
+      "width": 1280,
+      "height": 1248,
+      "alpha": true,
+      "scopes": ["menu", "match"],
+      "atlas": {
+        "columns": 8,
+        "rows": 6,
+        "frameWidth": 160,
+        "frameHeight": 208
+      }
+    },
+    {
+      "path": "public/assets/phase-nine/structure-atlas.webp",
+      "width": 1024,
+      "height": 576,
+      "alpha": true,
+      "scopes": ["menu", "match"],
+      "atlas": {
+        "columns": 4,
+        "rows": 2,
+        "frameWidth": 256,
+        "frameHeight": 288
+      }
+    },
+    {
+      "path": "public/assets/phase-nine/battlefield-atlas.webp",
+      "width": 1024,
+      "height": 576,
+      "alpha": true,
+      "scopes": ["menu", "match"],
+      "atlas": {
+        "columns": 4,
+        "rows": 2,
+        "frameWidth": 256,
+        "frameHeight": 288
+      }
+    }
+  ]
+}

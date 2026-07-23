@@ -190,9 +190,9 @@ test("Phase 6 presentation, keyboard focus, and retry hooks are integrated", asy
 test("Phase 6 assets satisfy dimensions and transfer budgets", () => {
   const result = spawnSync(
     process.execPath,
-    ["scripts/validate-phase-six-assets.mjs"],
+    ["scripts/validate-assets.mjs"],
     { cwd: root, encoding: "utf8" },
   );
   assert.equal(result.status, 0, result.stderr || result.stdout);
-  assert.match(result.stdout, /Phase 6 assets valid/);
+  assert.match(result.stdout, /Assets valid/);
 });
