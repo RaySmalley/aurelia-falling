@@ -19,17 +19,17 @@ const hasSha = (value) => typeof value === "string" && value.trim().length > 0;
 const cleanCodexReaction = (value) => value === "+1" || value === "thumbs_up";
 const currentReview = (x) =>
   hasSha(x.headSha) && (
-    (x.reviewCompleted && hasSha(x.reviewHeadSha) && x.reviewHeadSha === x.headSha) ||
+    (x.reviewCompleted === true && hasSha(x.reviewHeadSha) && x.reviewHeadSha === x.headSha) ||
     (cleanCodexReaction(x.codexReaction) && hasSha(x.reviewRequestHeadSha) &&
       x.reviewRequestHeadSha === x.headSha)
   );
 
 export function eligibility(x) {
-  if (!x.authorized) return "missing explicit authorization";
-  if (!x.labelled) return "missing codex-autonomous label";
-  if (!x.sameRepository) return "head branch is not in the base repository";
+  if (x.authorized !== true) return "missing explicit authorization";
+  if (x.labelled !== true) return "missing codex-autonomous label";
+  if (x.sameRepository !== true) return "head branch is not in the base repository";
   if (x.ready !== true) return "pull request is not ready for review";
-  if (!x.withinScope) return "change expanded beyond the approved request";
+  if (x.withinScope !== true) return "change expanded beyond the approved request";
   if (!Number.isInteger(x.changedFiles) || !Number.isInteger(x.changedLines))
     return "changed-file and changed-line counts are required";
   if (x.riskAssessed !== true || !Array.isArray(x.forbiddenRisks))
@@ -44,11 +44,11 @@ export function eligibility(x) {
 }
 
 export function nextState(x) {
-  if (x.merged) {
-    if (!x.localSyncSafe) return result(STATES.BLOCKED, "local synchronization would risk user work");
+  if (x.merged === true) {
+    if (x.localSyncSafe !== true) return result(STATES.BLOCKED, "local synchronization would risk user work");
     if (x.deploymentRequired && x.deploymentFailed)
       return result(STATES.BLOCKED, "required deployment failed");
-    if (!x.finalized || (x.deploymentRequired && x.deploymentSucceeded !== true))
+    if (x.finalized !== true || (x.deploymentRequired && x.deploymentSucceeded !== true))
       return result(STATES.FINALIZING, "merge confirmed; finalize branches, checkout, task, and deployment");
     return result(STATES.COMPLETE, "merge and safe finalization confirmed");
   }
@@ -82,9 +82,10 @@ export function nextState(x) {
   const pending = x.checks.some((c) => running.includes(c));
   if (failed) return result(STATES.ADDRESSING_FEEDBACK, "repair or retry required checks");
   if (pending) return result(STATES.WAITING_FOR_REREVIEW, "required checks are still pending");
-  if (!x.reviewsSatisfied || !x.conversationsResolved || !x.baseCurrent)
+  if (x.reviewsSatisfied !== true || x.conversationsResolved !== true || x.baseCurrent !== true)
     return result(STATES.WAITING_FOR_REREVIEW, "merge gates are not yet satisfied");
-  if ((x.stablePolls ?? 0) < 2 || (x.stableMinutes ?? 0) < 2)
+  if (!Number.isInteger(x.stablePolls) || x.stablePolls < 2 ||
+      !Number.isFinite(x.stableMinutes) || x.stableMinutes < 2)
     return result(STATES.WAITING_FOR_REREVIEW, "await the second unchanged poll");
   return result(STATES.READY_TO_MERGE, "all autonomous completion gates satisfied");
 }

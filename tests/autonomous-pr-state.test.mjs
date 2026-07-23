@@ -75,6 +75,19 @@ test("forbidden risk is terminal", () =>
   assert.equal(nextState(base({ forbiddenRisks: ["deployment"] })).state, STATES.BLOCKED));
 test("missing reviewed risk assessment is ineligible", () =>
   assert.equal(nextState(base({ riskAssessed: undefined })).state, STATES.BLOCKED));
+test("allow-path booleans must be explicitly true", () => {
+  for (const key of ["authorized", "labelled", "sameRepository", "withinScope"]) {
+    assert.equal(nextState(base({ [key]: "false" })).state, STATES.BLOCKED);
+  }
+  assert.equal(nextState(base({ reviewCompleted: "false" })).state, STATES.WAITING_FOR_REVIEW);
+  for (const key of ["reviewsSatisfied", "conversationsResolved", "baseCurrent"]) {
+    assert.equal(nextState(base({ [key]: "false" })).state, STATES.WAITING_FOR_REREVIEW);
+  }
+  assert.equal(
+    nextState(base({ merged: true, finalized: "false" })).state,
+    STATES.FINALIZING,
+  );
+});
 test("unknown diff size is ineligible", () =>
   assert.equal(nextState(base({ changedLines: undefined })).state, STATES.BLOCKED));
 test("missing required-check data cannot become ready", () =>
@@ -89,6 +102,14 @@ test("an explicitly bounded resumed cycle can proceed", () =>
   assert.equal(nextState(base({ repairCycles: 4, maxRepairCycles: 4 })).state, STATES.READY_TO_MERGE));
 test("unknown mergeability cannot become ready", () =>
   assert.equal(nextState(base({ mergeable: null })).state, STATES.WAITING_FOR_REREVIEW));
+test("stability evidence requires finite numeric values", () => {
+  for (const stablePolls of [undefined, null, "2", 2.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.equal(nextState(base({ stablePolls })).state, STATES.WAITING_FOR_REREVIEW);
+  }
+  for (const stableMinutes of [undefined, null, "2", Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.equal(nextState(base({ stableMinutes })).state, STATES.WAITING_FOR_REREVIEW);
+  }
+});
 test("dirty-checkout risk blocks local finalization", () =>
   assert.equal(nextState(base({ merged: true, localSyncSafe: false })).state, STATES.BLOCKED));
 test("required deployment keeps a merged PR finalizing", () =>
