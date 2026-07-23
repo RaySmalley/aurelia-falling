@@ -21,7 +21,12 @@ test("multiple repair cycles remain addressable below the cap", () =>
   assert.equal(nextState(base({ repairCycles: 3, unresolvedActionableThreads: 2 })).state, STATES.ADDRESSING_FEEDBACK));
 test("an outdated review cannot satisfy the SHA gate", () =>
   assert.equal(nextState(base({ reviewHeadSha: "old", repairCycles: 1 })).state, STATES.WAITING_FOR_REREVIEW));
-test("current-head thumbs up is a completed clean review", () =>
+test("current-head +1 is a completed clean review", () =>
+  assert.equal(nextState(base({
+    reviewCompleted: false, reviewHeadSha: null, codexReaction: "+1",
+    reviewRequestHeadSha: "new",
+  })).state, STATES.READY_TO_MERGE));
+test("normalized thumbs_up remains a completed clean review", () =>
   assert.equal(nextState(base({
     reviewCompleted: false, reviewHeadSha: null, codexReaction: "thumbs_up",
     reviewRequestHeadSha: "new",
@@ -42,7 +47,7 @@ test("review evidence requires non-empty matching SHAs", () => {
   })).state, STATES.WAITING_FOR_REVIEW);
   assert.equal(nextState(base({
     headSha: undefined, reviewCompleted: false, reviewHeadSha: null,
-    codexReaction: "thumbs_up", reviewRequestHeadSha: undefined,
+    codexReaction: "+1", reviewRequestHeadSha: undefined,
   })).state, STATES.WAITING_FOR_REVIEW);
 });
 test("unresolved actionable threads block readiness", () =>

@@ -16,10 +16,11 @@ export const FORBIDDEN_RISKS = Object.freeze([
 
 const result = (state, reason) => ({ state, reason });
 const hasSha = (value) => typeof value === "string" && value.trim().length > 0;
+const cleanCodexReaction = (value) => value === "+1" || value === "thumbs_up";
 const currentReview = (x) =>
   hasSha(x.headSha) && (
     (x.reviewCompleted && hasSha(x.reviewHeadSha) && x.reviewHeadSha === x.headSha) ||
-    (x.codexReaction === "thumbs_up" && hasSha(x.reviewRequestHeadSha) &&
+    (cleanCodexReaction(x.codexReaction) && hasSha(x.reviewRequestHeadSha) &&
       x.reviewRequestHeadSha === x.headSha)
   );
 
