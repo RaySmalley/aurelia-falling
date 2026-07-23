@@ -8,11 +8,18 @@
 - Use Node.js 24.18.0 for local development, builds, and deterministic test runs.
 - Run local development and production servers on port 4000 unless the user explicitly requests another port.
 
-## Pull request review workflow
+## Code Review Rules
 
-- Large changes must use a `codex/*` branch and merge through a pull request. Large changes include new phases or features, architecture or simulation changes, and substantial multi-file refactors.
-- Small, low-risk maintenance such as focused documentation, configuration, or typo fixes may be committed directly to `main` after appropriate verification.
-- When addressing a pull request review comment, implement and verify the fix first. Once the issue is resolved, reply in the original review thread with a concise summary of the change and verification performed, then mark the thread as resolved.
+- Large changes must use a `codex/*` branch and merge through a pull request. Small, low-risk documentation, configuration, or typo fixes may be committed directly to `main` after appropriate verification.
+- Use `$github-resolve-merge-pr` for autonomous completion only when the initiating user explicitly authorizes it, the ready PR has `codex-autonomous`, its head branch is in this repository, and the diff stays within the request.
+- Default autonomous eligibility is at most 10 changed files and 500 changed lines, excluding generated lockfile churn for an otherwise eligible dependency change. Reject unexplained generated files and unrelated refactors.
+- Never autonomously merge authentication or authorization, secrets or permissions, billing or financial logic, destructive migrations, customer-data privacy/retention/deletion, production infrastructure/network/DNS/access policy, deployment/rollback/backup behavior, major dependency upgrades, breaking public APIs, non-trivial security behavior, or changes without a safe rollback.
+- Track `WAITING_FOR_REVIEW`, `ADDRESSING_FEEDBACK`, `WAITING_FOR_REREVIEW`, `READY_TO_MERGE`, `FINALIZING`, `COMPLETE`, or `BLOCKED` in `work/autonomous-pr/pr-<number>.json`. Record each head SHA, repair and CI retry counts, recurring findings, replies/resolutions, merge SHA, and deployment result.
+- A Codex Cloud review counts only when its completed review is attached to the current head SHA. Re-fetch thread-aware state; repair only unresolved actionable findings; trace each edit to a finding; run focused and required validation; commit and push; reply with the change, commit, and validation; then resolve the thread and await review of the new SHA.
+- Merge with squash only after all skill gates pass, including two unchanged polls at least two minutes apart. Do not enable native auto-merge unless current-head Codex review is an enforced required gate.
+- Block instead of guessing for a repeated substantive finding after two fixes, more than three repair cycles, a 30-minute current-head review timeout, the same check failure twice after allowed retries, ambiguous or contradictory feedback, scope expansion, forbidden risk, unsatisfied protections/permissions, unsafe rollback, or unsafe local synchronization.
+- After merge, confirm the GitHub result and remote branch deletion, preserve dirty work, fetch/prune, fast-forward local `main`, verify the merge, and delete the local topic branch only when it has no unpushed work and is not checked out.
+- Keep the computer and Codex project available while the three-minute PR babysitter runs. Stop and delete that task at `COMPLETE` or `BLOCKED`.
 
 ## Post-merge Sites cleanup
 

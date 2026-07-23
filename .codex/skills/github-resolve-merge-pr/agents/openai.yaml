@@ -1,0 +1,4 @@
+interface:
+  display_name: "Resolve and Merge PR"
+  short_description: "Converge low-risk PR reviews and merge safely"
+  default_prompt: "Use $github-resolve-merge-pr to advance the opted-in pull request by one safe state transition."
