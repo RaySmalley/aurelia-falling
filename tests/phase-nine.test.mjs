@@ -11,9 +11,8 @@ const vite = await createServer({
   configFile: false,
   server: { middlewareMode: true },
 });
-const { structureContainsWorldPoint } = await vite.ssrLoadModule(
-  "/app/game/bootstrap.ts",
-);
+const { pickStructureAtWorldPoint, structureContainsWorldPoint } =
+  await vite.ssrLoadModule("/app/game/bootstrap.ts");
 
 test.after(() => vite.close());
 
@@ -45,6 +44,41 @@ test("Phase 9 structure hit tests follow rendered atlas bounds", () => {
     structureContainsWorldPoint(citadel, { x: 55, y: anchor.y }, false),
     false,
     "the procedural fallback should retain its compact legacy radius",
+  );
+});
+
+test("Phase 9 overlapping structure hits follow rendered depth", () => {
+  const citadel = {
+    id: 1,
+    kind: "citadel",
+    playerId: 1,
+    tile: { x: 10, y: 10 },
+  };
+  const reactor = {
+    id: 2,
+    kind: "reactor",
+    playerId: 1,
+    tile: { x: 10, y: 9 },
+  };
+  const roofPoint = { x: 0, y: 228 };
+
+  assert.equal(
+    structureContainsWorldPoint(citadel, roofPoint, true),
+    true,
+  );
+  assert.equal(
+    structureContainsWorldPoint(reactor, roofPoint, true),
+    true,
+  );
+  assert.equal(
+    pickStructureAtWorldPoint(
+      [citadel, reactor],
+      roofPoint,
+      1,
+      true,
+    ),
+    citadel,
+    "the lower-screen Citadel is rendered above the closer Reactor",
   );
 });
 

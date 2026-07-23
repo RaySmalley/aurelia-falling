@@ -82,6 +82,10 @@ function gridToWorld(point: Vec2) {
   };
 }
 
+function structureRenderDepth(tile: Vec2) {
+  return 9 + gridToWorld(tile).y / 10_000;
+}
+
 function fixedToWorld(point: Vec2) {
   return gridToWorld({
     x: point.x / TILE_MILLI,
@@ -112,6 +116,48 @@ export function structureContainsWorldPoint(
     localY >= -height * STRUCTURE_ATLAS_ORIGIN_Y &&
     localY <= height * (1 - STRUCTURE_ATLAS_ORIGIN_Y)
   );
+}
+
+type StructureHitTarget = Pick<
+  StructureSnapshot,
+  "id" | "kind" | "playerId" | "tile"
+>;
+
+export function pickStructureAtWorldPoint<T extends StructureHitTarget>(
+  structures: readonly T[],
+  point: Vec2,
+  playerId: StructureSnapshot["playerId"],
+  atlasAvailable: boolean,
+) {
+  return structures
+    .filter((structure) => structure.playerId === playerId)
+    .map((structure) => {
+      const world = gridToWorld(structure.tile);
+      const dx = world.x - point.x;
+      const dy = world.y - point.y;
+      return {
+        structure,
+        renderDepth: structureRenderDepth(structure.tile),
+        distanceSquared: dx * dx + dy * dy,
+      };
+    })
+    .filter((candidate) =>
+      structureContainsWorldPoint(
+        candidate.structure,
+        point,
+        atlasAvailable,
+      ),
+    )
+    .sort((left, right) => {
+      const depthOrder = atlasAvailable
+        ? right.renderDepth - left.renderDepth
+        : 0;
+      return (
+        depthOrder ||
+        left.distanceSquared - right.distanceSquared ||
+        left.structure.id - right.structure.id
+      );
+    })[0]?.structure;
 }
 
 function canCreateWebGLContext() {
@@ -852,7 +898,7 @@ export async function createGameRuntime(
       children.push(teamMark, status);
       const container = this.add
         .container(world.x, world.y, children)
-        .setDepth(9 + world.y / 10_000)
+        .setDepth(structureRenderDepth(structure.tile))
         .setName(
           stale
             ? `stale-structure-${structure.id}`
@@ -1366,28 +1412,12 @@ export async function createGameRuntime(
       point: Phaser.Math.Vector2,
       playerId: 1 | 2,
     ) {
-      return lastSnapshot.structures
-        .filter((structure) => structure.playerId === playerId)
-        .map((structure) => {
-          const world = gridToWorld(structure.tile);
-          const dx = world.x - point.x;
-          const dy = world.y - point.y;
-          return {
-            structure,
-            distanceSquared: dx * dx + dy * dy,
-            containsPoint: structureContainsWorldPoint(
-              structure,
-              point,
-              this.textures.exists("structure-atlas"),
-            ),
-          };
-        })
-        .filter((candidate) => candidate.containsPoint)
-        .sort(
-          (left, right) =>
-            left.distanceSquared - right.distanceSquared ||
-            left.structure.id - right.structure.id,
-        )[0]?.structure;
+      return pickStructureAtWorldPoint(
+        lastSnapshot.structures,
+        point,
+        playerId,
+        this.textures.exists("structure-atlas"),
+      );
     }
   }
 
