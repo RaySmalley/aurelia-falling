@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
-    "next": "16.2.10",
+    "next": "16.2.11",
     "phaser": "^4.2.1",
     "react": "19.2.7",
     "react-dom": "19.2.7"
@@ -36,7 +36,7 @@
     "@vitejs/plugin-rsc": "0.5.28",
     "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
-    "eslint-config-next": "16.2.10",
+    "eslint-config-next": "16.2.11",
     "react-server-dom-webpack": "19.2.7",
     "tailwindcss": "4.3.3",
     "typescript": "6.0.3",
@@ -48,6 +48,8 @@
     "@esbuild-kit/core-utils": {
       "esbuild": "0.25.12"
     },
+    "fast-uri": "3.1.4",
+    "sharp": "0.35.3",
     "postcss": "8.5.20"
   },
   "type": "module"
