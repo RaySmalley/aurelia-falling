@@ -131,13 +131,14 @@ export function pickStructureAtWorldPoint<T extends StructureHitTarget>(
 ) {
   return structures
     .filter((structure) => structure.playerId === playerId)
-    .map((structure) => {
+    .map((structure, snapshotOrder) => {
       const world = gridToWorld(structure.tile);
       const dx = world.x - point.x;
       const dy = world.y - point.y;
       return {
         structure,
         renderDepth: structureRenderDepth(structure.tile),
+        snapshotOrder,
         distanceSquared: dx * dx + dy * dy,
       };
     })
@@ -152,8 +153,12 @@ export function pickStructureAtWorldPoint<T extends StructureHitTarget>(
       const depthOrder = atlasAvailable
         ? right.renderDepth - left.renderDepth
         : 0;
+      const displayOrder = atlasAvailable
+        ? right.snapshotOrder - left.snapshotOrder
+        : 0;
       return (
         depthOrder ||
+        displayOrder ||
         left.distanceSquared - right.distanceSquared ||
         left.structure.id - right.structure.id
       );

@@ -82,6 +82,41 @@ test("Phase 9 overlapping structure hits follow rendered depth", () => {
   );
 });
 
+test("Phase 9 same-depth hits follow snapshot display order", () => {
+  const earlierCitadel = {
+    id: 1,
+    kind: "citadel",
+    playerId: 1,
+    tile: { x: 10, y: 10 },
+  };
+  const laterReactor = {
+    id: 2,
+    kind: "reactor",
+    playerId: 1,
+    tile: { x: 11, y: 9 },
+  };
+  const overlapPoint = { x: 20, y: 300 };
+
+  assert.equal(
+    structureContainsWorldPoint(earlierCitadel, overlapPoint, true),
+    true,
+  );
+  assert.equal(
+    structureContainsWorldPoint(laterReactor, overlapPoint, true),
+    true,
+  );
+  assert.equal(
+    pickStructureAtWorldPoint(
+      [earlierCitadel, laterReactor],
+      overlapPoint,
+      1,
+      true,
+    ),
+    laterReactor,
+    "the later snapshot entry is drawn above same-depth structures",
+  );
+});
+
 test("Phase 9 atlases preserve deterministic procedural fallbacks", async () => {
   const bootstrap = await readFile(
     new URL("../app/game/bootstrap.ts", import.meta.url),
