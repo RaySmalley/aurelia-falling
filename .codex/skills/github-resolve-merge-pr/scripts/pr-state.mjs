@@ -64,6 +64,8 @@ export function nextState(x) {
   if (x.mergeable === false) return result(STATES.BLOCKED, "pull request has conflicts");
   if (x.mergeable !== true)
     return result(STATES.WAITING_FOR_REREVIEW, "pull request mergeability is still unknown");
+  if (Number.isInteger(x.unresolvedActionableThreads) && x.unresolvedActionableThreads > 0)
+    return result(STATES.ADDRESSING_FEEDBACK, "repair unresolved actionable review threads");
   if (!currentReview(x)) {
     return result(
       (x.repairCycles ?? 0) > 0 ? STATES.WAITING_FOR_REREVIEW : STATES.WAITING_FOR_REVIEW,
@@ -72,8 +74,6 @@ export function nextState(x) {
   }
   if (!Number.isInteger(x.unresolvedActionableThreads) || x.unresolvedActionableThreads < 0)
     return result(STATES.WAITING_FOR_REREVIEW, "review-thread state is missing or invalid");
-  if (x.unresolvedActionableThreads > 0)
-    return result(STATES.ADDRESSING_FEEDBACK, "repair unresolved actionable review threads");
   if (!Array.isArray(x.checks) || x.checks.length === 0)
     return result(STATES.WAITING_FOR_REREVIEW, "required-check data is missing");
   const accepted = ["success", "skipped", "neutral"];

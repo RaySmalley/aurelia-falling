@@ -52,6 +52,13 @@ test("review evidence requires non-empty matching SHAs", () => {
 });
 test("unresolved actionable threads block readiness", () =>
   assert.equal(nextState(base({ unresolvedActionableThreads: 1 })).state, STATES.ADDRESSING_FEEDBACK));
+test("current-head actionable threads enter repair before clean review completion", () =>
+  assert.equal(nextState(base({
+    reviewCompleted: false,
+    reviewHeadSha: null,
+    codexReaction: null,
+    unresolvedActionableThreads: 1,
+  })).state, STATES.ADDRESSING_FEEDBACK));
 test("unknown review-thread state cannot become ready", () => {
   for (const unresolvedActionableThreads of [undefined, null, -1, 0.5]) {
     assert.equal(
