@@ -96,6 +96,16 @@ test("unknown review-thread state cannot become ready", () => {
     );
   }
 });
+test("unknown review-thread state does not trigger the review timeout", () => {
+  for (const unresolvedActionableThreads of [undefined, null, -1, 0.5]) {
+    assert.equal(nextState(base({
+      reviewCompleted: false,
+      reviewHeadSha: null,
+      reviewWaitMinutes: 30,
+      unresolvedActionableThreads,
+    })).state, STATES.WAITING_FOR_REVIEW);
+  }
+});
 test("failed CI retries once and blocks on the repeated cause", () => {
   assert.equal(nextState(base({ checks: ["failure"], sameCheckFailures: 1 })).state, STATES.ADDRESSING_FEEDBACK);
   assert.equal(nextState(base({ checks: ["failure"], sameCheckFailures: 2 })).state, STATES.BLOCKED);
