@@ -91,8 +91,9 @@ export function nextState(x) {
     return result(STATES.WAITING_FOR_REREVIEW, "required-check data is missing");
   const accepted = ["success", "skipped", "neutral"];
   const running = ["queued", "in_progress", "pending", "requested", "waiting"];
-  const failed = x.checks.some((c) => !accepted.includes(c) && !running.includes(c));
-  const pending = x.checks.some((c) => running.includes(c));
+  const checks = x.checks.map((c) => typeof c === "string" ? c.toLowerCase() : c);
+  const failed = checks.some((c) => !accepted.includes(c) && !running.includes(c));
+  const pending = checks.some((c) => running.includes(c));
   if (failed) return result(STATES.ADDRESSING_FEEDBACK, "repair or retry required checks");
   if (pending) return result(STATES.WAITING_FOR_REREVIEW, "required checks are still pending");
   if (x.reviewsSatisfied !== true || x.conversationsResolved !== true || x.baseCurrent !== true)
