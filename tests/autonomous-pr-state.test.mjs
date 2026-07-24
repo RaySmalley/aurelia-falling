@@ -5,11 +5,14 @@ import { nextState, STATES } from "../.codex/skills/github-resolve-merge-pr/scri
 const base = (overrides = {}) => ({
   authorized: true, labelled: true, sameRepository: true, withinScope: true,
   changedFiles: 4, changedLines: 120, headSha: "new", reviewHeadSha: "new",
+  maxFiles: 10, maxLines: 500, unexplainedGenerated: false, unrelatedRefactor: false,
   riskAssessed: true, forbiddenRisks: [], rollbackSafe: true,
   reviewCompleted: true, unresolvedActionableThreads: 0, checks: ["success"],
   reviewRequestCreatedAt: "2026-07-23T12:00:00Z",
   codexReactionCreatedAt: "2026-07-23T12:01:00Z",
   deploymentConfigured: false, deploymentRequired: false,
+  repairCycles: 0, maxRepairCycles: 3, sameFindingFixes: 0,
+  reviewWaitMinutes: 0, sameCheckFailures: 0,
   ready: true, reviewsSatisfied: true, conversationsResolved: true, baseCurrent: true,
   mergeable: true, stablePolls: 2, stableMinutes: 2, localSyncSafe: true, ...overrides,
 });
@@ -21,7 +24,7 @@ test("one repair moves through feedback and rereview", () => {
   assert.equal(nextState(base({ repairCycles: 1, reviewHeadSha: "old" })).state, STATES.WAITING_FOR_REREVIEW);
 });
 test("multiple repair cycles remain addressable below the cap", () =>
-  assert.equal(nextState(base({ repairCycles: 3, unresolvedActionableThreads: 2 })).state, STATES.ADDRESSING_FEEDBACK));
+  assert.equal(nextState(base({ repairCycles: 2, unresolvedActionableThreads: 2 })).state, STATES.ADDRESSING_FEEDBACK));
 test("an outdated review cannot satisfy the SHA gate", () =>
   assert.equal(nextState(base({ reviewHeadSha: "old", repairCycles: 1 })).state, STATES.WAITING_FOR_REREVIEW));
 test("current-head +1 is a completed clean review", () =>
@@ -129,6 +132,12 @@ test("allow-path booleans must be explicitly true", () => {
 });
 test("unknown diff size is ineligible", () =>
   assert.equal(nextState(base({ changedLines: undefined })).state, STATES.BLOCKED));
+test("eligibility size and assessment inputs fail closed", () => {
+  for (const overrides of [
+    { changedFiles: -1 }, { maxLines: "500" },
+    { unexplainedGenerated: undefined }, { unrelatedRefactor: undefined },
+  ]) assert.equal(nextState(base(overrides)).state, STATES.BLOCKED);
+});
 test("missing required-check data cannot become ready", () =>
   assert.equal(nextState(base({ checks: [] })).state, STATES.WAITING_FOR_REREVIEW));
 test("a draft or unready PR is ineligible", () =>
@@ -142,10 +151,22 @@ test("GraphQL check enums are normalized before gating", () => {
 });
 test("more than three repair cycles is terminal", () =>
   assert.equal(nextState(base({ repairCycles: 4 })).state, STATES.BLOCKED));
+test("a new finding at the repair cap is terminal", () =>
+  assert.equal(nextState(base({
+    repairCycles: 3, unresolvedActionableThreads: 1,
+  })).state, STATES.BLOCKED));
 test("an explicitly bounded resumed cycle can proceed", () =>
   assert.equal(nextState(base({ repairCycles: 4, maxRepairCycles: 4 })).state, STATES.READY_TO_MERGE));
 test("unknown mergeability cannot become ready", () =>
   assert.equal(nextState(base({ mergeable: null })).state, STATES.WAITING_FOR_REREVIEW));
+test("actionable threads are repaired before unknown mergeability", () =>
+  assert.equal(nextState(base({
+    mergeable: null, unresolvedActionableThreads: 1,
+  })).state, STATES.ADDRESSING_FEEDBACK));
+test("completion counters fail closed", () => {
+  for (const key of ["repairCycles", "maxRepairCycles", "sameFindingFixes", "reviewWaitMinutes", "sameCheckFailures"])
+    assert.equal(nextState(base({ [key]: "0" })).state, STATES.BLOCKED);
+});
 test("stability evidence requires finite numeric values", () => {
   for (const stablePolls of [undefined, null, "2", 2.5, Number.NaN, Number.POSITIVE_INFINITY]) {
     assert.equal(nextState(base({ stablePolls })).state, STATES.WAITING_FOR_REREVIEW);

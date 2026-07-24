@@ -19,6 +19,8 @@ dismissal, or native auto-merge without a required current-head Codex-review gat
 Record PR URL, base/head branches, current SHA, state, timestamps, changed files/lines, risk result,
 repair cycles, finding fingerprints and attempts, CI retries/causes, thread reply/resolution status,
 stable polls, blocker reason, merge SHA, branch cleanup, local sync, task ID, and deployment result.
+Require explicit, correctly typed safety counters and negative assessments; never rely on coercion
+or missing values to pass a gate.
 
 ## Converge reviews
 

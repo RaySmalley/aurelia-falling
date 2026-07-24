@@ -16,6 +16,8 @@ export const FORBIDDEN_RISKS = Object.freeze([
 
 const result = (state, reason) => ({ state, reason });
 const hasSha = (value) => typeof value === "string" && value.trim().length > 0;
+const nonnegativeInteger = (value) => Number.isInteger(value) && value >= 0;
+const positiveInteger = (value) => Number.isInteger(value) && value > 0;
 const cleanCodexReaction = (value) =>
   value === "+1" || value === "thumbs_up" || value === "THUMBS_UP";
 const timestamp = (value) => typeof value === "string" ? Date.parse(value) : Number.NaN;
@@ -37,15 +39,19 @@ export function eligibility(x) {
   if (x.sameRepository !== true) return "head branch is not in the base repository";
   if (x.ready !== true) return "pull request is not ready for review";
   if (x.withinScope !== true) return "change expanded beyond the approved request";
-  if (!Number.isInteger(x.changedFiles) || !Number.isInteger(x.changedLines))
+  if (!nonnegativeInteger(x.changedFiles) || !nonnegativeInteger(x.changedLines))
     return "changed-file and changed-line counts are required";
   if (x.riskAssessed !== true || !Array.isArray(x.forbiddenRisks))
     return "reviewed risk assessment is required";
   if (x.rollbackSafe !== true) return "safe rollback is not established";
-  if (x.changedFiles > (x.maxFiles ?? 10)) return "changed-file limit exceeded";
-  if (x.changedLines > (x.maxLines ?? 500)) return "changed-line limit exceeded";
-  if (x.unexplainedGenerated) return "unexplained generated files";
-  if (x.unrelatedRefactor) return "unrelated refactoring";
+  const maxFiles = x.maxFiles ?? 10;
+  const maxLines = x.maxLines ?? 500;
+  if (!positiveInteger(maxFiles) || !positiveInteger(maxLines))
+    return "valid changed-file and changed-line limits are required";
+  if (x.changedFiles > maxFiles) return "changed-file limit exceeded";
+  if (x.changedLines > maxLines) return "changed-line limit exceeded";
+  if (x.unexplainedGenerated !== false) return "unexplained generated files";
+  if (x.unrelatedRefactor !== false) return "unrelated refactoring";
   if (x.forbiddenRisks.length) return `forbidden risk: ${x.forbiddenRisks.join(", ")}`;
   return null;
 }
@@ -64,24 +70,32 @@ export function nextState(x) {
   }
   const ineligible = eligibility(x);
   if (ineligible) return result(STATES.BLOCKED, ineligible);
-  if ((x.repairCycles ?? 0) > (x.maxRepairCycles ?? 3))
+  if (!nonnegativeInteger(x.repairCycles) || !positiveInteger(x.maxRepairCycles) ||
+      !nonnegativeInteger(x.sameFindingFixes) ||
+      !Number.isFinite(x.reviewWaitMinutes) || x.reviewWaitMinutes < 0 ||
+      !nonnegativeInteger(x.sameCheckFailures))
+    return result(STATES.BLOCKED, "completion counters are missing or invalid");
+  if (x.repairCycles > x.maxRepairCycles)
     return result(STATES.BLOCKED, "repair-cycle limit exceeded");
-  if ((x.sameFindingFixes ?? 0) >= 2) return result(STATES.BLOCKED, "substantive finding repeated twice");
+  if (x.sameFindingFixes >= 2) return result(STATES.BLOCKED, "substantive finding repeated twice");
   const hasActionableThreads =
     Number.isInteger(x.unresolvedActionableThreads) && x.unresolvedActionableThreads > 0;
-  if ((x.reviewWaitMinutes ?? 0) >= 30 && !currentReview(x) && !hasActionableThreads)
+  if (x.reviewWaitMinutes >= 30 && !currentReview(x) && !hasActionableThreads)
     return result(STATES.BLOCKED, "current-head review timed out");
-  if ((x.sameCheckFailures ?? 0) >= 2) return result(STATES.BLOCKED, "same required check failed twice");
+  if (x.sameCheckFailures >= 2) return result(STATES.BLOCKED, "same required check failed twice");
   if (x.ambiguousFeedback || x.contradictoryFeedback) return result(STATES.BLOCKED, "feedback requires a decision");
   if (x.protectionUnsatisfied || x.rollbackUnsafe) return result(STATES.BLOCKED, "required protection or rollback gate failed");
   if (x.mergeable === false) return result(STATES.BLOCKED, "pull request has conflicts");
+  if (hasActionableThreads) {
+    if (x.repairCycles >= x.maxRepairCycles)
+      return result(STATES.BLOCKED, "repair-cycle limit exceeded");
+    return result(STATES.ADDRESSING_FEEDBACK, "repair unresolved actionable review threads");
+  }
   if (x.mergeable !== true)
     return result(STATES.WAITING_FOR_REREVIEW, "pull request mergeability is still unknown");
-  if (hasActionableThreads)
-    return result(STATES.ADDRESSING_FEEDBACK, "repair unresolved actionable review threads");
   if (!currentReview(x)) {
     return result(
-      (x.repairCycles ?? 0) > 0 ? STATES.WAITING_FOR_REREVIEW : STATES.WAITING_FOR_REVIEW,
+      x.repairCycles > 0 ? STATES.WAITING_FOR_REREVIEW : STATES.WAITING_FOR_REVIEW,
       "await completed Codex review for current head SHA",
     );
   }
