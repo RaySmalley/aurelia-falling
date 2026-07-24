@@ -67,11 +67,9 @@ export function nextState(x) {
   if ((x.repairCycles ?? 0) > (x.maxRepairCycles ?? 3))
     return result(STATES.BLOCKED, "repair-cycle limit exceeded");
   if ((x.sameFindingFixes ?? 0) >= 2) return result(STATES.BLOCKED, "substantive finding repeated twice");
-  const hasKnownThreadCount =
-    Number.isInteger(x.unresolvedActionableThreads) && x.unresolvedActionableThreads >= 0;
-  const hasActionableThreads = hasKnownThreadCount && x.unresolvedActionableThreads > 0;
-  if ((x.reviewWaitMinutes ?? 0) >= 30 && !currentReview(x) &&
-      hasKnownThreadCount && x.unresolvedActionableThreads === 0)
+  const hasActionableThreads =
+    Number.isInteger(x.unresolvedActionableThreads) && x.unresolvedActionableThreads > 0;
+  if ((x.reviewWaitMinutes ?? 0) >= 30 && !currentReview(x) && !hasActionableThreads)
     return result(STATES.BLOCKED, "current-head review timed out");
   if ((x.sameCheckFailures ?? 0) >= 2) return result(STATES.BLOCKED, "same required check failed twice");
   if (x.ambiguousFeedback || x.contradictoryFeedback) return result(STATES.BLOCKED, "feedback requires a decision");
