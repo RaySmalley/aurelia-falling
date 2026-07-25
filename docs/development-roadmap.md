@@ -229,6 +229,44 @@ are stable, while preserving clear gameplay state and procedural fallbacks.
 - Keep atlases at or below 2048 x 2048, menu transfer below 3 MB compressed,
   and complete match transfer below 20 MB compressed.
 
+### Ground material and decal implementation plan
+
+Deliver the terrain as a renderer-owned visual layer. It must never change
+simulation coordinates, blocked tiles, pathfinding, fog authority, or command
+results.
+
+1. **Establish a measured baseline.** Record frame time, draw calls, texture
+   memory, and allocations for the minimum supported browser/hardware profile
+   before and after each terrain slice. Keep the terrain cached or chunked;
+   do not redraw a map-wide texture every frame.
+2. **Ship a static material pass first.** Expand the battlefield atlas to four
+   to eight compatible ground variants. Select variants deterministically from
+   world tile coordinates using a blue-noise-like distribution, then apply a
+   low-frequency macro color field to break repetition without random runtime
+   state. Use authored or deterministic material masks (for example blocked,
+   worn, rocky, or resource-adjacent zones) for grass, dirt, and rock blends;
+   the current map has no rendered elevation, so do not introduce a physical
+   height dependency.
+3. **Add zoom-based detail only when it earns its cost.** Blend macro and
+   detail treatment from camera zoom, not camera distance. At wider zooms,
+   prefer the cached macro material; reveal fine variation only at close zooms
+   where it is visible and still meets the frame-time budget.
+4. **Add bounded runtime decals.** Render building footprints, scorch marks,
+   craters, and vehicle tracks in dirty world chunks with a fixed decal budget,
+   deterministic ordering, and explicit fade/eviction rules. Static footprints
+   may be baked into their affected chunk; moving or transient effects must
+   update only their dirty chunks. Derive decal events from immutable snapshots
+   or renderer events, but keep the resulting decal state non-authoritative.
+5. **Treat custom shader materials as a profiled upgrade.** Texture arrays,
+   stochastic texture bombing, and custom WebGL2 sampling are deferred until
+   the atlas-based material pass is visually insufficient and measurements show
+   adequate headroom on the release profile. Any such pipeline must retain a
+   capable fallback and cannot add Phaser 3-era rendering dependencies.
+
+The first reviewable slice is therefore deterministic atlas variation, macro
+color variation, and static footprint/scorch decals. Profile it before adding
+dynamic tracks, extra detail layers, or a custom material shader.
+
 ### Acceptance gates
 
 - Every structure and resource field is immediately distinguishable at the
@@ -240,6 +278,9 @@ are stable, while preserving clear gameplay state and procedural fallbacks.
 - Missing or failed assets fall back cleanly without blocking a match.
 - Texture integration does not affect simulation snapshots, coordinates,
   selection bounds, fog authority, or deterministic tests.
+- Terrain and decal rendering stays within the recorded release-profile frame
+  budget, uses bounded texture memory and decal counts, and does not perform
+  map-wide texture updates every frame.
 - Asset dimension and transfer-budget validation passes.
 
 ## Phase 10: Performance contract and deterministic spatial indexing
