@@ -88,6 +88,72 @@ export class DeterministicSpatialIndex<Id extends number> {
       .sort((left, right) => left - right);
   }
 
+  nearest(position: Vec2, accept: (id: Id) => boolean = () => true) {
+    if (this.positions.size === 0) return undefined;
+    const origin = this.coordinateOf(position);
+    let visited = 0;
+    let bestId: Id | undefined;
+    let bestDistanceSquared = Number.POSITIVE_INFINITY;
+
+    for (let ring = 0; visited < this.positions.size; ring += 1) {
+      const minimumX = origin.x - ring;
+      const maximumX = origin.x + ring;
+      const minimumY = origin.y - ring;
+      const maximumY = origin.y + ring;
+
+      for (let y = minimumY; y <= maximumY; y += 1) {
+        for (let x = minimumX; x <= maximumX; x += 1) {
+          if (
+            ring > 0 &&
+            x !== minimumX &&
+            x !== maximumX &&
+            y !== minimumY &&
+            y !== maximumY
+          ) {
+            continue;
+          }
+          for (const id of this.cells.get(cellKey({ x, y })) ?? []) {
+            visited += 1;
+            if (!accept(id)) continue;
+            const candidate = this.positions.get(id)!;
+            const dx = candidate.x - position.x;
+            const dy = candidate.y - position.y;
+            const candidateDistanceSquared = dx * dx + dy * dy;
+            if (
+              candidateDistanceSquared < bestDistanceSquared ||
+              (candidateDistanceSquared === bestDistanceSquared &&
+                (bestId === undefined || id < bestId))
+            ) {
+              bestId = id;
+              bestDistanceSquared = candidateDistanceSquared;
+            }
+          }
+        }
+      }
+
+      if (bestId !== undefined) {
+        const leftBoundary = minimumX * this.cellSize;
+        const rightBoundary = (maximumX + 1) * this.cellSize;
+        const topBoundary = minimumY * this.cellSize;
+        const bottomBoundary = (maximumY + 1) * this.cellSize;
+        const distanceToUnvisitedCells = Math.min(
+          position.x - leftBoundary,
+          rightBoundary - position.x,
+          position.y - topBoundary,
+          bottomBoundary - position.y,
+        );
+        if (
+          distanceToUnvisitedCells * distanceToUnvisitedCells >
+          bestDistanceSquared
+        ) {
+          return bestId;
+        }
+      }
+    }
+
+    return bestId;
+  }
+
   private coordinateOf(position: Vec2): CellCoordinate {
     return {
       x: Math.floor(position.x / this.cellSize),

@@ -63,9 +63,10 @@ constant-time; target acquisition uses bounded radius queries while preserving
 distance-then-ID selection; and local separation examines nearby cells instead
 of every unit pair. Solar Spear area damage, turret targeting, placement
 coverage, and spawn occupancy also use bounded spatial queries instead of
-map-wide entity scans. The 600-unit idle benchmark improved from 1.4333 ms to
-0.8506 ms p95 on the recorded hardware, while all versioned replay hashes
-remain unchanged.
+map-wide entity scans. Resource fields are indexed, and Harvesters use
+deterministic nearest-neighbor queries for fields and operational refineries.
+The 600-unit idle benchmark improved from 1.4333 ms to 0.8506 ms p95 on the
+recorded hardware, while all versioned replay hashes remain unchanged.
 
 The Node.js headless benchmark measures balanced 100, 300, 600, and 1,000-unit
 idle armies without loading React or Phaser, records machine-readable

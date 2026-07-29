@@ -438,6 +438,9 @@ export class Simulation {
   private readonly structureSpatialIndex =
     new DeterministicSpatialIndex<StructureId>(TILE_MILLI);
   private fields: FieldState[] = [];
+  private readonly fieldsById = new Map<number, FieldState>();
+  private readonly fieldSpatialIndex =
+    new DeterministicSpatialIndex<number>(TILE_MILLI);
   private players: Record<PlayerId, PlayerState> = {
     1: { id: 1, credits: 0, powerGenerated: 0, powerConsumed: 0 },
     2: { id: 2, credits: 0, powerGenerated: 0, powerConsumed: 0 },
@@ -925,6 +928,8 @@ export class Simulation {
     this.unitTileSpatialIndex.clear();
     this.structureSpatialIndex.clear();
     this.fields = [];
+    this.fieldsById.clear();
+    this.fieldSpatialIndex.clear();
     this.players = {
       1: { id: 1, credits: 0, powerGenerated: 0, powerConsumed: 0 },
       2: { id: 2, credits: 0, powerGenerated: 0, powerConsumed: 0 },
@@ -1803,8 +1808,11 @@ export class Simulation {
     this.unitSpatialIndex.clear();
     this.unitTileSpatialIndex.clear();
     this.structureSpatialIndex.clear();
+    this.fieldsById.clear();
+    this.fieldSpatialIndex.clear();
     for (const unit of this.units) this.indexUnit(unit);
     for (const structure of this.structures) this.indexStructure(structure);
+    for (const field of this.fields) this.indexField(field);
   }
 
   private indexUnit(unit: UnitState) {
@@ -1824,6 +1832,11 @@ export class Simulation {
       structure.id,
       tileCenter(structure.tile),
     );
+  }
+
+  private indexField(field: FieldState) {
+    this.fieldsById.set(field.id, field);
+    this.fieldSpatialIndex.insert(field.id, tileCenter(field.tile));
   }
 
   private selectedUnits() {
@@ -2485,19 +2498,13 @@ export class Simulation {
     let field =
       unit.harvestFieldId === null
         ? undefined
-        : this.fields.find((candidate) => candidate.id === unit.harvestFieldId);
+        : this.fieldsById.get(unit.harvestFieldId);
     if (!field || field.amount <= 0) {
-      field = this.fields
-        .filter((candidate) => candidate.amount > 0)
-        .map((candidate) => ({
-          candidate,
-          distance: distanceSquared(unit.position, tileCenter(candidate.tile)),
-        }))
-        .sort(
-          (left, right) =>
-            left.distance - right.distance ||
-            left.candidate.id - right.candidate.id,
-        )[0]?.candidate;
+      const fieldId = this.fieldSpatialIndex.nearest(
+        unit.position,
+        (id) => (this.fieldsById.get(id)?.amount ?? 0) > 0,
+      );
+      field = fieldId === undefined ? undefined : this.fieldsById.get(fieldId);
       unit.harvestFieldId = field?.id ?? null;
     }
     if (!field) {
@@ -2527,24 +2534,23 @@ export class Simulation {
   }
 
   private nearestOperationalRefinery(unit: UnitState) {
-    return this.structures
-      .filter(
-        (structure) =>
+    const refineryId = this.structureSpatialIndex.nearest(
+      unit.position,
+      (id) => {
+        const structure = this.structureById(id);
+        return (
+          structure !== undefined &&
           structure.playerId === unit.playerId &&
           structure.kind === "refinery" &&
           structure.constructionRemainingTicks === 0 &&
           structure.powered &&
-          structure.health > 0,
-      )
-      .map((structure) => ({
-        structure,
-        distance: distanceSquared(unit.position, tileCenter(structure.tile)),
-      }))
-      .sort(
-        (left, right) =>
-          left.distance - right.distance ||
-          left.structure.id - right.structure.id,
-      )[0]?.structure;
+          structure.health > 0
+        );
+      },
+    );
+    return refineryId === undefined
+      ? undefined
+      : this.structureById(refineryId);
   }
 
   private updateTurrets() {

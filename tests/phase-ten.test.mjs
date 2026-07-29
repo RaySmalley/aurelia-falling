@@ -58,6 +58,18 @@ test("deterministic spatial indices track insert, move, remove, and ordered quer
   );
 });
 
+test("deterministic spatial indices find the nearest accepted ID across cells", () => {
+  const index = new DeterministicSpatialIndex(1_000);
+  index.insert(9, { x: 2_500, y: 500 });
+  index.insert(7, { x: -1_500, y: 500 });
+  index.insert(3, { x: 10_000, y: 10_000 });
+  index.insert(2, { x: 2_500, y: 500 });
+
+  assert.equal(index.nearest({ x: 500, y: 500 }), 2);
+  assert.equal(index.nearest({ x: 500, y: 500 }, (id) => id > 2), 7);
+  assert.equal(index.nearest({ x: 500, y: 500 }, () => false), undefined);
+});
+
 test("spatial target acquisition preserves distance-then-id selection", () => {
   const simulation = new Simulation(10_009, "combat");
   const attacker = simulation.createUnitState(
@@ -229,6 +241,46 @@ test("logical tile occupancy tracks units pushed beyond map edges", () => {
   simulation.moveUnitIndexes(unit);
   assert.equal(simulation.tileHasEntity({ x: 0, y: 10 }), false);
   assert.equal(simulation.tileHasEntity({ x: 63, y: 10 }), true);
+});
+
+test("harvesters use indexed nearest field and refinery selection", () => {
+  const simulation = new Simulation(10_016, "economy");
+  const harvester = simulation.units.find(
+    (unit) => unit.playerId === 1 && unit.kind === "midasHarvester",
+  );
+  assert.ok(harvester);
+
+  const fieldQueries = [];
+  const structureQueries = [];
+  const nearestField = simulation.fieldSpatialIndex.nearest.bind(
+    simulation.fieldSpatialIndex,
+  );
+  const nearestStructure = simulation.structureSpatialIndex.nearest.bind(
+    simulation.structureSpatialIndex,
+  );
+  simulation.fieldSpatialIndex.nearest = (position, accept) => {
+    fieldQueries.push(position);
+    return nearestField(position, accept);
+  };
+  simulation.structureSpatialIndex.nearest = (position, accept) => {
+    structureQueries.push(position);
+    return nearestStructure(position, accept);
+  };
+
+  harvester.harvestFieldId = null;
+  harvester.cargo = 0;
+  simulation.updateHarvester(harvester);
+  assert.equal(fieldQueries.length, 1);
+  assert.notEqual(harvester.harvestFieldId, null);
+  assert.equal(
+    simulation.fieldsById.get(harvester.harvestFieldId),
+    simulation.fields.find((field) => field.id === harvester.harvestFieldId),
+  );
+
+  harvester.cargo = 1_000;
+  simulation.updateHarvester(harvester);
+  assert.equal(structureQueries.length, 1);
+  assert.equal(harvester.order, "unload");
 });
 
 test("step observers expose balanced system boundaries without changing state", () => {

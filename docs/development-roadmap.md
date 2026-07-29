@@ -309,6 +309,11 @@ building-placement coverage, and spawn occupancy through bounded unit and
 structure queries. Exact distance, visibility, tile-occupancy, and
 distance-then-ID rules remain unchanged.
 
+The fourth slice adds deterministic nearest-neighbor traversal to the spatial
+grid, indexes resource fields, and routes Harvester field and refinery selection
+through spatial queries. Nearest choices preserve distance-then-ID ordering and
+ignore depleted fields or inoperable refineries.
+
 ### Work
 
 - Add headless simulation benchmarks for 100, 300, 600, and 1,000 units.
