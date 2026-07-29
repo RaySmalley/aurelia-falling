@@ -433,6 +433,8 @@ export class Simulation {
   private readonly structuresById = new Map<StructureId, StructureState>();
   private readonly unitSpatialIndex =
     new DeterministicSpatialIndex<UnitId>(TILE_MILLI);
+  private readonly unitTileSpatialIndex =
+    new DeterministicSpatialIndex<UnitId>(TILE_MILLI);
   private readonly structureSpatialIndex =
     new DeterministicSpatialIndex<StructureId>(TILE_MILLI);
   private fields: FieldState[] = [];
@@ -920,6 +922,7 @@ export class Simulation {
     this.unitsById.clear();
     this.structuresById.clear();
     this.unitSpatialIndex.clear();
+    this.unitTileSpatialIndex.clear();
     this.structureSpatialIndex.clear();
     this.fields = [];
     this.players = {
@@ -1775,18 +1778,19 @@ export class Simulation {
     excludedUnitIds = new Set<UnitId>(),
   ) {
     const tileKey = tileKeyOf(tile);
-    const occupiedByUnit = this.unitsWithin(
-      tileCenter(tile),
-      TILE_MILLI,
-    ).some(
-      (unit) =>
-        !excludedUnitIds.has(unit.id) &&
-        tileKeyOf(toTile(unit.position)) === tileKey &&
-        (!observer ||
-          this.scenario !== "skirmish" ||
-          unit.playerId === observer ||
-          this.isUnitVisibleTo(observer, unit)),
-    );
+    const occupiedByUnit = this.unitTileSpatialIndex
+      .query(tileCenter(tile), 0)
+      .map((id) => this.unitById(id))
+      .some(
+        (unit) =>
+          unit !== undefined &&
+          !excludedUnitIds.has(unit.id) &&
+          tileKeyOf(toTile(unit.position)) === tileKey &&
+          (!observer ||
+            this.scenario !== "skirmish" ||
+            unit.playerId === observer ||
+            this.isUnitVisibleTo(observer, unit)),
+      );
     if (occupiedByUnit) return true;
     return this.structuresWithin(tileCenter(tile), 0).some(
       (structure) => tileKeyOf(structure.tile) === tileKey,
@@ -1797,6 +1801,7 @@ export class Simulation {
     this.unitsById.clear();
     this.structuresById.clear();
     this.unitSpatialIndex.clear();
+    this.unitTileSpatialIndex.clear();
     this.structureSpatialIndex.clear();
     for (const unit of this.units) this.indexUnit(unit);
     for (const structure of this.structures) this.indexStructure(structure);
@@ -1805,6 +1810,12 @@ export class Simulation {
   private indexUnit(unit: UnitState) {
     this.unitsById.set(unit.id, unit);
     this.unitSpatialIndex.insert(unit.id, unit.position);
+    this.unitTileSpatialIndex.insert(unit.id, tileCenter(toTile(unit.position)));
+  }
+
+  private moveUnitIndexes(unit: UnitState) {
+    this.unitSpatialIndex.move(unit.id, unit.position);
+    this.unitTileSpatialIndex.move(unit.id, tileCenter(toTile(unit.position)));
   }
 
   private indexStructure(structure: StructureState) {
@@ -2163,7 +2174,7 @@ export class Simulation {
     const stepMilli = gameData.units[unit.kind].speedMilliPerTick;
     if (distance <= stepMilli) {
       unit.position = { ...waypoint };
-      this.unitSpatialIndex.move(unit.id, unit.position);
+      this.moveUnitIndexes(unit);
       unit.pathIndex += 1;
       if (unit.pathIndex >= unit.path.length) {
         this.clearPath(unit);
@@ -2176,7 +2187,7 @@ export class Simulation {
     }
     unit.position.x += Math.trunc((dx * stepMilli) / distance);
     unit.position.y += Math.trunc((dy * stepMilli) / distance);
-    this.unitSpatialIndex.move(unit.id, unit.position);
+    this.moveUnitIndexes(unit);
   }
 
   private liveOracle(playerId: PlayerId) {
@@ -2873,6 +2884,7 @@ export class Simulation {
       for (const id of destroyedIds) {
         this.unitsById.delete(id);
         this.unitSpatialIndex.remove(id);
+        this.unitTileSpatialIndex.remove(id);
       }
       this.units = this.units.filter((unit) => !destroyedIds.has(unit.id));
       this.projectiles = this.projectiles.filter(
@@ -2994,8 +3006,8 @@ export class Simulation {
       right.position.x += pushX * directionX;
       left.position.y -= pushY * directionY;
       right.position.y += pushY * directionY;
-      this.unitSpatialIndex.move(left.id, left.position);
-      this.unitSpatialIndex.move(right.id, right.position);
+      this.moveUnitIndexes(left);
+      this.moveUnitIndexes(right);
       nearbyIds = [
         ...new Set([
           ...nearbyIds,

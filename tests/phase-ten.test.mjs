@@ -158,9 +158,13 @@ test("area damage and spawn checks use bounded spatial queries", () => {
   simulation.rebuildEntityIndexes();
 
   const unitRadii = [];
+  const unitTileRadii = [];
   const structureRadii = [];
   const queryUnits = simulation.unitSpatialIndex.query.bind(
     simulation.unitSpatialIndex,
+  );
+  const queryUnitTiles = simulation.unitTileSpatialIndex.query.bind(
+    simulation.unitTileSpatialIndex,
   );
   const queryStructures = simulation.structureSpatialIndex.query.bind(
     simulation.structureSpatialIndex,
@@ -168,6 +172,10 @@ test("area damage and spawn checks use bounded spatial queries", () => {
   simulation.unitSpatialIndex.query = (position, radius) => {
     unitRadii.push(radius);
     return queryUnits(position, radius);
+  };
+  simulation.unitTileSpatialIndex.query = (position, radius) => {
+    unitTileRadii.push(radius);
+    return queryUnitTiles(position, radius);
   };
   simulation.structureSpatialIndex.query = (position, radius) => {
     structureRadii.push(radius);
@@ -193,8 +201,34 @@ test("area damage and spawn checks use bounded spatial queries", () => {
     throw new Error("spawn checks must not build a map-wide occupied tile set");
   };
   assert.ok(simulation.nearestSpawnTile({ x: 10, y: 10 }, 1));
-  assert.ok(unitRadii.some((radius) => radius === 1_000));
+  assert.ok(unitTileRadii.some((radius) => radius === 0));
   assert.ok(structureRadii.some((radius) => radius === 0));
+});
+
+test("logical tile occupancy tracks units pushed beyond map edges", () => {
+  const simulation = new Simulation(10_015, "combat");
+  const unit = simulation.createUnitState(
+    1,
+    1,
+    "argusRifle",
+    { x: 10, y: 10 },
+  );
+  simulation.units = [unit];
+  simulation.structures = [];
+  simulation.rebuildEntityIndexes();
+
+  unit.position = { x: -2_000, y: 10_000 };
+  simulation.moveUnitIndexes(unit);
+  assert.equal(simulation.tileHasEntity({ x: 0, y: 10 }), true);
+  assert.deepEqual(
+    simulation.unitTileSpatialIndex.query({ x: 0, y: 10_000 }, 0),
+    [unit.id],
+  );
+
+  unit.position = { x: 66_000, y: 10_000 };
+  simulation.moveUnitIndexes(unit);
+  assert.equal(simulation.tileHasEntity({ x: 0, y: 10 }), false);
+  assert.equal(simulation.tileHasEntity({ x: 63, y: 10 }), true);
 });
 
 test("step observers expose balanced system boundaries without changing state", () => {
