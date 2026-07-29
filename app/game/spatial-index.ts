@@ -101,33 +101,35 @@ export class DeterministicSpatialIndex<Id extends number> {
       const minimumY = origin.y - ring;
       const maximumY = origin.y + ring;
 
-      for (let y = minimumY; y <= maximumY; y += 1) {
-        for (let x = minimumX; x <= maximumX; x += 1) {
+      const visitCell = (x: number, y: number) => {
+        for (const id of this.cells.get(cellKey({ x, y })) ?? []) {
+          visited += 1;
+          if (!accept(id)) continue;
+          const candidate = this.positions.get(id)!;
+          const dx = candidate.x - position.x;
+          const dy = candidate.y - position.y;
+          const candidateDistanceSquared = dx * dx + dy * dy;
           if (
-            ring > 0 &&
-            x !== minimumX &&
-            x !== maximumX &&
-            y !== minimumY &&
-            y !== maximumY
+            candidateDistanceSquared < bestDistanceSquared ||
+            (candidateDistanceSquared === bestDistanceSquared &&
+              (bestId === undefined || id < bestId))
           ) {
-            continue;
+            bestId = id;
+            bestDistanceSquared = candidateDistanceSquared;
           }
-          for (const id of this.cells.get(cellKey({ x, y })) ?? []) {
-            visited += 1;
-            if (!accept(id)) continue;
-            const candidate = this.positions.get(id)!;
-            const dx = candidate.x - position.x;
-            const dy = candidate.y - position.y;
-            const candidateDistanceSquared = dx * dx + dy * dy;
-            if (
-              candidateDistanceSquared < bestDistanceSquared ||
-              (candidateDistanceSquared === bestDistanceSquared &&
-                (bestId === undefined || id < bestId))
-            ) {
-              bestId = id;
-              bestDistanceSquared = candidateDistanceSquared;
-            }
-          }
+        }
+      };
+
+      if (ring === 0) {
+        visitCell(origin.x, origin.y);
+      } else {
+        for (let x = minimumX; x <= maximumX; x += 1) {
+          visitCell(x, minimumY);
+          visitCell(x, maximumY);
+        }
+        for (let y = minimumY + 1; y < maximumY; y += 1) {
+          visitCell(minimumX, y);
+          visitCell(maximumX, y);
         }
       }
 
