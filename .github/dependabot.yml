@@ -1,4 +1,5 @@
 version: 2
+
 updates:
   - package-ecosystem: "npm"
     directory: "/"
@@ -12,6 +13,10 @@ updates:
           - "patch"
         patterns:
           - "*"
+    ignore:
+      - dependency-name: "@types/node"
+        versions:
+          - "26.x"
 
   - package-ecosystem: "github-actions"
     directory: "/"
