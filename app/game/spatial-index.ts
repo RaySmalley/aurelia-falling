@@ -28,7 +28,8 @@ export class DeterministicSpatialIndex<Id extends number> {
     if (this.entityCells.has(id)) {
       throw new Error(`Spatial index already contains entity ${id}.`);
     }
-    const key = cellKey(this.coordinateOf(position));
+    const coordinate = this.coordinateOf(position);
+    const key = cellKey(coordinate);
     this.addToCell(key, id);
     this.entityCells.set(id, key);
     this.positions.set(id, { ...position });
@@ -39,7 +40,8 @@ export class DeterministicSpatialIndex<Id extends number> {
     if (previousKey === undefined) {
       throw new Error(`Spatial index does not contain entity ${id}.`);
     }
-    const nextKey = cellKey(this.coordinateOf(position));
+    const nextCoordinate = this.coordinateOf(position);
+    const nextKey = cellKey(nextCoordinate);
     if (previousKey !== nextKey) {
       this.removeFromCell(previousKey, id);
       this.addToCell(nextKey, id);
@@ -86,6 +88,29 @@ export class DeterministicSpatialIndex<Id extends number> {
         return dx * dx + dy * dy <= radiusSquared;
       })
       .sort((left, right) => left - right);
+  }
+
+  nearest(position: Vec2, accept: (id: Id) => boolean = () => true) {
+    if (this.positions.size === 0) return undefined;
+    let bestId: Id | undefined;
+    let bestDistanceSquared = Number.POSITIVE_INFINITY;
+
+    for (const [id, candidate] of this.positions) {
+      if (!accept(id)) continue;
+      const dx = candidate.x - position.x;
+      const dy = candidate.y - position.y;
+      const candidateDistanceSquared = dx * dx + dy * dy;
+      if (
+        candidateDistanceSquared < bestDistanceSquared ||
+        (candidateDistanceSquared === bestDistanceSquared &&
+          (bestId === undefined || id < bestId))
+      ) {
+        bestId = id;
+        bestDistanceSquared = candidateDistanceSquared;
+      }
+    }
+
+    return bestId;
   }
 
   private coordinateOf(position: Vec2): CellCoordinate {
