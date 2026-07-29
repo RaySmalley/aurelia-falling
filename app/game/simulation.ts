@@ -77,6 +77,12 @@ const SEPARATION_MILLI = 420;
 const SEPARATION_STEP = 24;
 const CHASE_REPATH_TICKS = 8;
 const REGEN_DENOMINATOR = TICKS_PER_SECOND * 60;
+const MAX_BUILD_RADIUS_MILLI =
+  Math.max(
+    ...Object.values(gameData.buildings).map(
+      (definition) => definition.buildRadius,
+    ),
+  ) * TILE_MILLI;
 
 type UnitState = {
   id: UnitId;
@@ -426,6 +432,8 @@ export class Simulation {
   private readonly unitsById = new Map<UnitId, UnitState>();
   private readonly structuresById = new Map<StructureId, StructureState>();
   private readonly unitSpatialIndex =
+    new DeterministicSpatialIndex<UnitId>(TILE_MILLI);
+  private readonly unitTileSpatialIndex =
     new DeterministicSpatialIndex<UnitId>(TILE_MILLI);
   private readonly structureSpatialIndex =
     new DeterministicSpatialIndex<StructureId>(TILE_MILLI);
@@ -914,6 +922,7 @@ export class Simulation {
     this.unitsById.clear();
     this.structuresById.clear();
     this.unitSpatialIndex.clear();
+    this.unitTileSpatialIndex.clear();
     this.structureSpatialIndex.clear();
     this.fields = [];
     this.players = {
@@ -1749,10 +1758,50 @@ export class Simulation {
     return this.structuresById.get(id);
   }
 
+  private unitsWithin(position: Vec2, radius: number) {
+    return this.unitSpatialIndex
+      .query(position, radius)
+      .map((id) => this.unitById(id))
+      .filter((unit): unit is UnitState => unit !== undefined);
+  }
+
+  private structuresWithin(position: Vec2, radius: number) {
+    return this.structureSpatialIndex
+      .query(position, radius)
+      .map((id) => this.structureById(id))
+      .filter((structure): structure is StructureState => structure !== undefined);
+  }
+
+  private tileHasEntity(
+    tile: GridPoint,
+    observer?: PlayerId,
+    excludedUnitIds = new Set<UnitId>(),
+  ) {
+    const tileKey = tileKeyOf(tile);
+    const occupiedByUnit = this.unitTileSpatialIndex
+      .query(tileCenter(tile), 0)
+      .map((id) => this.unitById(id))
+      .some(
+        (unit) =>
+          unit !== undefined &&
+          !excludedUnitIds.has(unit.id) &&
+          tileKeyOf(toTile(unit.position)) === tileKey &&
+          (!observer ||
+            this.scenario !== "skirmish" ||
+            unit.playerId === observer ||
+            this.isUnitVisibleTo(observer, unit)),
+      );
+    if (occupiedByUnit) return true;
+    return this.structuresWithin(tileCenter(tile), 0).some(
+      (structure) => tileKeyOf(structure.tile) === tileKey,
+    );
+  }
+
   private rebuildEntityIndexes() {
     this.unitsById.clear();
     this.structuresById.clear();
     this.unitSpatialIndex.clear();
+    this.unitTileSpatialIndex.clear();
     this.structureSpatialIndex.clear();
     for (const unit of this.units) this.indexUnit(unit);
     for (const structure of this.structures) this.indexStructure(structure);
@@ -1761,6 +1810,12 @@ export class Simulation {
   private indexUnit(unit: UnitState) {
     this.unitsById.set(unit.id, unit);
     this.unitSpatialIndex.insert(unit.id, unit.position);
+    this.unitTileSpatialIndex.insert(unit.id, tileCenter(toTile(unit.position)));
+  }
+
+  private moveUnitIndexes(unit: UnitState) {
+    this.unitSpatialIndex.move(unit.id, unit.position);
+    this.unitTileSpatialIndex.move(unit.id, tileCenter(toTile(unit.position)));
   }
 
   private indexStructure(structure: StructureState) {
@@ -2119,7 +2174,7 @@ export class Simulation {
     const stepMilli = gameData.units[unit.kind].speedMilliPerTick;
     if (distance <= stepMilli) {
       unit.position = { ...waypoint };
-      this.unitSpatialIndex.move(unit.id, unit.position);
+      this.moveUnitIndexes(unit);
       unit.pathIndex += 1;
       if (unit.pathIndex >= unit.path.length) {
         this.clearPath(unit);
@@ -2132,7 +2187,7 @@ export class Simulation {
     }
     unit.position.x += Math.trunc((dx * stepMilli) / distance);
     unit.position.y += Math.trunc((dy * stepMilli) / distance);
-    this.unitSpatialIndex.move(unit.id, unit.position);
+    this.moveUnitIndexes(unit);
   }
 
   private liveOracle(playerId: PlayerId) {
@@ -2210,7 +2265,10 @@ export class Simulation {
         const radiusSquared =
           gameData.solarSpear.blastRadiusMilli *
           gameData.solarSpear.blastRadiusMilli;
-        for (const unit of this.units) {
+        for (const unit of this.unitsWithin(
+          targetPosition,
+          gameData.solarSpear.blastRadiusMilli,
+        )) {
           if (distanceSquared(unit.position, targetPosition) <= radiusSquared) {
             unit.health = Math.max(
               0,
@@ -2218,7 +2276,10 @@ export class Simulation {
             );
           }
         }
-        for (const structure of this.structures) {
+        for (const structure of this.structuresWithin(
+          targetPosition,
+          gameData.solarSpear.blastRadiusMilli,
+        )) {
           if (
             distanceSquared(tileCenter(structure.tile), targetPosition) <=
             radiusSquared
@@ -2500,7 +2561,7 @@ export class Simulation {
       const weapon = gameData.weapons[definition.weaponId];
       if (structure.cooldownTicks > 0) continue;
       const position = tileCenter(structure.tile);
-      const target = this.units
+      const target = this.unitsWithin(position, weapon.rangeMilli)
         .filter(
           (unit) =>
             unit.playerId !== structure.playerId &&
@@ -2544,10 +2605,7 @@ export class Simulation {
       return "unexplored";
     }
     if (
-      this.units.some((unit) => tileKeyOf(toTile(unit.position)) === tileKeyOf(tile)) ||
-      this.structures.some(
-        (structure) => tileKeyOf(structure.tile) === tileKeyOf(tile),
-      )
+      this.tileHasEntity(tile)
     ) {
       return "occupied";
     }
@@ -2575,7 +2633,10 @@ export class Simulation {
     ) {
       return "citadelUnique";
     }
-    const inRadius = this.structures.some((structure) => {
+    const inRadius = this.structuresWithin(
+      tileCenter(tile),
+      MAX_BUILD_RADIUS_MILLI,
+    ).some((structure) => {
       if (
         structure.playerId !== playerId ||
         structure.constructionRemainingTicks > 0 ||
@@ -2737,7 +2798,6 @@ export class Simulation {
   }
 
   private nearestSpawnTile(tile: GridPoint, playerId: PlayerId) {
-    const occupied = this.occupiedTiles(new Set(), playerId);
     const candidates: GridPoint[] = [];
     for (let radius = 1; radius <= 3; radius += 1) {
       for (let y = tile.y - radius; y <= tile.y + radius; y += 1) {
@@ -2750,7 +2810,10 @@ export class Simulation {
           const candidate = { x, y };
           if (
             !isTerrainBlocked(candidate) &&
-            !occupied.has(tileKeyOf(candidate))
+            !this.tileHasEntity(candidate, playerId) &&
+            !this.fields.some(
+              (field) => tileKeyOf(field.tile) === tileKeyOf(candidate),
+            )
           ) {
             candidates.push(candidate);
           }
@@ -2821,6 +2884,7 @@ export class Simulation {
       for (const id of destroyedIds) {
         this.unitsById.delete(id);
         this.unitSpatialIndex.remove(id);
+        this.unitTileSpatialIndex.remove(id);
       }
       this.units = this.units.filter((unit) => !destroyedIds.has(unit.id));
       this.projectiles = this.projectiles.filter(
@@ -2942,8 +3006,8 @@ export class Simulation {
       right.position.x += pushX * directionX;
       left.position.y -= pushY * directionY;
       right.position.y += pushY * directionY;
-      this.unitSpatialIndex.move(left.id, left.position);
-      this.unitSpatialIndex.move(right.id, right.position);
+      this.moveUnitIndexes(left);
+      this.moveUnitIndexes(right);
       nearbyIds = [
         ...new Set([
           ...nearbyIds,

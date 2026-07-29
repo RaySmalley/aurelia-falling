@@ -304,6 +304,11 @@ separation now examines nearby cells. On the recorded hardware, 600-unit idle
 p95 improved from 1.4333 ms to 0.8506 ms and 1,000-unit idle p95 improved from
 3.7106 ms to 1.7310 ms without changing any versioned replay hash.
 
+The third slice routes Solar Spear area damage, turret acquisition,
+building-placement coverage, and spawn occupancy through bounded unit and
+structure queries. Exact distance, visibility, tile-occupancy, and
+distance-then-ID rules remain unchanged.
+
 ### Work
 
 - Add headless simulation benchmarks for 100, 300, 600, and 1,000 units.
