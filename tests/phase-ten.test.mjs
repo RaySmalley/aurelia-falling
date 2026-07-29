@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
+import { hashReplayState } from "../scripts/replay-state-hash.mjs";
 
 const execFileAsync = promisify(execFile);
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -83,6 +84,26 @@ test("step observers attribute restarted systems to the reset timeline", () => {
   );
   assert.equal(simulation.snapshot().tick, 1);
   assert.equal(simulation.snapshot().seed, 10_012);
+});
+
+test("replay hashes cover hidden authoritative and RNG state", () => {
+  const simulation = new Simulation(10_013, "skirmish");
+  const playerSnapshot = JSON.stringify(simulation.snapshot());
+  const initialHash = hashReplayState(simulation);
+  const hiddenEnemy = simulation.units.find((unit) => unit.playerId === 2);
+  hiddenEnemy.aiScout = !hiddenEnemy.aiScout;
+
+  assert.equal(JSON.stringify(simulation.snapshot()), playerSnapshot);
+  const hiddenStateHash = hashReplayState(simulation);
+  assert.notEqual(hiddenStateHash, initialHash);
+
+  simulation.rng.nextUint32();
+  assert.equal(JSON.stringify(simulation.snapshot()), playerSnapshot);
+  assert.notEqual(hashReplayState(simulation), hiddenStateHash);
+
+  const exportedState = simulation.authoritativeState();
+  exportedState.units[0].health = 0;
+  assert.notEqual(simulation.units[0].health, 0);
 });
 
 test("the headless benchmark emits machine-readable percentile results", async () => {

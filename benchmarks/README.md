@@ -36,7 +36,10 @@ npm run replay:verify
 
 The versioned fixtures cover combat, economy, skirmish AI, fog movement, and a
 Solar Spear impact. Commands are queued at their recorded simulation ticks, and
-SHA-256 hashes are checked at intermediate checkpoints and at the final tick.
+SHA-256 hashes of canonically serialized authoritative state are checked at
+intermediate checkpoints and at the final tick. The state includes hidden
+entities, RNG, command queues, AI memory, visibility, deterministic ID counters,
+control groups, and other fields that can affect future simulation behavior.
 When an explicitly reviewed simulation change requires a replay migration,
 regenerate hashes with:
 

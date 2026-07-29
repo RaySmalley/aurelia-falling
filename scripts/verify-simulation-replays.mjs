@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
+import { hashReplayState } from "./replay-state-hash.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const fixtureUrl = new URL(
@@ -9,11 +9,6 @@ const fixtureUrl = new URL(
   import.meta.url,
 );
 const update = process.argv.slice(2).includes("--update");
-
-const hashSnapshot = (simulation) =>
-  createHash("sha256")
-    .update(JSON.stringify(simulation.snapshot()))
-    .digest("hex");
 
 const applySetup = (simulation, gameData, setup) => {
   if (!setup) return;
@@ -63,13 +58,13 @@ const runFixture = (Simulation, gameData, fixture) => {
     simulation.step();
     const completedTick = simulation.snapshot().tick;
     if (checkpointTicks.has(completedTick)) {
-      checkpointHashes[completedTick] = hashSnapshot(simulation);
+      checkpointHashes[completedTick] = hashReplayState(simulation);
     }
   }
 
   return {
     checkpoints: checkpointHashes,
-    final: hashSnapshot(simulation),
+    final: hashReplayState(simulation),
   };
 };
 

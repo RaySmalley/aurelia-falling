@@ -87,6 +87,16 @@ export class VisibilityGrid {
     return this.cachedSnapshot;
   }
 
+  authoritativeState() {
+    return {
+      enabled: this.enabled,
+      current: Array.from(this.current),
+      explored: Array.from(this.explored),
+      sourceSignature: this.sourceSignature,
+      revision: this.revision,
+    };
+  }
+
   private createSnapshot(): VisibilitySnapshot {
     const tiles = Array.from(
       { length: MAP_SIZE * MAP_SIZE },

@@ -406,6 +406,10 @@ export class DeterministicRng {
   nextBasisPoints() {
     return this.nextUint32() % 10_000;
   }
+
+  authoritativeState() {
+    return this.state;
+  }
 }
 
 export class Simulation {
@@ -468,6 +472,51 @@ export class Simulation {
 
   enqueue(command: SimCommand) {
     this.commands.push(command);
+  }
+
+  authoritativeState() {
+    return structuredClone({
+      schemaVersion: 1,
+      tick: this.tick,
+      seed: this.seed,
+      rng: this.rng.authoritativeState(),
+      commands: this.commands,
+      aiCommands: this.aiCommands,
+      scenario: this.scenario,
+      controlledPlayer: this.controlledPlayer,
+      units: this.units,
+      structures: this.structures,
+      fields: this.fields,
+      players: this.players,
+      projectiles: this.projectiles,
+      nextUnitId: this.nextUnitId,
+      nextStructureId: this.nextStructureId,
+      nextProjectileId: this.nextProjectileId,
+      controlGroups: [...this.controlGroups],
+      rallies: [...this.rallies],
+      kills: this.kills,
+      status: this.status,
+      winner: this.winner,
+      lastPlacementFailure: this.lastPlacementFailure,
+      lastSolarFailure: this.lastSolarFailure,
+      visibility: {
+        1: this.visibility[1].authoritativeState(),
+        2: this.visibility[2].authoritativeState(),
+      },
+      solarSpears: this.solarSpears,
+      onboarding: this.onboarding,
+      onboardingConstructionIds: [...this.onboardingConstructionIds],
+      aiPhase: this.aiPhase,
+      aiLastDecisionTick: this.aiLastDecisionTick,
+      aiLastActionTick: this.aiLastActionTick,
+      aiLastScoutTick: this.aiLastScoutTick,
+      aiLastAttackTick: this.aiLastAttackTick,
+      aiScoutWaypointIndex: this.aiScoutWaypointIndex,
+      aiUnitMixIndex: this.aiUnitMixIndex,
+      aiKnownUnits: [...this.aiKnownUnits],
+      aiKnownStructures: [...this.aiKnownStructures],
+      aiDifficulty: this.aiDifficulty,
+    });
   }
 
   step(observer?: SimulationStepObserver) {
