@@ -3,7 +3,7 @@
 ## Status
 
 Current canonical roadmap following completion of Phases 7-9. Phase 10 is the
-next implementation phase.
+active implementation phase.
 
 This document defines the order of the next ten phases. Detailed technical
 design remains in the supporting plans:
@@ -289,6 +289,14 @@ dynamic tracks, extra detail layers, or a custom material shader.
 
 Create repeatable scale measurements and remove the linear lookups and
 all-pairs proximity work that prevent predictable growth.
+
+### Current implementation slice
+
+The first slice establishes a Node.js headless benchmark for deterministic
+100, 300, 600, and 1,000-unit idle armies, opt-in per-system timing boundaries,
+machine-readable percentile and snapshot metrics, and versioned replay hashes
+for combat, economy, skirmish AI, fog movement, and Solar Spear impact. These
+measurements precede entity-store or spatial-index changes.
 
 ### Work
 

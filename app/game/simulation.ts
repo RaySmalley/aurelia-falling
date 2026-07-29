@@ -44,6 +44,32 @@ import type {
 export const TICKS_PER_SECOND = 20;
 export const SIM_STEP_MS = 1_000 / TICKS_PER_SECOND;
 export const DEFAULT_COMBAT_SEED = 0xa11e_1a;
+export const SIMULATION_SYSTEMS = [
+  "commands",
+  "construction",
+  "connectivity",
+  "solarSpear",
+  "repairs",
+  "production",
+  "fields",
+  "unitOrders",
+  "turrets",
+  "movement",
+  "separation",
+  "projectiles",
+  "cleanup",
+  "visibility",
+  "aiMemory",
+  "matchResolution",
+  "ai",
+] as const;
+
+export type SimulationSystem = (typeof SIMULATION_SYSTEMS)[number];
+
+export type SimulationStepObserver = {
+  begin(system: SimulationSystem, tick: number): void;
+  end(system: SimulationSystem, tick: number): void;
+};
 
 const ZERO_SEED_RNG_STATE = 0x6d2b_79f5;
 const SEPARATION_MILLI = 420;
@@ -444,27 +470,48 @@ export class Simulation {
     this.commands.push(command);
   }
 
-  step() {
+  step(observer?: SimulationStepObserver) {
+    const observedTick = this.tick;
+    observer?.begin("commands", observedTick);
     for (const command of this.commands.splice(0)) {
       this.applyCommand(command);
     }
     for (const command of this.aiCommands.splice(0)) {
       this.applyAiCommand(command);
     }
+    observer?.end("commands", observedTick);
     if (this.status !== "active") {
       this.tick += 1;
       return;
     }
 
     if (this.scenario !== "combat") {
+      observer?.begin("construction", observedTick);
       this.updateConstruction();
+      observer?.end("construction", observedTick);
+      observer?.begin("connectivity", observedTick);
       this.updateConnectivityAndPower();
-      if (this.updateSolarSpears()) this.removeDestroyedEntities();
+      observer?.end("connectivity", observedTick);
+      observer?.begin("solarSpear", observedTick);
+      const solarSpearDestroyedEntities = this.updateSolarSpears();
+      observer?.end("solarSpear", observedTick);
+      if (solarSpearDestroyedEntities) {
+        observer?.begin("cleanup", observedTick);
+        this.removeDestroyedEntities();
+        observer?.end("cleanup", observedTick);
+      }
+      observer?.begin("repairs", observedTick);
       this.updateRepairs();
+      observer?.end("repairs", observedTick);
+      observer?.begin("production", observedTick);
       this.updateProduction();
+      observer?.end("production", observedTick);
+      observer?.begin("fields", observedTick);
       this.updateFields();
+      observer?.end("fields", observedTick);
     }
 
+    observer?.begin("unitOrders", observedTick);
     for (const unit of this.sortedUnits()) {
       if (unit.cooldownTicks > 0) unit.cooldownTicks -= 1;
       if (this.scenario !== "combat" && unit.kind === "midasHarvester") {
@@ -473,16 +520,39 @@ export class Simulation {
         this.updateCombatOrder(unit);
       }
     }
-    if (this.scenario !== "combat") this.updateTurrets();
+    observer?.end("unitOrders", observedTick);
+    if (this.scenario !== "combat") {
+      observer?.begin("turrets", observedTick);
+      this.updateTurrets();
+      observer?.end("turrets", observedTick);
+    }
+    observer?.begin("movement", observedTick);
     for (const unit of this.sortedUnits()) this.moveUnit(unit);
+    observer?.end("movement", observedTick);
+    observer?.begin("separation", observedTick);
     this.applyLocalSeparation();
+    observer?.end("separation", observedTick);
+    observer?.begin("projectiles", observedTick);
     this.updateProjectiles();
+    observer?.end("projectiles", observedTick);
+    observer?.begin("cleanup", observedTick);
     this.removeDestroyedEntities();
+    observer?.end("cleanup", observedTick);
+    observer?.begin("visibility", observedTick);
     this.updateVisibility();
-    if (this.scenario === "skirmish") this.updateAiMemory();
+    observer?.end("visibility", observedTick);
+    if (this.scenario === "skirmish") {
+      observer?.begin("aiMemory", observedTick);
+      this.updateAiMemory();
+      observer?.end("aiMemory", observedTick);
+    }
+    observer?.begin("matchResolution", observedTick);
     this.resolveMatch();
+    observer?.end("matchResolution", observedTick);
     if (this.status === "active" && this.scenario === "skirmish") {
+      observer?.begin("ai", observedTick);
       this.updateAi();
+      observer?.end("ai", observedTick);
     }
     this.tick += 1;
   }

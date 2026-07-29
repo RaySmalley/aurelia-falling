@@ -1,0 +1,100 @@
+import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+import { createServer } from "vite";
+
+const execFileAsync = promisify(execFile);
+const root = fileURLToPath(new URL("..", import.meta.url));
+const vite = await createServer({
+  root,
+  configFile: false,
+  logLevel: "silent",
+  server: { middlewareMode: true },
+});
+const simulationModule = await vite.ssrLoadModule(
+  "/app/game/simulation.ts",
+);
+const {
+  SIMULATION_SYSTEMS,
+  Simulation,
+} = simulationModule;
+
+test.after(() => vite.close());
+
+test("step observers expose balanced system boundaries without changing state", () => {
+  const observed = new Simulation(10_010, "skirmish");
+  const control = new Simulation(10_010, "skirmish");
+  const events = [];
+  const observer = {
+    begin(system, tick) {
+      events.push({ phase: "begin", system, tick });
+    },
+    end(system, tick) {
+      events.push({ phase: "end", system, tick });
+    },
+  };
+
+  observed.step(observer);
+  control.step();
+
+  assert.deepEqual(observed.snapshot(), control.snapshot());
+  assert.ok(events.length > 0);
+  assert.equal(events.length % 2, 0);
+  for (let index = 0; index < events.length; index += 2) {
+    const begin = events[index];
+    const end = events[index + 1];
+    assert.equal(begin.phase, "begin");
+    assert.equal(end.phase, "end");
+    assert.equal(begin.system, end.system);
+    assert.equal(begin.tick, end.tick);
+    assert.ok(SIMULATION_SYSTEMS.includes(begin.system));
+  }
+});
+
+test("the headless benchmark emits machine-readable percentile results", async () => {
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    [
+      "scripts/run-simulation-benchmarks.mjs",
+      "--counts",
+      "20",
+      "--warmup",
+      "1",
+      "--ticks",
+      "3",
+      "--seed",
+      "10100",
+    ],
+    { cwd: root, maxBuffer: 4 * 1024 * 1024 },
+  );
+  const report = JSON.parse(stdout);
+  const result = report.results[0];
+
+  assert.equal(report.schemaVersion, 1);
+  assert.equal(report.runtime.node, process.version);
+  assert.deepEqual(report.benchmark.counts, [20]);
+  assert.equal(result.objectCounts.units, 20);
+  assert.equal(result.measuredTicks, 3);
+  assert.match(result.snapshot.sha256, /^[a-f0-9]{64}$/);
+  for (const key of ["p50Ms", "p95Ms", "p99Ms", "worstMs"]) {
+    assert.equal(typeof result.tickTiming[key], "number");
+    assert.ok(result.tickTiming[key] >= 0);
+  }
+  assert.ok(result.systemTiming.separation);
+});
+
+test("versioned deterministic replay fixtures retain their expected hashes", async () => {
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    ["scripts/verify-simulation-replays.mjs"],
+    { cwd: root, maxBuffer: 4 * 1024 * 1024 },
+  );
+  const report = JSON.parse(stdout);
+
+  assert.equal(report.schemaVersion, 1);
+  assert.equal(report.updated, false);
+  assert.equal(report.verified, 5);
+  assert.equal(report.results.length, 5);
+});
