@@ -2916,31 +2916,42 @@ export class Simulation {
   }
 
   private applyLocalSeparation() {
+    for (const unit of this.sortedUnits()) this.applySeparationFor(unit);
+  }
+
+  private applySeparationFor(left: UnitState) {
     const minimumSquared = SEPARATION_MILLI * SEPARATION_MILLI;
-    const units = this.sortedUnits();
-    for (const left of units) {
-      const nearbyIds = this.unitSpatialIndex.query(
-        left.position,
-        TILE_MILLI,
-      );
-      for (const rightId of nearbyIds) {
-        if (rightId <= left.id) continue;
-        const right = this.unitById(rightId);
-        if (!right) continue;
-        const dx = right.position.x - left.position.x;
-        const dy = right.position.y - left.position.y;
-        if (dx * dx + dy * dy >= minimumSquared) continue;
-        const pushX = Math.abs(dx) >= Math.abs(dy) ? SEPARATION_STEP : 0;
-        const pushY = pushX === 0 ? SEPARATION_STEP : 0;
-        const directionX = dx >= 0 ? 1 : -1;
-        const directionY = dy >= 0 ? 1 : -1;
-        left.position.x -= pushX * directionX;
-        right.position.x += pushX * directionX;
-        left.position.y -= pushY * directionY;
-        right.position.y += pushY * directionY;
-        this.unitSpatialIndex.move(left.id, left.position);
-        this.unitSpatialIndex.move(right.id, right.position);
-      }
+    const processedIds = new Set<UnitId>();
+    let nearbyIds = this.unitSpatialIndex
+      .query(left.position, TILE_MILLI)
+      .filter((id) => id > left.id);
+    while (nearbyIds.length > 0) {
+      const rightId = nearbyIds.shift()!;
+      if (processedIds.has(rightId)) continue;
+      processedIds.add(rightId);
+      const right = this.unitById(rightId);
+      if (!right) continue;
+      const dx = right.position.x - left.position.x;
+      const dy = right.position.y - left.position.y;
+      if (dx * dx + dy * dy >= minimumSquared) continue;
+      const pushX = Math.abs(dx) >= Math.abs(dy) ? SEPARATION_STEP : 0;
+      const pushY = pushX === 0 ? SEPARATION_STEP : 0;
+      const directionX = dx >= 0 ? 1 : -1;
+      const directionY = dy >= 0 ? 1 : -1;
+      left.position.x -= pushX * directionX;
+      right.position.x += pushX * directionX;
+      left.position.y -= pushY * directionY;
+      right.position.y += pushY * directionY;
+      this.unitSpatialIndex.move(left.id, left.position);
+      this.unitSpatialIndex.move(right.id, right.position);
+      nearbyIds = [
+        ...new Set([
+          ...nearbyIds,
+          ...this.unitSpatialIndex
+            .query(left.position, TILE_MILLI)
+            .filter((id) => id > left.id && !processedIds.has(id)),
+        ]),
+      ].sort((a, b) => a - b);
     }
   }
 }

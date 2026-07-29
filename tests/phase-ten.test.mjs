@@ -89,6 +89,42 @@ test("spatial target acquisition preserves distance-then-id selection", () => {
   assert.equal(simulation.acquireUnitTarget(attacker, 2_000), higherId);
 });
 
+test("dense separation refreshes neighbors after moving the left unit", () => {
+  const simulation = new Simulation(10_008, "combat");
+  const left = simulation.createUnitState(
+    1,
+    1,
+    "argusRifle",
+    { x: 0, y: 0 },
+  );
+  left.position = { x: 0, y: 0 };
+  const pushingUnits = Array.from({ length: 25 }, (_, index) => {
+    const unit = simulation.createUnitState(
+      index + 2,
+      1,
+      "argusRifle",
+      { x: 0, y: 0 },
+    );
+    unit.position = { x: 1 - 24 * index, y: 0 };
+    return unit;
+  });
+  const initiallyExcluded = simulation.createUnitState(
+    27,
+    1,
+    "argusRifle",
+    { x: 0, y: 0 },
+  );
+  initiallyExcluded.position = { x: -1_001, y: 0 };
+  simulation.units = [left, ...pushingUnits, initiallyExcluded];
+  simulation.structures = [];
+  simulation.rebuildEntityIndexes();
+
+  simulation.applySeparationFor(left);
+
+  assert.equal(initiallyExcluded.position.x, -1_025);
+  assert.equal(left.position.x, -576);
+});
+
 test("step observers expose balanced system boundaries without changing state", () => {
   const observed = new Simulation(10_010, "skirmish");
   const control = new Simulation(10_010, "skirmish");
