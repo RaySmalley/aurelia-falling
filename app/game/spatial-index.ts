@@ -9,6 +9,7 @@ const cellKey = ({ x, y }: CellCoordinate) => `${x},${y}`;
 
 export class DeterministicSpatialIndex<Id extends number> {
   private readonly cells = new Map<string, Set<Id>>();
+  private readonly cellCoordinates = new Map<string, CellCoordinate>();
   private readonly entityCells = new Map<Id, string>();
   private readonly positions = new Map<Id, Vec2>();
 
@@ -20,6 +21,7 @@ export class DeterministicSpatialIndex<Id extends number> {
 
   clear() {
     this.cells.clear();
+    this.cellCoordinates.clear();
     this.entityCells.clear();
     this.positions.clear();
   }
@@ -28,8 +30,9 @@ export class DeterministicSpatialIndex<Id extends number> {
     if (this.entityCells.has(id)) {
       throw new Error(`Spatial index already contains entity ${id}.`);
     }
-    const key = cellKey(this.coordinateOf(position));
-    this.addToCell(key, id);
+    const coordinate = this.coordinateOf(position);
+    const key = cellKey(coordinate);
+    this.addToCell(key, coordinate, id);
     this.entityCells.set(id, key);
     this.positions.set(id, { ...position });
   }
@@ -39,10 +42,11 @@ export class DeterministicSpatialIndex<Id extends number> {
     if (previousKey === undefined) {
       throw new Error(`Spatial index does not contain entity ${id}.`);
     }
-    const nextKey = cellKey(this.coordinateOf(position));
+    const nextCoordinate = this.coordinateOf(position);
+    const nextKey = cellKey(nextCoordinate);
     if (previousKey !== nextKey) {
       this.removeFromCell(previousKey, id);
-      this.addToCell(nextKey, id);
+      this.addToCell(nextKey, nextCoordinate, id);
       this.entityCells.set(id, nextKey);
     }
     this.positions.set(id, { ...position });
@@ -90,65 +94,39 @@ export class DeterministicSpatialIndex<Id extends number> {
 
   nearest(position: Vec2, accept: (id: Id) => boolean = () => true) {
     if (this.positions.size === 0) return undefined;
-    const origin = this.coordinateOf(position);
-    let visited = 0;
     let bestId: Id | undefined;
     let bestDistanceSquared = Number.POSITIVE_INFINITY;
+    const occupiedCells = [...this.cells.keys()]
+      .map((key) => ({
+        key,
+        coordinate: this.cellCoordinates.get(key)!,
+        distanceSquared: this.distanceToCellSquared(
+          position,
+          this.cellCoordinates.get(key)!,
+        ),
+      }))
+      .sort(
+        (left, right) =>
+          left.distanceSquared - right.distanceSquared ||
+          left.coordinate.y - right.coordinate.y ||
+          left.coordinate.x - right.coordinate.x,
+      );
 
-    for (let ring = 0; visited < this.positions.size; ring += 1) {
-      const minimumX = origin.x - ring;
-      const maximumX = origin.x + ring;
-      const minimumY = origin.y - ring;
-      const maximumY = origin.y + ring;
-
-      const visitCell = (x: number, y: number) => {
-        for (const id of this.cells.get(cellKey({ x, y })) ?? []) {
-          visited += 1;
-          if (!accept(id)) continue;
-          const candidate = this.positions.get(id)!;
-          const dx = candidate.x - position.x;
-          const dy = candidate.y - position.y;
-          const candidateDistanceSquared = dx * dx + dy * dy;
-          if (
-            candidateDistanceSquared < bestDistanceSquared ||
-            (candidateDistanceSquared === bestDistanceSquared &&
-              (bestId === undefined || id < bestId))
-          ) {
-            bestId = id;
-            bestDistanceSquared = candidateDistanceSquared;
-          }
-        }
-      };
-
-      if (ring === 0) {
-        visitCell(origin.x, origin.y);
-      } else {
-        for (let x = minimumX; x <= maximumX; x += 1) {
-          visitCell(x, minimumY);
-          visitCell(x, maximumY);
-        }
-        for (let y = minimumY + 1; y < maximumY; y += 1) {
-          visitCell(minimumX, y);
-          visitCell(maximumX, y);
-        }
-      }
-
-      if (bestId !== undefined) {
-        const leftBoundary = minimumX * this.cellSize;
-        const rightBoundary = (maximumX + 1) * this.cellSize;
-        const topBoundary = minimumY * this.cellSize;
-        const bottomBoundary = (maximumY + 1) * this.cellSize;
-        const distanceToUnvisitedCells = Math.min(
-          position.x - leftBoundary,
-          rightBoundary - position.x,
-          position.y - topBoundary,
-          bottomBoundary - position.y,
-        );
+    for (const cell of occupiedCells) {
+      if (cell.distanceSquared > bestDistanceSquared) break;
+      for (const id of this.cells.get(cell.key)!) {
+        if (!accept(id)) continue;
+        const candidate = this.positions.get(id)!;
+        const dx = candidate.x - position.x;
+        const dy = candidate.y - position.y;
+        const candidateDistanceSquared = dx * dx + dy * dy;
         if (
-          distanceToUnvisitedCells * distanceToUnvisitedCells >
-          bestDistanceSquared
+          candidateDistanceSquared < bestDistanceSquared ||
+          (candidateDistanceSquared === bestDistanceSquared &&
+            (bestId === undefined || id < bestId))
         ) {
-          return bestId;
+          bestId = id;
+          bestDistanceSquared = candidateDistanceSquared;
         }
       }
     }
@@ -163,16 +141,32 @@ export class DeterministicSpatialIndex<Id extends number> {
     };
   }
 
-  private addToCell(key: string, id: Id) {
+  private distanceToCellSquared(position: Vec2, coordinate: CellCoordinate) {
+    const minimumX = coordinate.x * this.cellSize;
+    const maximumX = (coordinate.x + 1) * this.cellSize;
+    const minimumY = coordinate.y * this.cellSize;
+    const maximumY = (coordinate.y + 1) * this.cellSize;
+    const dx = Math.max(minimumX - position.x, 0, position.x - maximumX);
+    const dy = Math.max(minimumY - position.y, 0, position.y - maximumY);
+    return dx * dx + dy * dy;
+  }
+
+  private addToCell(key: string, coordinate: CellCoordinate, id: Id) {
     const occupants = this.cells.get(key);
     if (occupants) occupants.add(id);
-    else this.cells.set(key, new Set([id]));
+    else {
+      this.cells.set(key, new Set([id]));
+      this.cellCoordinates.set(key, coordinate);
+    }
   }
 
   private removeFromCell(key: string, id: Id) {
     const occupants = this.cells.get(key);
     if (!occupants) return;
     occupants.delete(id);
-    if (occupants.size === 0) this.cells.delete(key);
+    if (occupants.size === 0) {
+      this.cells.delete(key);
+      this.cellCoordinates.delete(key);
+    }
   }
 }
