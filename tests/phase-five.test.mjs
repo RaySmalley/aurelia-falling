@@ -54,6 +54,7 @@ test("Solar Spear charge advances only with a powered Oracle and is lost before 
     (structure) =>
       structure.playerId !== 1 || structure.kind !== "reactor",
   );
+  simulation.rebuildEntityIndexes();
   simulation.step();
   assert.equal(oracle.powered, false);
   assert.equal(

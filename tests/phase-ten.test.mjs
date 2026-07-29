@@ -108,6 +108,77 @@ test("spatial target acquisition preserves distance-then-id selection", () => {
   assert.equal(simulation.acquireUnitTarget(attacker, 2_000), higherId);
 });
 
+test("entity iteration reuses maintained deterministic ID views", () => {
+  const simulation = new Simulation(10_017, "combat");
+  const higherId = simulation.createUnitState(
+    8,
+    1,
+    "argusRifle",
+    { x: 10, y: 10 },
+  );
+  const lowerId = simulation.createUnitState(
+    7,
+    1,
+    "argusRifle",
+    { x: 9, y: 10 },
+  );
+  const structure = simulation.createStructureState(
+    5,
+    1,
+    "barracks",
+    { x: 11, y: 10 },
+    true,
+  );
+  simulation.units = [higherId, lowerId];
+  simulation.structures = [structure];
+  simulation.rebuildEntityIndexes();
+
+  const orderedUnits = simulation.sortedUnits();
+  const orderedStructures = simulation.sortedStructures();
+  assert.deepEqual(orderedUnits.map((unit) => unit.id), [7, 8]);
+  assert.deepEqual(orderedStructures.map((entry) => entry.id), [5]);
+  assert.equal(simulation.sortedUnits(), orderedUnits);
+  assert.equal(simulation.sortedStructures(), orderedStructures);
+
+  const addedUnit = simulation.createUnitState(
+    6,
+    1,
+    "argusRifle",
+    { x: 8, y: 10 },
+  );
+  simulation.units.push(addedUnit);
+  simulation.indexUnit(addedUnit);
+  assert.deepEqual(
+    simulation.sortedUnits().map((unit) => unit.id),
+    [6, 7, 8],
+  );
+  const addedStructure = simulation.createStructureState(
+    4,
+    1,
+    "reactor",
+    { x: 12, y: 10 },
+    true,
+  );
+  simulation.structures.push(addedStructure);
+  simulation.indexStructure(addedStructure);
+  assert.deepEqual(
+    simulation.sortedStructures().map((entry) => entry.id),
+    [4, 5],
+  );
+
+  lowerId.health = 0;
+  structure.health = 0;
+  simulation.removeDestroyedEntities();
+  assert.deepEqual(
+    simulation.sortedUnits().map((unit) => unit.id),
+    [6, 8],
+  );
+  assert.deepEqual(
+    simulation.sortedStructures().map((entry) => entry.id),
+    [4],
+  );
+});
+
 test("dense separation refreshes neighbors after moving the left unit", () => {
   const simulation = new Simulation(10_008, "combat");
   const left = simulation.createUnitState(
@@ -375,12 +446,17 @@ test("replay hashes cover hidden authoritative and RNG state", () => {
 test("replay fixture validation rejects ambiguous or unreachable epochs", () => {
   const fixture = {
     id: "validation",
+    scenario: "combat",
     end: { epoch: 0, tick: 10 },
     commands: [],
     checkpoints: [{ epoch: 0, tick: 10 }],
   };
 
   assert.doesNotThrow(() => validateFixture(fixture));
+  assert.throws(
+    () => validateFixture({ ...fixture, scenario: "skrimish" }),
+    /scenario must be one of combat, economy, or skirmish/,
+  );
   assert.throws(
     () =>
       validateFixture({
@@ -442,6 +518,7 @@ test("replay execution rejects checkpoints skipped at runtime", () => {
     () =>
       runFixture(SkippingSimulation, {}, {
         id: "skipped-checkpoint",
+        scenario: "combat",
         end: { epoch: 0, tick: 2 },
         commands: [],
         checkpoints: [{ epoch: 0, tick: 1 }],

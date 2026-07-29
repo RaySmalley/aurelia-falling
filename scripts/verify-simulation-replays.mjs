@@ -15,6 +15,7 @@ const restartKinds = new Set([
   "restartEconomy",
   "restartSkirmish",
 ]);
+const supportedScenarios = new Set(["combat", "economy", "skirmish"]);
 const checkpointKey = ({ epoch, tick }) => `${epoch}:${tick}`;
 const isNonNegativeInteger = (value) =>
   Number.isInteger(value) && value >= 0;
@@ -33,6 +34,11 @@ const validateCoordinate = (fixture, label, coordinate) => {
 };
 
 export const validateFixture = (fixture) => {
+  if (!supportedScenarios.has(fixture.scenario)) {
+    throw new Error(
+      `Replay ${fixture.id} scenario must be one of combat, economy, or skirmish.`,
+    );
+  }
   if (!Array.isArray(fixture.commands) || !Array.isArray(fixture.checkpoints)) {
     throw new Error(
       `Replay ${fixture.id} commands and checkpoints must be arrays.`,

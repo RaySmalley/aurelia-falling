@@ -314,6 +314,10 @@ grid, indexes resource fields, and routes Harvester field and refinery selection
 through spatial queries. Nearest choices preserve distance-then-ID ordering and
 ignore depleted fields or inoperable refineries.
 
+The fifth slice replaces repeated per-system unit and structure sorting with
+maintained deterministic ID-ordered views. Rebuilds establish the views once,
+while entity creation and removal update them without per-tick array copies.
+
 ### Work
 
 - Add headless simulation benchmarks for 100, 300, 600, and 1,000 units.
