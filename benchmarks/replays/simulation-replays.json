@@ -186,6 +186,30 @@
         },
         "final": "3f88e5d665b290ad31910b514eed7239c5dd1fe5accc3d6a15f10dbb863e7910"
       }
+    },
+    {
+      "id": "combat-restart-once",
+      "scenario": "combat",
+      "seed": 10006,
+      "finalTick": 10,
+      "checkpoints": [
+        10
+      ],
+      "commands": [
+        {
+          "tick": 5,
+          "command": {
+            "kind": "restartCombat",
+            "seed": 10007
+          }
+        }
+      ],
+      "expected": {
+        "checkpoints": {
+          "10": "8f814a2904348ae1b1ec39473d8aa68ff73e6d6b7242c601ca8b1f11079b3c59"
+        },
+        "final": "8f814a2904348ae1b1ec39473d8aa68ff73e6d6b7242c601ca8b1f11079b3c59"
+      }
     }
   ]
 }

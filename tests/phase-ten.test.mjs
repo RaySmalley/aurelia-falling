@@ -142,12 +142,15 @@ test("versioned deterministic replay fixtures retain their expected hashes", asy
   const { stdout } = await execFileAsync(
     process.execPath,
     ["scripts/verify-simulation-replays.mjs"],
-    { cwd: root, maxBuffer: 4 * 1024 * 1024 },
+    { cwd: root, maxBuffer: 4 * 1024 * 1024, timeout: 60_000 },
   );
   const report = JSON.parse(stdout);
 
   assert.equal(report.schemaVersion, 1);
   assert.equal(report.updated, false);
-  assert.equal(report.verified, 5);
-  assert.equal(report.results.length, 5);
+  assert.equal(report.verified, 6);
+  assert.equal(report.results.length, 6);
+  assert.ok(
+    report.results.some((result) => result.id === "combat-restart-once"),
+  );
 });

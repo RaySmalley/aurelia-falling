@@ -52,7 +52,9 @@ const runFixture = (Simulation, gameData, fixture) => {
 
   while (simulation.snapshot().tick < fixture.finalTick) {
     const tick = simulation.snapshot().tick;
-    for (const entry of commandsByTick.get(tick) ?? []) {
+    const commands = commandsByTick.get(tick) ?? [];
+    commandsByTick.delete(tick);
+    for (const entry of commands) {
       simulation.enqueue(entry.command);
     }
     simulation.step();
