@@ -33,6 +33,7 @@ const addOracle = (simulation, playerId, id, tile) => {
     true,
   );
   simulation.structures.push(oracle);
+  simulation.rebuildEntityIndexes();
   simulation.updateConnectivityAndPower();
   return oracle;
 };
@@ -85,6 +86,7 @@ test("Solar Spear requires current vision, warns for four seconds, and survives 
       structure.playerId === 2 && structure.kind === "citadel",
   );
   enemyCitadel.tile = { x: 17, y: 15 };
+  simulation.rebuildEntityIndexes();
   simulation.updateVisibility(true);
   simulation.enqueue({
     kind: "launchSolarSpear",

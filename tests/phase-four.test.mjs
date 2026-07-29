@@ -93,6 +93,7 @@ test("combat targets are dropped as soon as they leave current vision", () => {
   const playerUnit = unitSimulation.units.find((unit) => unit.id === 1);
   const enemyUnit = unitSimulation.units.find((unit) => unit.id === 2);
   enemyUnit.position = { x: 16_000, y: 15_000 };
+  unitSimulation.rebuildEntityIndexes();
   unitSimulation.updateVisibility(true);
   unitSimulation.enqueue({
     kind: "selectUnits",
@@ -104,6 +105,7 @@ test("combat targets are dropped as soon as they leave current vision", () => {
   assert.equal(playerUnit.targetId, enemyUnit.id);
 
   enemyUnit.position = { x: 49_000, y: 48_000 };
+  unitSimulation.rebuildEntityIndexes();
   unitSimulation.step();
   assert.equal(playerUnit.targetId, null);
   assert.equal(playerUnit.order, "idle");
@@ -116,6 +118,7 @@ test("combat targets are dropped as soon as they leave current vision", () => {
     (structure) => structure.id === 4,
   );
   structureAttacker.position = { x: 52_000, y: 54_000 };
+  structureSimulation.rebuildEntityIndexes();
   structureSimulation.updateVisibility(true);
   structureSimulation.enqueue({
     kind: "selectUnits",
@@ -130,6 +133,7 @@ test("combat targets are dropped as soon as they leave current vision", () => {
   assert.equal(structureAttacker.targetStructureId, enemyStructure.id);
 
   structureAttacker.position = { x: 14_000, y: 15_000 };
+  structureSimulation.rebuildEntityIndexes();
   structureSimulation.updateVisibility(true);
   structureSimulation.step();
   assert.equal(structureAttacker.targetStructureId, null);
@@ -145,6 +149,7 @@ test("Aurelite fields expose live state only while currently visible", () => {
 
   const harvester = simulation.units.find((unit) => unit.id === 1);
   harvester.position = { x: 28_000, y: 31_000 };
+  simulation.rebuildEntityIndexes();
   simulation.updateVisibility(true);
   assert.equal(
     simulation.snapshot().fields.some((field) => field.id === 3),
@@ -152,6 +157,7 @@ test("Aurelite fields expose live state only while currently visible", () => {
   );
 
   harvester.position = { x: 14_000, y: 15_000 };
+  simulation.rebuildEntityIndexes();
   simulation.updateVisibility(true);
   assert.equal(
     simulation.snapshot().fields.some((field) => field.id === 3),
@@ -249,6 +255,7 @@ test("the Normal AI reacts to visible threats and rebuilds destroyed tech", () =
 
   const playerHarvester = simulation.units.find((unit) => unit.id === 1);
   playerHarvester.position = { x: 52_000, y: 52_000 };
+  simulation.rebuildEntityIndexes();
   playerHarvester.order = "hold";
   playerHarvester.path = [];
   let sawDefenseOrder = false;

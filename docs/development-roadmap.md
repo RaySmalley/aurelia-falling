@@ -292,11 +292,17 @@ all-pairs proximity work that prevent predictable growth.
 
 ### Current implementation slice
 
-The first slice establishes a Node.js headless benchmark for deterministic
+The first slice established a Node.js headless benchmark for deterministic
 100, 300, 600, and 1,000-unit idle armies, opt-in per-system timing boundaries,
 machine-readable percentile and snapshot metrics, and versioned replay hashes
-for combat, economy, skirmish AI, fog movement, and Solar Spear impact. These
-measurements precede entity-store or spatial-index changes.
+for combat, economy, skirmish AI, fog movement, and Solar Spear impact.
+
+The second slice adds constant-time unit and structure lookup plus a
+deterministic uniform spatial grid with insert, move, remove, and radius-query
+operations. Target acquisition preserves distance-then-ID selection, and local
+separation now examines nearby cells. On the recorded hardware, 600-unit idle
+p95 improved from 1.4333 ms to 0.8506 ms and 1,000-unit idle p95 improved from
+3.7106 ms to 1.7310 ms without changing any versioned replay hash.
 
 ### Work
 

@@ -144,6 +144,7 @@ const createIdleArmy = (simulation, unitCount) => {
     return unit;
   });
   simulation.nextUnitId = unitCount + 1;
+  simulation.rebuildEntityIndexes();
   simulation.updateVisibility(true);
 };
 

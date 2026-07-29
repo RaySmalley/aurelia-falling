@@ -57,11 +57,18 @@ is dynamically imported behind the client-only React boundary in
 
 ## Current milestone
 
-Phase 10 is underway with the deterministic simulation performance baseline
-implemented. The Node.js headless benchmark measures balanced 100, 300, 600,
-and 1,000-unit idle armies without loading React or Phaser, records machine-
-readable p50/p95/p99/worst timings and snapshot metrics, and preserves a
-checked-in hardware baseline. Versioned replay fixtures verify canonical state
+Phase 10 is underway with deterministic entity indices and a uniform spatial
+grid integrated into the simulation. Unit and structure ID resolution is
+constant-time; target acquisition uses bounded radius queries while preserving
+distance-then-ID selection; and local separation examines nearby cells instead
+of every unit pair. The 600-unit idle benchmark improved from 1.4333 ms to
+0.8506 ms p95 on the recorded hardware, while all versioned replay hashes
+remain unchanged.
+
+The Node.js headless benchmark measures balanced 100, 300, 600, and 1,000-unit
+idle armies without loading React or Phaser, records machine-readable
+p50/p95/p99/worst timings and snapshot metrics, and preserves checked-in
+before-and-after evidence. Versioned replay fixtures verify canonical state
 hashes for combat, economy, skirmish AI, fog movement, and Solar Spear impact.
 Run them with `npm run benchmark:simulation` and `npm run replay:verify`.
 
