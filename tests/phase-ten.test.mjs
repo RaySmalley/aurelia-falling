@@ -74,7 +74,7 @@ test("deterministic spatial indices find the nearest accepted ID across cells", 
     return readCell(key);
   };
   assert.equal(index.nearest({ x: 500, y: 500 }, () => false), undefined);
-  assert.equal(cellReads, index.cells.size);
+  assert.equal(cellReads, 0);
 });
 
 test("spatial target acquisition preserves distance-then-id selection", () => {
