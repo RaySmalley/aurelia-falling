@@ -40,6 +40,8 @@ SHA-256 hashes of canonically serialized authoritative state are checked at
 intermediate checkpoints and at the final tick. The state includes hidden
 entities, RNG, command queues, AI memory, visibility, deterministic ID counters,
 control groups, and other fields that can affect future simulation behavior.
+Fixture commands are consumed once in recorded sequence, so tick values may
+decrease after a restart to represent commands in the reset timeline.
 When an explicitly reviewed simulation change requires a replay migration,
 regenerate hashes with:
 

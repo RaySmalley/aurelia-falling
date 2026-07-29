@@ -151,6 +151,6 @@ test("versioned deterministic replay fixtures retain their expected hashes", asy
   assert.equal(report.verified, 6);
   assert.equal(report.results.length, 6);
   assert.ok(
-    report.results.some((result) => result.id === "combat-restart-once"),
+    report.results.some((result) => result.id === "combat-restart-epochs"),
   );
 });

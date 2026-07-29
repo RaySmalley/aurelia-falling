@@ -45,16 +45,13 @@ const runFixture = (Simulation, gameData, fixture) => {
 
   const checkpointTicks = new Set(fixture.checkpoints);
   const checkpointHashes = {};
-  const commandsByTick = Map.groupBy(
-    fixture.commands,
-    (entry) => entry.tick,
-  );
+  let commandIndex = 0;
 
   while (simulation.snapshot().tick < fixture.finalTick) {
     const tick = simulation.snapshot().tick;
-    const commands = commandsByTick.get(tick) ?? [];
-    commandsByTick.delete(tick);
-    for (const entry of commands) {
+    while (fixture.commands[commandIndex]?.tick === tick) {
+      const entry = fixture.commands[commandIndex];
+      commandIndex += 1;
       simulation.enqueue(entry.command);
     }
     simulation.step();
@@ -62,6 +59,13 @@ const runFixture = (Simulation, gameData, fixture) => {
     if (checkpointTicks.has(completedTick)) {
       checkpointHashes[completedTick] = hashReplayState(simulation);
     }
+  }
+  if (commandIndex !== fixture.commands.length) {
+    throw new Error(
+      `Replay ${fixture.id} ended with ${
+        fixture.commands.length - commandIndex
+      } unconsumed command(s).`,
+    );
   }
 
   return {

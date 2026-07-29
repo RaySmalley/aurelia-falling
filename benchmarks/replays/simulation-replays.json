@@ -188,7 +188,7 @@
       }
     },
     {
-      "id": "combat-restart-once",
+      "id": "combat-restart-epochs",
       "scenario": "combat",
       "seed": 10006,
       "finalTick": 10,
@@ -202,13 +202,34 @@
             "kind": "restartCombat",
             "seed": 10007
           }
+        },
+        {
+          "tick": 1,
+          "command": {
+            "kind": "selectUnits",
+            "unitIds": [
+              1
+            ],
+            "additive": false
+          }
+        },
+        {
+          "tick": 1,
+          "command": {
+            "kind": "move",
+            "target": {
+              "x": 29,
+              "y": 29
+            },
+            "mode": "move"
+          }
         }
       ],
       "expected": {
         "checkpoints": {
-          "10": "8f814a2904348ae1b1ec39473d8aa68ff73e6d6b7242c601ca8b1f11079b3c59"
+          "10": "5ea95f0fb685ccd21c251fa434bcba63d103e3abd4d580a8f27cd04ec82c4d18"
         },
-        "final": "8f814a2904348ae1b1ec39473d8aa68ff73e6d6b7242c601ca8b1f11079b3c59"
+        "final": "5ea95f0fb685ccd21c251fa434bcba63d103e3abd4d580a8f27cd04ec82c4d18"
       }
     }
   ]
