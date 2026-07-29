@@ -1,0 +1,346 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-07-29T02:53:37.083Z",
+  "revision": "d60430540f5a4552c3c156c9fa904e1592b24cd7",
+  "workingTreeDirty": false,
+  "runtime": {
+    "node": "v24.18.0",
+    "platform": "win32",
+    "architecture": "x64",
+    "osRelease": "10.0.26200",
+    "cpu": "11th Gen Intel(R) Core(TM) i7-11800H @ 2.30GHz",
+    "logicalCpuCount": 16,
+    "totalMemoryBytes": 16890277888,
+    "buildMode": "development"
+  },
+  "benchmark": {
+    "simulationRateHz": 20,
+    "scenario": "idle-armies",
+    "counts": [
+      100,
+      300,
+      600,
+      1000
+    ],
+    "warmupTicks": 10,
+    "measuredTicks": 50
+  },
+  "results": [
+    {
+      "id": "idle-100",
+      "scenario": "idle-armies",
+      "seed": 10001,
+      "commandStream": "none",
+      "warmupTicks": 10,
+      "measuredTicks": 50,
+      "objectCounts": {
+        "units": 100,
+        "structures": 0,
+        "projectiles": 0,
+        "total": 100
+      },
+      "tickTiming": {
+        "p50Ms": 0.0722,
+        "p95Ms": 0.1889,
+        "p99Ms": 0.3679,
+        "worstMs": 0.3679
+      },
+      "systemTiming": {
+        "commands": {
+          "p50Ms": 0.0007,
+          "p95Ms": 0.0022,
+          "p99Ms": 0.0208,
+          "worstMs": 0.0208
+        },
+        "unitOrders": {
+          "p50Ms": 0.0115,
+          "p95Ms": 0.0342,
+          "p99Ms": 0.0661,
+          "worstMs": 0.0661
+        },
+        "movement": {
+          "p50Ms": 0.0069,
+          "p95Ms": 0.0354,
+          "p99Ms": 0.0511,
+          "worstMs": 0.0511
+        },
+        "separation": {
+          "p50Ms": 0.0254,
+          "p95Ms": 0.0581,
+          "p99Ms": 0.1579,
+          "worstMs": 0.1579
+        },
+        "projectiles": {
+          "p50Ms": 0.0006,
+          "p95Ms": 0.0024,
+          "p99Ms": 0.0037,
+          "worstMs": 0.0037
+        },
+        "cleanup": {
+          "p50Ms": 0.0015,
+          "p95Ms": 0.0061,
+          "p99Ms": 0.0537,
+          "worstMs": 0.0537
+        },
+        "visibility": {
+          "p50Ms": 0.0206,
+          "p95Ms": 0.0549,
+          "p99Ms": 0.1292,
+          "worstMs": 0.1292
+        },
+        "matchResolution": {
+          "p50Ms": 0.0007,
+          "p95Ms": 0.0024,
+          "p99Ms": 0.0029,
+          "worstMs": 0.0029
+        }
+      },
+      "allocation": {
+        "heapDeltaBytes": 1896944,
+        "heapUsedBeforeBytes": 34594616,
+        "heapUsedAfterBytes": 36491560
+      },
+      "snapshot": {
+        "bytes": 46606,
+        "sha256": "2c46be6766ce301e45ffecbe137c5b3ce6a122d35a75b6e58fb20bda7cff9ac6"
+      }
+    },
+    {
+      "id": "idle-300",
+      "scenario": "idle-armies",
+      "seed": 10001,
+      "commandStream": "none",
+      "warmupTicks": 10,
+      "measuredTicks": 50,
+      "objectCounts": {
+        "units": 300,
+        "structures": 0,
+        "projectiles": 0,
+        "total": 300
+      },
+      "tickTiming": {
+        "p50Ms": 0.2914,
+        "p95Ms": 0.5246,
+        "p99Ms": 0.6009,
+        "worstMs": 0.6009
+      },
+      "systemTiming": {
+        "commands": {
+          "p50Ms": 0.0004,
+          "p95Ms": 0.0017,
+          "p99Ms": 0.0027,
+          "worstMs": 0.0027
+        },
+        "unitOrders": {
+          "p50Ms": 0.0284,
+          "p95Ms": 0.0769,
+          "p99Ms": 0.1159,
+          "worstMs": 0.1159
+        },
+        "movement": {
+          "p50Ms": 0.0137,
+          "p95Ms": 0.0283,
+          "p99Ms": 0.0316,
+          "worstMs": 0.0316
+        },
+        "separation": {
+          "p50Ms": 0.2072,
+          "p95Ms": 0.3292,
+          "p99Ms": 0.3803,
+          "worstMs": 0.3803
+        },
+        "projectiles": {
+          "p50Ms": 0.0004,
+          "p95Ms": 0.0024,
+          "p99Ms": 0.0026,
+          "worstMs": 0.0026
+        },
+        "cleanup": {
+          "p50Ms": 0.0025,
+          "p95Ms": 0.0066,
+          "p99Ms": 0.0163,
+          "worstMs": 0.0163
+        },
+        "visibility": {
+          "p50Ms": 0.0369,
+          "p95Ms": 0.0744,
+          "p99Ms": 0.1171,
+          "worstMs": 0.1171
+        },
+        "matchResolution": {
+          "p50Ms": 0.0004,
+          "p95Ms": 0.0013,
+          "p99Ms": 0.0021,
+          "worstMs": 0.0021
+        }
+      },
+      "allocation": {
+        "heapDeltaBytes": 5014080,
+        "heapUsedBeforeBytes": 39129872,
+        "heapUsedAfterBytes": 44143952
+      },
+      "snapshot": {
+        "bytes": 121512,
+        "sha256": "e7cd800932e4da116ce85572df06f06b629008c8bfa10a64243ce24742d03f7c"
+      }
+    },
+    {
+      "id": "idle-600",
+      "scenario": "idle-armies",
+      "seed": 10001,
+      "commandStream": "none",
+      "warmupTicks": 10,
+      "measuredTicks": 50,
+      "objectCounts": {
+        "units": 600,
+        "structures": 0,
+        "projectiles": 0,
+        "total": 600
+      },
+      "tickTiming": {
+        "p50Ms": 0.8268,
+        "p95Ms": 1.4333,
+        "p99Ms": 2.6903,
+        "worstMs": 2.6903
+      },
+      "systemTiming": {
+        "commands": {
+          "p50Ms": 0.0003,
+          "p95Ms": 0.0009,
+          "p99Ms": 0.0165,
+          "worstMs": 0.0165
+        },
+        "unitOrders": {
+          "p50Ms": 0.0326,
+          "p95Ms": 0.0546,
+          "p99Ms": 0.2291,
+          "worstMs": 0.2291
+        },
+        "movement": {
+          "p50Ms": 0.0139,
+          "p95Ms": 0.0329,
+          "p99Ms": 0.0775,
+          "worstMs": 0.0775
+        },
+        "separation": {
+          "p50Ms": 0.707,
+          "p95Ms": 1.2267,
+          "p99Ms": 2.2398,
+          "worstMs": 2.2398
+        },
+        "projectiles": {
+          "p50Ms": 0.0004,
+          "p95Ms": 0.002,
+          "p99Ms": 0.0228,
+          "worstMs": 0.0228
+        },
+        "cleanup": {
+          "p50Ms": 0.0042,
+          "p95Ms": 0.0084,
+          "p99Ms": 0.0092,
+          "worstMs": 0.0092
+        },
+        "visibility": {
+          "p50Ms": 0.0622,
+          "p95Ms": 0.1,
+          "p99Ms": 0.1016,
+          "worstMs": 0.1016
+        },
+        "matchResolution": {
+          "p50Ms": 0.0003,
+          "p95Ms": 0.0012,
+          "p99Ms": 0.0026,
+          "worstMs": 0.0026
+        }
+      },
+      "allocation": {
+        "heapDeltaBytes": 9363272,
+        "heapUsedBeforeBytes": 33315496,
+        "heapUsedAfterBytes": 42678768
+      },
+      "snapshot": {
+        "bytes": 234146,
+        "sha256": "06517adc9fe5a171127d5779d13e6b46e9ea4545f34d906a2bf0c857aad84792"
+      }
+    },
+    {
+      "id": "idle-1000",
+      "scenario": "idle-armies",
+      "seed": 10001,
+      "commandStream": "none",
+      "warmupTicks": 10,
+      "measuredTicks": 50,
+      "objectCounts": {
+        "units": 1000,
+        "structures": 0,
+        "projectiles": 0,
+        "total": 1000
+      },
+      "tickTiming": {
+        "p50Ms": 2.1161,
+        "p95Ms": 3.7106,
+        "p99Ms": 5.0057,
+        "worstMs": 5.0057
+      },
+      "systemTiming": {
+        "commands": {
+          "p50Ms": 0.0003,
+          "p95Ms": 0.0018,
+          "p99Ms": 0.0033,
+          "worstMs": 0.0033
+        },
+        "unitOrders": {
+          "p50Ms": 0.0523,
+          "p95Ms": 0.0763,
+          "p99Ms": 0.0891,
+          "worstMs": 0.0891
+        },
+        "movement": {
+          "p50Ms": 0.022,
+          "p95Ms": 0.0527,
+          "p99Ms": 0.2218,
+          "worstMs": 0.2218
+        },
+        "separation": {
+          "p50Ms": 1.9155,
+          "p95Ms": 3.3035,
+          "p99Ms": 4.6695,
+          "worstMs": 4.6695
+        },
+        "projectiles": {
+          "p50Ms": 0.0006,
+          "p95Ms": 0.0078,
+          "p99Ms": 0.0192,
+          "worstMs": 0.0192
+        },
+        "cleanup": {
+          "p50Ms": 0.0065,
+          "p95Ms": 0.0228,
+          "p99Ms": 0.0318,
+          "worstMs": 0.0318
+        },
+        "visibility": {
+          "p50Ms": 0.1147,
+          "p95Ms": 0.1961,
+          "p99Ms": 0.7635,
+          "worstMs": 0.7635
+        },
+        "matchResolution": {
+          "p50Ms": 0.0004,
+          "p95Ms": 0.0034,
+          "p99Ms": 0.0043,
+          "worstMs": 0.0043
+        }
+      },
+      "allocation": {
+        "heapDeltaBytes": -1077976,
+        "heapUsedBeforeBytes": 32034016,
+        "heapUsedAfterBytes": 30956040
+      },
+      "snapshot": {
+        "bytes": 384376,
+        "sha256": "af3ad6bc7f1e296eab254af4cd331f71711d1c5163afd7c280947371e0169b5d"
+      }
+    }
+  ]
+}
