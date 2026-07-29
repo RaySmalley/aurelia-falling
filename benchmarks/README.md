@@ -22,9 +22,23 @@ p50/p95/p99/worst timings for the complete tick and each observed simulation
 system. Heap deltas are process-level signals rather than exact allocation
 counts and should be compared across repeated runs on the same machine.
 
-The checked-in [baseline](./baseline.json) is evidence from its recorded
-hardware profile, not a universal CI threshold. The release gate remains the
-roadmap's minimum-hardware profile once that profile is defined.
+The checked-in [baseline](./baseline.json) records the pre-index implementation.
+The [spatial-index result](./spatial-index.json) records the same benchmark
+after constant-time entity lookup and nearby-cell separation were introduced.
+Both are evidence from their recorded hardware profile, not universal CI
+thresholds. The release gate remains the roadmap's minimum-hardware profile
+once that profile is defined.
+
+| Units | Tick p95 before | Tick p95 after | Change | Separation p95 before | Separation p95 after | Change |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 100 | 0.1889 ms | 0.2031 ms | +7.5% | 0.0581 ms | 0.1651 ms | +184.2% |
+| 300 | 0.5246 ms | 0.4991 ms | -4.9% | 0.3292 ms | 0.4181 ms | +27.0% |
+| 600 | 1.4333 ms | 0.8506 ms | -40.7% | 1.2267 ms | 0.7405 ms | -39.6% |
+| 1,000 | 3.7106 ms | 1.7310 ms | -53.3% | 3.3035 ms | 1.5085 ms | -54.3% |
+
+The grid has fixed bookkeeping overhead at small army sizes, visible most
+clearly in the 100-unit separation measurement. It crosses over before 600
+units and removes the previous quadratic growth curve.
 
 ## Replay contract
 

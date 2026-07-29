@@ -112,6 +112,7 @@ test("selling the sole vision source blocks later same-tick Solar Spear launches
     true,
   );
   simulation.structures.push(oracle, forwardReactor);
+  simulation.rebuildEntityIndexes();
   simulation.updateConnectivityAndPower();
   simulation.updateVisibility(true);
   simulation.solarSpears[1].chargeTicks = gameData.solarSpear.chargeTicks;

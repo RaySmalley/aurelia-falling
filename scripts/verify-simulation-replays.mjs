@@ -141,6 +141,7 @@ const applySetup = (simulation, gameData, setup) => {
       structure.playerId === 2 && structure.kind === "citadel",
   );
   enemyCitadel.tile = { x: 17, y: 15 };
+  simulation.rebuildEntityIndexes();
   simulation.updateConnectivityAndPower();
   simulation.updateVisibility(true);
 };

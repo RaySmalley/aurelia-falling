@@ -22,12 +22,72 @@ const vite = await createServer({
 const simulationModule = await vite.ssrLoadModule(
   "/app/game/simulation.ts",
 );
+const spatialIndexModule = await vite.ssrLoadModule(
+  "/app/game/spatial-index.ts",
+);
 const {
   SIMULATION_SYSTEMS,
   Simulation,
 } = simulationModule;
+const { DeterministicSpatialIndex } = spatialIndexModule;
 
 test.after(() => vite.close());
+
+test("deterministic spatial indices track insert, move, remove, and ordered queries", () => {
+  const index = new DeterministicSpatialIndex(1_000);
+  index.insert(9, { x: 1_010, y: 1_010 });
+  index.insert(2, { x: 999, y: 999 });
+  index.insert(5, { x: -1, y: -1 });
+
+  assert.deepEqual(index.query({ x: 1_000, y: 1_000 }, 20), [2, 9]);
+  assert.deepEqual(index.query({ x: 0, y: 0 }, 2), [5]);
+  assert.throws(
+    () => index.insert(9, { x: 0, y: 0 }),
+    /already contains entity 9/,
+  );
+
+  index.move(9, { x: 2_100, y: 1_010 });
+  assert.deepEqual(index.query({ x: 1_000, y: 1_000 }, 20), [2]);
+  assert.deepEqual(index.query({ x: 2_000, y: 1_000 }, 101), [9]);
+  assert.equal(index.remove(2), true);
+  assert.equal(index.remove(2), false);
+  assert.deepEqual(index.query({ x: 1_000, y: 1_000 }, 20), []);
+  assert.throws(
+    () => index.move(2, { x: 0, y: 0 }),
+    /does not contain entity 2/,
+  );
+});
+
+test("spatial target acquisition preserves distance-then-id selection", () => {
+  const simulation = new Simulation(10_009, "combat");
+  const attacker = simulation.createUnitState(
+    1,
+    1,
+    "argusRifle",
+    { x: 10, y: 10 },
+  );
+  const higherId = simulation.createUnitState(
+    8,
+    2,
+    "argusRifle",
+    { x: 11, y: 10 },
+  );
+  const lowerId = simulation.createUnitState(
+    7,
+    2,
+    "argusRifle",
+    { x: 9, y: 10 },
+  );
+  simulation.units = [attacker, higherId, lowerId];
+  simulation.structures = [];
+  simulation.rebuildEntityIndexes();
+
+  assert.equal(simulation.acquireUnitTarget(attacker, 2_000), lowerId);
+
+  lowerId.position = { x: 20_000, y: 20_000 };
+  simulation.rebuildEntityIndexes();
+  assert.equal(simulation.acquireUnitTarget(attacker, 2_000), higherId);
+});
 
 test("step observers expose balanced system boundaries without changing state", () => {
   const observed = new Simulation(10_010, "skirmish");

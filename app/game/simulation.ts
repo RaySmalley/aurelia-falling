@@ -14,6 +14,7 @@ import {
   nearestWalkable,
   translateSharedPath,
 } from "./pathfinding";
+import { DeterministicSpatialIndex } from "./spatial-index";
 import { VisibilityGrid, type VisibilitySource } from "./visibility";
 import type {
   AiDifficulty,
@@ -422,6 +423,12 @@ export class Simulation {
   private controlledPlayer: PlayerId = 1;
   private units: UnitState[] = [];
   private structures: StructureState[] = [];
+  private readonly unitsById = new Map<UnitId, UnitState>();
+  private readonly structuresById = new Map<StructureId, StructureState>();
+  private readonly unitSpatialIndex =
+    new DeterministicSpatialIndex<UnitId>(TILE_MILLI);
+  private readonly structureSpatialIndex =
+    new DeterministicSpatialIndex<StructureId>(TILE_MILLI);
   private fields: FieldState[] = [];
   private players: Record<PlayerId, PlayerState> = {
     1: { id: 1, credits: 0, powerGenerated: 0, powerConsumed: 0 },
@@ -904,6 +911,10 @@ export class Simulation {
     this.controlledPlayer = 1;
     this.units = [];
     this.structures = [];
+    this.unitsById.clear();
+    this.structuresById.clear();
+    this.unitSpatialIndex.clear();
+    this.structureSpatialIndex.clear();
     this.fields = [];
     this.players = {
       1: { id: 1, credits: 0, powerGenerated: 0, powerConsumed: 0 },
@@ -953,6 +964,7 @@ export class Simulation {
         startingUnit.callsign,
       ),
     );
+    this.rebuildEntityIndexes();
     this.nextUnitId = 13;
     for (const unit of this.units.filter((unit) => unit.playerId === 2)) {
       unit.order = "attackMove";
@@ -1007,6 +1019,7 @@ export class Simulation {
         "Midas Cyan",
       ),
     ];
+    this.rebuildEntityIndexes();
     this.nextUnitId = 3;
     this.nextStructureId = 7;
     this.updateConnectivityAndPower();
@@ -1729,11 +1742,33 @@ export class Simulation {
   }
 
   private unitById(id: UnitId) {
-    return this.units.find((unit) => unit.id === id);
+    return this.unitsById.get(id);
   }
 
   private structureById(id: StructureId) {
-    return this.structures.find((structure) => structure.id === id);
+    return this.structuresById.get(id);
+  }
+
+  private rebuildEntityIndexes() {
+    this.unitsById.clear();
+    this.structuresById.clear();
+    this.unitSpatialIndex.clear();
+    this.structureSpatialIndex.clear();
+    for (const unit of this.units) this.indexUnit(unit);
+    for (const structure of this.structures) this.indexStructure(structure);
+  }
+
+  private indexUnit(unit: UnitState) {
+    this.unitsById.set(unit.id, unit);
+    this.unitSpatialIndex.insert(unit.id, unit.position);
+  }
+
+  private indexStructure(structure: StructureState) {
+    this.structuresById.set(structure.id, structure);
+    this.structureSpatialIndex.insert(
+      structure.id,
+      tileCenter(structure.tile),
+    );
   }
 
   private selectedUnits() {
@@ -1950,9 +1985,12 @@ export class Simulation {
 
   private acquireUnitTarget(unit: UnitState, acquisitionRange: number) {
     const rangeSquared = acquisitionRange * acquisitionRange;
-    return this.units
+    return this.unitSpatialIndex
+      .query(unit.position, acquisitionRange)
+      .map((id) => this.unitById(id))
       .filter(
-        (candidate) =>
+        (candidate): candidate is UnitState =>
+          candidate !== undefined &&
           candidate.playerId !== unit.playerId &&
           candidate.health > 0 &&
           distanceSquared(unit.position, candidate.position) <= rangeSquared,
@@ -1970,9 +2008,12 @@ export class Simulation {
 
   private acquireStructureTarget(unit: UnitState, acquisitionRange: number) {
     const rangeSquared = acquisitionRange * acquisitionRange;
-    return this.structures
+    return this.structureSpatialIndex
+      .query(unit.position, acquisitionRange)
+      .map((id) => this.structureById(id))
       .filter(
-        (candidate) =>
+        (candidate): candidate is StructureState =>
+          candidate !== undefined &&
           candidate.playerId !== unit.playerId &&
           candidate.health > 0 &&
           distanceSquared(unit.position, tileCenter(candidate.tile)) <=
@@ -2078,6 +2119,7 @@ export class Simulation {
     const stepMilli = gameData.units[unit.kind].speedMilliPerTick;
     if (distance <= stepMilli) {
       unit.position = { ...waypoint };
+      this.unitSpatialIndex.move(unit.id, unit.position);
       unit.pathIndex += 1;
       if (unit.pathIndex >= unit.path.length) {
         this.clearPath(unit);
@@ -2090,6 +2132,7 @@ export class Simulation {
     }
     unit.position.x += Math.trunc((dx * stepMilli) / distance);
     unit.position.y += Math.trunc((dy * stepMilli) / distance);
+    this.unitSpatialIndex.move(unit.id, unit.position);
   }
 
   private liveOracle(playerId: PlayerId) {
@@ -2561,15 +2604,15 @@ export class Simulation {
     const definition = gameData.buildings[buildingKind];
     this.players[playerId].credits -= definition.cost;
     const structureId = this.nextStructureId;
-    this.structures.push(
-      this.createStructureState(
-        structureId,
-        playerId,
-        buildingKind,
-        tile,
-        false,
-      ),
+    const structure = this.createStructureState(
+      structureId,
+      playerId,
+      buildingKind,
+      tile,
+      false,
     );
+    this.structures.push(structure);
+    this.indexStructure(structure);
     if (playerId === this.controlledPlayer) {
       this.onboardingConstructionIds.add(structureId);
     }
@@ -2650,6 +2693,8 @@ export class Simulation {
     this.structures = this.structures.filter(
       (candidate) => candidate.id !== structureId,
     );
+    this.structuresById.delete(structureId);
+    this.structureSpatialIndex.remove(structureId);
     this.onboardingConstructionIds.delete(structureId);
     this.updateConnectivityAndPower();
     this.updateVisibility();
@@ -2682,6 +2727,7 @@ export class Simulation {
     );
     this.nextUnitId += 1;
     this.units.push(unit);
+    this.indexUnit(unit);
     const rally = this.rallies.get(structure.playerId);
     if (rally) {
       unit.order = "move";
@@ -2772,6 +2818,10 @@ export class Simulation {
     }
     if (destroyedUnits.length > 0) {
       const destroyedIds = new Set(destroyedUnits.map((unit) => unit.id));
+      for (const id of destroyedIds) {
+        this.unitsById.delete(id);
+        this.unitSpatialIndex.remove(id);
+      }
       this.units = this.units.filter((unit) => !destroyedIds.has(unit.id));
       this.projectiles = this.projectiles.filter(
         (projectile) =>
@@ -2794,6 +2844,10 @@ export class Simulation {
         destroyedStructures.map((structure) => structure.id),
       );
       for (const id of destroyedIds) this.onboardingConstructionIds.delete(id);
+      for (const id of destroyedIds) {
+        this.structuresById.delete(id);
+        this.structureSpatialIndex.remove(id);
+      }
       this.structures = this.structures.filter(
         (structure) => !destroyedIds.has(structure.id),
       );
@@ -2864,14 +2918,15 @@ export class Simulation {
   private applyLocalSeparation() {
     const minimumSquared = SEPARATION_MILLI * SEPARATION_MILLI;
     const units = this.sortedUnits();
-    for (let leftIndex = 0; leftIndex < units.length; leftIndex += 1) {
-      for (
-        let rightIndex = leftIndex + 1;
-        rightIndex < units.length;
-        rightIndex += 1
-      ) {
-        const left = units[leftIndex];
-        const right = units[rightIndex];
+    for (const left of units) {
+      const nearbyIds = this.unitSpatialIndex.query(
+        left.position,
+        TILE_MILLI,
+      );
+      for (const rightId of nearbyIds) {
+        if (rightId <= left.id) continue;
+        const right = this.unitById(rightId);
+        if (!right) continue;
         const dx = right.position.x - left.position.x;
         const dy = right.position.y - left.position.y;
         if (dx * dx + dy * dy >= minimumSquared) continue;
@@ -2883,6 +2938,8 @@ export class Simulation {
         right.position.x += pushX * directionX;
         left.position.y -= pushY * directionY;
         right.position.y += pushY * directionY;
+        this.unitSpatialIndex.move(left.id, left.position);
+        this.unitSpatialIndex.move(right.id, right.position);
       }
     }
   }
