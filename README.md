@@ -57,13 +57,21 @@ is dynamically imported behind the client-only React boundary in
 
 ## Current milestone
 
-Phase 9, battlefield art and operational readability, is implemented on the
-64×64 Golden Scar map. The deterministic skirmish now uses validated unit,
-structure, terrain, decal, and Aurelite atlases; runtime Gold/Cyan identity
-marks; stale fog silhouettes; damaged and construction presentation; atlas-
-derived portraits; and a segmented Harvester cargo meter. Phaser retries match
-assets twice and retains procedural unit, structure, terrain, and resource
-renderers as missing-asset fallbacks.
+Phase 10 is underway with the deterministic simulation performance baseline
+implemented. The Node.js headless benchmark measures balanced 100, 300, 600,
+and 1,000-unit idle armies without loading React or Phaser, records machine-
+readable p50/p95/p99/worst timings and snapshot metrics, and preserves a
+checked-in hardware baseline. Versioned replay fixtures verify canonical state
+hashes for combat, economy, skirmish AI, fog movement, and Solar Spear impact.
+Run them with `npm run benchmark:simulation` and `npm run replay:verify`.
+
+Phase 9 established battlefield art and operational readability on the 64×64
+Golden Scar map. The deterministic skirmish uses validated unit, structure,
+terrain, decal, and Aurelite atlases; runtime Gold/Cyan identity marks; stale
+fog silhouettes; damaged and construction presentation; atlas-derived
+portraits; and a segmented Harvester cargo meter. Phaser retries match assets
+twice and retains procedural unit, structure, terrain, and resource renderers
+as missing-asset fallbacks.
 
 Phases 7 and 8 also established the fixed viewport-height contract, Phaser
 containment, bounded command dock, internal overflow regions, and 90–110% UI
@@ -88,7 +96,8 @@ atlas edge below 2048 pixels.
 
 The initial Phase 0-6 baseline is recorded in the
 [initial v1 implementation plan](docs/initial-v1-implementation-plan.md).
-The completed Phase 7-9 presentation work and next scaling phases are sequenced in the
+The completed Phase 7-9 presentation work, Phase 10 performance baseline, and
+remaining scaling phases are sequenced in the
 [development roadmap](docs/development-roadmap.md), with detailed supporting
 plans for viewport fit, four-player scaling, and the deferred TypeScript 7
 transition under `docs/`.
