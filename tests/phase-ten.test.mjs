@@ -125,6 +125,78 @@ test("dense separation refreshes neighbors after moving the left unit", () => {
   assert.equal(left.position.x, -576);
 });
 
+test("area damage and spawn checks use bounded spatial queries", () => {
+  const simulation = new Simulation(10_014, "economy");
+  const nearUnit = simulation.createUnitState(
+    1,
+    1,
+    "argusRifle",
+    { x: 10, y: 10 },
+  );
+  const farUnit = simulation.createUnitState(
+    2,
+    2,
+    "argusRifle",
+    { x: 30, y: 30 },
+  );
+  const nearStructure = simulation.createStructureState(
+    1,
+    1,
+    "barracks",
+    { x: 11, y: 10 },
+    true,
+  );
+  const farStructure = simulation.createStructureState(
+    2,
+    2,
+    "barracks",
+    { x: 30, y: 30 },
+    true,
+  );
+  simulation.units = [nearUnit, farUnit];
+  simulation.structures = [nearStructure, farStructure];
+  simulation.rebuildEntityIndexes();
+
+  const unitRadii = [];
+  const structureRadii = [];
+  const queryUnits = simulation.unitSpatialIndex.query.bind(
+    simulation.unitSpatialIndex,
+  );
+  const queryStructures = simulation.structureSpatialIndex.query.bind(
+    simulation.structureSpatialIndex,
+  );
+  simulation.unitSpatialIndex.query = (position, radius) => {
+    unitRadii.push(radius);
+    return queryUnits(position, radius);
+  };
+  simulation.structureSpatialIndex.query = (position, radius) => {
+    structureRadii.push(radius);
+    return queryStructures(position, radius);
+  };
+
+  const nearUnitHealth = nearUnit.health;
+  const farUnitHealth = farUnit.health;
+  const nearStructureHealth = nearStructure.health;
+  const farStructureHealth = farStructure.health;
+  simulation.solarSpears[1].target = { x: 10, y: 10 };
+  simulation.solarSpears[1].impactTick = simulation.tick;
+  simulation.updateSolarSpears();
+
+  assert.ok(nearUnit.health < nearUnitHealth);
+  assert.equal(farUnit.health, farUnitHealth);
+  assert.ok(nearStructure.health < nearStructureHealth);
+  assert.equal(farStructure.health, farStructureHealth);
+  assert.ok(unitRadii.includes(5_000));
+  assert.ok(structureRadii.includes(5_000));
+
+  simulation.occupiedTiles = () => {
+    throw new Error("spawn checks must not build a map-wide occupied tile set");
+  };
+  assert.ok(simulation.nearestSpawnTile({ x: 10, y: 10 }, 1));
+  assert.ok(unitRadii.some((radius) => radius === 1_000));
+  assert.ok(structureRadii.some((radius) => radius === 0));
+});
+
 test("step observers expose balanced system boundaries without changing state", () => {
   const observed = new Simulation(10_010, "skirmish");
   const control = new Simulation(10_010, "skirmish");

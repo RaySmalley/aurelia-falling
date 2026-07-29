@@ -77,6 +77,12 @@ const SEPARATION_MILLI = 420;
 const SEPARATION_STEP = 24;
 const CHASE_REPATH_TICKS = 8;
 const REGEN_DENOMINATOR = TICKS_PER_SECOND * 60;
+const MAX_BUILD_RADIUS_MILLI =
+  Math.max(
+    ...Object.values(gameData.buildings).map(
+      (definition) => definition.buildRadius,
+    ),
+  ) * TILE_MILLI;
 
 type UnitState = {
   id: UnitId;
@@ -1749,6 +1755,44 @@ export class Simulation {
     return this.structuresById.get(id);
   }
 
+  private unitsWithin(position: Vec2, radius: number) {
+    return this.unitSpatialIndex
+      .query(position, radius)
+      .map((id) => this.unitById(id))
+      .filter((unit): unit is UnitState => unit !== undefined);
+  }
+
+  private structuresWithin(position: Vec2, radius: number) {
+    return this.structureSpatialIndex
+      .query(position, radius)
+      .map((id) => this.structureById(id))
+      .filter((structure): structure is StructureState => structure !== undefined);
+  }
+
+  private tileHasEntity(
+    tile: GridPoint,
+    observer?: PlayerId,
+    excludedUnitIds = new Set<UnitId>(),
+  ) {
+    const tileKey = tileKeyOf(tile);
+    const occupiedByUnit = this.unitsWithin(
+      tileCenter(tile),
+      TILE_MILLI,
+    ).some(
+      (unit) =>
+        !excludedUnitIds.has(unit.id) &&
+        tileKeyOf(toTile(unit.position)) === tileKey &&
+        (!observer ||
+          this.scenario !== "skirmish" ||
+          unit.playerId === observer ||
+          this.isUnitVisibleTo(observer, unit)),
+    );
+    if (occupiedByUnit) return true;
+    return this.structuresWithin(tileCenter(tile), 0).some(
+      (structure) => tileKeyOf(structure.tile) === tileKey,
+    );
+  }
+
   private rebuildEntityIndexes() {
     this.unitsById.clear();
     this.structuresById.clear();
@@ -2210,7 +2254,10 @@ export class Simulation {
         const radiusSquared =
           gameData.solarSpear.blastRadiusMilli *
           gameData.solarSpear.blastRadiusMilli;
-        for (const unit of this.units) {
+        for (const unit of this.unitsWithin(
+          targetPosition,
+          gameData.solarSpear.blastRadiusMilli,
+        )) {
           if (distanceSquared(unit.position, targetPosition) <= radiusSquared) {
             unit.health = Math.max(
               0,
@@ -2218,7 +2265,10 @@ export class Simulation {
             );
           }
         }
-        for (const structure of this.structures) {
+        for (const structure of this.structuresWithin(
+          targetPosition,
+          gameData.solarSpear.blastRadiusMilli,
+        )) {
           if (
             distanceSquared(tileCenter(structure.tile), targetPosition) <=
             radiusSquared
@@ -2500,7 +2550,7 @@ export class Simulation {
       const weapon = gameData.weapons[definition.weaponId];
       if (structure.cooldownTicks > 0) continue;
       const position = tileCenter(structure.tile);
-      const target = this.units
+      const target = this.unitsWithin(position, weapon.rangeMilli)
         .filter(
           (unit) =>
             unit.playerId !== structure.playerId &&
@@ -2544,10 +2594,7 @@ export class Simulation {
       return "unexplored";
     }
     if (
-      this.units.some((unit) => tileKeyOf(toTile(unit.position)) === tileKeyOf(tile)) ||
-      this.structures.some(
-        (structure) => tileKeyOf(structure.tile) === tileKeyOf(tile),
-      )
+      this.tileHasEntity(tile)
     ) {
       return "occupied";
     }
@@ -2575,7 +2622,10 @@ export class Simulation {
     ) {
       return "citadelUnique";
     }
-    const inRadius = this.structures.some((structure) => {
+    const inRadius = this.structuresWithin(
+      tileCenter(tile),
+      MAX_BUILD_RADIUS_MILLI,
+    ).some((structure) => {
       if (
         structure.playerId !== playerId ||
         structure.constructionRemainingTicks > 0 ||
@@ -2737,7 +2787,6 @@ export class Simulation {
   }
 
   private nearestSpawnTile(tile: GridPoint, playerId: PlayerId) {
-    const occupied = this.occupiedTiles(new Set(), playerId);
     const candidates: GridPoint[] = [];
     for (let radius = 1; radius <= 3; radius += 1) {
       for (let y = tile.y - radius; y <= tile.y + radius; y += 1) {
@@ -2750,7 +2799,10 @@ export class Simulation {
           const candidate = { x, y };
           if (
             !isTerrainBlocked(candidate) &&
-            !occupied.has(tileKeyOf(candidate))
+            !this.tileHasEntity(candidate, playerId) &&
+            !this.fields.some(
+              (field) => tileKeyOf(field.tile) === tileKeyOf(candidate),
+            )
           ) {
             candidates.push(candidate);
           }

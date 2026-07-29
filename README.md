@@ -61,7 +61,9 @@ Phase 10 is underway with deterministic entity indices and a uniform spatial
 grid integrated into the simulation. Unit and structure ID resolution is
 constant-time; target acquisition uses bounded radius queries while preserving
 distance-then-ID selection; and local separation examines nearby cells instead
-of every unit pair. The 600-unit idle benchmark improved from 1.4333 ms to
+of every unit pair. Solar Spear area damage, turret targeting, placement
+coverage, and spawn occupancy also use bounded spatial queries instead of
+map-wide entity scans. The 600-unit idle benchmark improved from 1.4333 ms to
 0.8506 ms p95 on the recorded hardware, while all versioned replay hashes
 remain unchanged.
 
