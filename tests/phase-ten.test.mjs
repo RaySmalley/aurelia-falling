@@ -5,6 +5,11 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import { hashReplayState } from "../scripts/replay-state-hash.mjs";
+import {
+  runFixture,
+  validateFixture,
+} from "../scripts/verify-simulation-replays.mjs";
+import { parseArguments } from "../scripts/run-simulation-benchmarks.mjs";
 
 const execFileAsync = promisify(execFile);
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -106,6 +111,116 @@ test("replay hashes cover hidden authoritative and RNG state", () => {
   assert.notEqual(simulation.units[0].health, 0);
 });
 
+test("replay fixture validation rejects ambiguous or unreachable epochs", () => {
+  const fixture = {
+    id: "validation",
+    end: { epoch: 0, tick: 10 },
+    commands: [],
+    checkpoints: [{ epoch: 0, tick: 10 }],
+  };
+
+  assert.doesNotThrow(() => validateFixture(fixture));
+  assert.throws(
+    () =>
+      validateFixture({
+        ...fixture,
+        checkpoints: [{ epoch: 0, tick: 11 }],
+      }),
+    /checkpoint 0:11 is unreachable/,
+  );
+  assert.throws(
+    () =>
+      validateFixture({
+        ...fixture,
+        checkpoints: [
+          { epoch: 0, tick: 10 },
+          { epoch: 0, tick: 10 },
+        ],
+      }),
+    /duplicate checkpoint 0:10/,
+  );
+  assert.throws(
+    () =>
+      validateFixture({
+        ...fixture,
+        end: { epoch: 1, tick: 10 },
+        commands: [
+          {
+            epoch: 1,
+            tick: 1,
+            command: { kind: "selectUnits", unitIds: [], additive: false },
+          },
+        ],
+      }),
+    /must target epoch 0/,
+  );
+});
+
+test("replay execution rejects checkpoints skipped at runtime", () => {
+  class SkippingSimulation {
+    constructor() {
+      this.tick = 0;
+    }
+
+    snapshot() {
+      return { tick: this.tick };
+    }
+
+    enqueue() {}
+
+    step() {
+      this.tick += 2;
+    }
+
+    authoritativeState() {
+      return { tick: this.tick };
+    }
+  }
+
+  assert.throws(
+    () =>
+      runFixture(SkippingSimulation, {}, {
+        id: "skipped-checkpoint",
+        end: { epoch: 0, tick: 2 },
+        commands: [],
+        checkpoints: [{ epoch: 0, tick: 1 }],
+      }),
+    /did not reach checkpoint\(s\): 0:1/,
+  );
+});
+
+test("benchmark arguments reject partial numbers and preserve zero seed", () => {
+  assert.deepEqual(
+    parseArguments([
+      "--counts",
+      "20,40",
+      "--ticks",
+      "3",
+      "--warmup",
+      "0",
+      "--seed",
+      "0",
+    ]),
+    {
+      counts: [20, 40],
+      measuredTicks: 3,
+      output: null,
+      seed: 0,
+      warmupTicks: 0,
+    },
+  );
+  for (const value of ["3ms", "1.5", "1e3", "-1"]) {
+    assert.throws(
+      () => parseArguments(["--ticks", value]),
+      /must be a positive integer/,
+    );
+  }
+  assert.throws(
+    () => parseArguments(["--counts", "20,,40"]),
+    /must be a positive integer/,
+  );
+});
+
 test("the headless benchmark emits machine-readable percentile results", async () => {
   const { stdout } = await execFileAsync(
     process.execPath,
@@ -146,11 +261,15 @@ test("versioned deterministic replay fixtures retain their expected hashes", asy
   );
   const report = JSON.parse(stdout);
 
-  assert.equal(report.schemaVersion, 1);
+  assert.equal(report.schemaVersion, 2);
   assert.equal(report.updated, false);
   assert.equal(report.verified, 6);
   assert.equal(report.results.length, 6);
   assert.ok(
     report.results.some((result) => result.id === "combat-restart-epochs"),
   );
+  const restartResult = report.results.find(
+    (result) => result.id === "combat-restart-epochs",
+  );
+  assert.deepEqual(Object.keys(restartResult.checkpoints), ["0:10", "1:10"]);
 });

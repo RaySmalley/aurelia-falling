@@ -9,15 +9,26 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
-const parsePositiveInteger = (value, option) => {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new Error(`${option} must be a positive integer`);
+const parseInteger = (value, option, allowZero = false) => {
+  const normalized = String(value).trim();
+  if (!/^\d+$/.test(normalized)) {
+    throw new Error(
+      `${option} must be ${allowZero ? "a non-negative" : "a positive"} integer`,
+    );
+  }
+  const parsed = Number(normalized);
+  if (
+    !Number.isSafeInteger(parsed) ||
+    (allowZero ? parsed < 0 : parsed <= 0)
+  ) {
+    throw new Error(
+      `${option} must be ${allowZero ? "a non-negative" : "a positive"} integer`,
+    );
   }
   return parsed;
 };
 
-const parseArguments = (argv) => {
+export const parseArguments = (argv) => {
   const options = {
     counts: [100, 300, 600, 1_000],
     measuredTicks: 50,
@@ -32,16 +43,16 @@ const parseArguments = (argv) => {
     if (option === "--counts" && value) {
       options.counts = value
         .split(",")
-        .map((count) => parsePositiveInteger(count.trim(), option));
+        .map((count) => parseInteger(count, option));
       index += 1;
     } else if (option === "--ticks" && value) {
-      options.measuredTicks = parsePositiveInteger(value, option);
+      options.measuredTicks = parseInteger(value, option);
       index += 1;
     } else if (option === "--warmup" && value) {
-      options.warmupTicks = parsePositiveInteger(value, option);
+      options.warmupTicks = parseInteger(value, option, true);
       index += 1;
     } else if (option === "--seed" && value) {
-      options.seed = parsePositiveInteger(value, option);
+      options.seed = parseInteger(value, option, true);
       index += 1;
     } else if (option === "--output" && value) {
       options.output = resolve(root, value);
@@ -263,4 +274,6 @@ const main = async () => {
   }
 };
 
-await main();
+if (resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await main();
+}

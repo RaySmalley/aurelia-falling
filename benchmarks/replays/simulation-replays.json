@@ -1,18 +1,31 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "fixtures": [
     {
       "id": "combat-attack",
       "scenario": "combat",
       "seed": 10001,
-      "finalTick": 240,
+      "end": {
+        "epoch": 0,
+        "tick": 240
+      },
       "checkpoints": [
-        1,
-        120,
-        240
+        {
+          "epoch": 0,
+          "tick": 1
+        },
+        {
+          "epoch": 0,
+          "tick": 120
+        },
+        {
+          "epoch": 0,
+          "tick": 240
+        }
       ],
       "commands": [
         {
+          "epoch": 0,
           "tick": 0,
           "command": {
             "kind": "selectUnits",
@@ -28,6 +41,7 @@
           }
         },
         {
+          "epoch": 0,
           "tick": 0,
           "command": {
             "kind": "move",
@@ -41,9 +55,9 @@
       ],
       "expected": {
         "checkpoints": {
-          "1": "8eb487bbaf22ba2d4a03e0bef5f74d5c30e2e4283112137e3219b6b145fe7237",
-          "120": "49f9300990c01a382b7d95da15ffda9b3a7933fe273d3a0e47c28855efe478ed",
-          "240": "eb3fee2c10db15b676079a5ba0d10c4320e695bc5a3b0e9cd275c88121237703"
+          "0:1": "8eb487bbaf22ba2d4a03e0bef5f74d5c30e2e4283112137e3219b6b145fe7237",
+          "0:120": "49f9300990c01a382b7d95da15ffda9b3a7933fe273d3a0e47c28855efe478ed",
+          "0:240": "eb3fee2c10db15b676079a5ba0d10c4320e695bc5a3b0e9cd275c88121237703"
         },
         "final": "eb3fee2c10db15b676079a5ba0d10c4320e695bc5a3b0e9cd275c88121237703"
       }
@@ -52,14 +66,27 @@
       "id": "economy-harvest",
       "scenario": "economy",
       "seed": 10002,
-      "finalTick": 400,
+      "end": {
+        "epoch": 0,
+        "tick": 400
+      },
       "checkpoints": [
-        1,
-        200,
-        400
+        {
+          "epoch": 0,
+          "tick": 1
+        },
+        {
+          "epoch": 0,
+          "tick": 200
+        },
+        {
+          "epoch": 0,
+          "tick": 400
+        }
       ],
       "commands": [
         {
+          "epoch": 0,
           "tick": 0,
           "command": {
             "kind": "selectUnits",
@@ -70,6 +97,7 @@
           }
         },
         {
+          "epoch": 0,
           "tick": 0,
           "command": {
             "kind": "move",
@@ -83,9 +111,9 @@
       ],
       "expected": {
         "checkpoints": {
-          "1": "44f3ac11dfe1f8b0bb015ba11f1f43b74ae688f291647089c5fe172f1f174458",
-          "200": "600463810b43aafaf27efa419a1398cf9c6e14729afb2f3457195d8bc42ccd3c",
-          "400": "bb79b7c60f6c3173dfb3c62ae0668f280b1dc807e57a1428bb6c4561de0d6c23"
+          "0:1": "44f3ac11dfe1f8b0bb015ba11f1f43b74ae688f291647089c5fe172f1f174458",
+          "0:200": "600463810b43aafaf27efa419a1398cf9c6e14729afb2f3457195d8bc42ccd3c",
+          "0:400": "bb79b7c60f6c3173dfb3c62ae0668f280b1dc807e57a1428bb6c4561de0d6c23"
         },
         "final": "bb79b7c60f6c3173dfb3c62ae0668f280b1dc807e57a1428bb6c4561de0d6c23"
       }
@@ -95,18 +123,30 @@
       "scenario": "skirmish",
       "difficulty": "normal",
       "seed": 10003,
-      "finalTick": 1000,
+      "end": {
+        "epoch": 0,
+        "tick": 1000
+      },
       "checkpoints": [
-        1,
-        500,
-        1000
+        {
+          "epoch": 0,
+          "tick": 1
+        },
+        {
+          "epoch": 0,
+          "tick": 500
+        },
+        {
+          "epoch": 0,
+          "tick": 1000
+        }
       ],
       "commands": [],
       "expected": {
         "checkpoints": {
-          "1": "651d0d97ccddd91f5e7f986db575a03159541d0e00b40cb31d5829119afdfccb",
-          "500": "e10054e4e0ba9945d877a38bc8f87fc9858486cf9678453dba4eda739ff303d6",
-          "1000": "439d532c0dd150d8b4cb6f97d27f2ce962a8a61298df031bb5219a46136f5b55"
+          "0:1": "651d0d97ccddd91f5e7f986db575a03159541d0e00b40cb31d5829119afdfccb",
+          "0:500": "e10054e4e0ba9945d877a38bc8f87fc9858486cf9678453dba4eda739ff303d6",
+          "0:1000": "439d532c0dd150d8b4cb6f97d27f2ce962a8a61298df031bb5219a46136f5b55"
         },
         "final": "439d532c0dd150d8b4cb6f97d27f2ce962a8a61298df031bb5219a46136f5b55"
       }
@@ -116,14 +156,27 @@
       "scenario": "skirmish",
       "difficulty": "easy",
       "seed": 10004,
-      "finalTick": 240,
+      "end": {
+        "epoch": 0,
+        "tick": 240
+      },
       "checkpoints": [
-        1,
-        120,
-        240
+        {
+          "epoch": 0,
+          "tick": 1
+        },
+        {
+          "epoch": 0,
+          "tick": 120
+        },
+        {
+          "epoch": 0,
+          "tick": 240
+        }
       ],
       "commands": [
         {
+          "epoch": 0,
           "tick": 0,
           "command": {
             "kind": "selectUnits",
@@ -134,6 +187,7 @@
           }
         },
         {
+          "epoch": 0,
           "tick": 0,
           "command": {
             "kind": "move",
@@ -147,9 +201,9 @@
       ],
       "expected": {
         "checkpoints": {
-          "1": "3f7607d261cebc3864e79da584e609933f460418c7e3349b13c29cb05714dbdf",
-          "120": "d6bf58d8b1e9570ae06e474cb0b4b02cf0da9fb56f0d3dc0896d106d5c182a04",
-          "240": "bf21bb4e4fbdab6766970dad6bf3090b41f6546b8c79b63dc6fc561db3f21ce7"
+          "0:1": "3f7607d261cebc3864e79da584e609933f460418c7e3349b13c29cb05714dbdf",
+          "0:120": "d6bf58d8b1e9570ae06e474cb0b4b02cf0da9fb56f0d3dc0896d106d5c182a04",
+          "0:240": "bf21bb4e4fbdab6766970dad6bf3090b41f6546b8c79b63dc6fc561db3f21ce7"
         },
         "final": "bf21bb4e4fbdab6766970dad6bf3090b41f6546b8c79b63dc6fc561db3f21ce7"
       }
@@ -160,14 +214,27 @@
       "difficulty": "normal",
       "seed": 10005,
       "setup": "solar-spear-ready",
-      "finalTick": 100,
+      "end": {
+        "epoch": 0,
+        "tick": 100
+      },
       "checkpoints": [
-        1,
-        80,
-        100
+        {
+          "epoch": 0,
+          "tick": 1
+        },
+        {
+          "epoch": 0,
+          "tick": 80
+        },
+        {
+          "epoch": 0,
+          "tick": 100
+        }
       ],
       "commands": [
         {
+          "epoch": 0,
           "tick": 0,
           "command": {
             "kind": "launchSolarSpear",
@@ -180,9 +247,9 @@
       ],
       "expected": {
         "checkpoints": {
-          "1": "a4b226e6a15b28cf352fe5e6940f6f406f9b756ca188fcefcb17d1f4e82de707",
-          "80": "e6330fdb9351632a2b627b5ae38596854bec882fe958ea736a79c90dcb41266f",
-          "100": "3f88e5d665b290ad31910b514eed7239c5dd1fe5accc3d6a15f10dbb863e7910"
+          "0:1": "a4b226e6a15b28cf352fe5e6940f6f406f9b756ca188fcefcb17d1f4e82de707",
+          "0:80": "e6330fdb9351632a2b627b5ae38596854bec882fe958ea736a79c90dcb41266f",
+          "0:100": "3f88e5d665b290ad31910b514eed7239c5dd1fe5accc3d6a15f10dbb863e7910"
         },
         "final": "3f88e5d665b290ad31910b514eed7239c5dd1fe5accc3d6a15f10dbb863e7910"
       }
@@ -191,12 +258,23 @@
       "id": "combat-restart-epochs",
       "scenario": "combat",
       "seed": 10006,
-      "finalTick": 10,
+      "end": {
+        "epoch": 1,
+        "tick": 10
+      },
       "checkpoints": [
-        10
+        {
+          "epoch": 0,
+          "tick": 10
+        },
+        {
+          "epoch": 1,
+          "tick": 10
+        }
       ],
       "commands": [
         {
+          "epoch": 0,
           "tick": 20,
           "command": {
             "kind": "restartCombat",
@@ -204,6 +282,7 @@
           }
         },
         {
+          "epoch": 1,
           "tick": 1,
           "command": {
             "kind": "selectUnits",
@@ -214,6 +293,7 @@
           }
         },
         {
+          "epoch": 1,
           "tick": 1,
           "command": {
             "kind": "move",
@@ -227,7 +307,8 @@
       ],
       "expected": {
         "checkpoints": {
-          "10": "5ea95f0fb685ccd21c251fa434bcba63d103e3abd4d580a8f27cd04ec82c4d18"
+          "0:10": "49bd1f3e88ecad9e5c6bb07aaf6efebd178f2ee5971815d0608a6a8245b8e8c5",
+          "1:10": "5ea95f0fb685ccd21c251fa434bcba63d103e3abd4d580a8f27cd04ec82c4d18"
         },
         "final": "5ea95f0fb685ccd21c251fa434bcba63d103e3abd4d580a8f27cd04ec82c4d18"
       }
