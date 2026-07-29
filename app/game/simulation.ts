@@ -471,20 +471,21 @@ export class Simulation {
   }
 
   step(observer?: SimulationStepObserver) {
-    const observedTick = this.tick;
-    observer?.begin("commands", observedTick);
+    const commandTick = this.tick;
+    observer?.begin("commands", commandTick);
     for (const command of this.commands.splice(0)) {
       this.applyCommand(command);
     }
     for (const command of this.aiCommands.splice(0)) {
       this.applyAiCommand(command);
     }
-    observer?.end("commands", observedTick);
+    observer?.end("commands", commandTick);
     if (this.status !== "active") {
       this.tick += 1;
       return;
     }
 
+    const observedTick = this.tick;
     if (this.scenario !== "combat") {
       observer?.begin("construction", observedTick);
       this.updateConstruction();

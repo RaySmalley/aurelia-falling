@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-07-29T02:28:16.184Z",
-  "revision": "46dffe56a29a6a2497f175c3de7d5c4ec565163f",
-  "workingTreeDirty": true,
+  "recordedAt": "2026-07-29T02:53:37.083Z",
+  "revision": "d60430540f5a4552c3c156c9fa904e1592b24cd7",
+  "workingTreeDirty": false,
   "runtime": {
     "node": "v24.18.0",
     "platform": "win32",
@@ -40,65 +40,65 @@
         "total": 100
       },
       "tickTiming": {
-        "p50Ms": 0.0673,
-        "p95Ms": 0.1454,
-        "p99Ms": 0.1963,
-        "worstMs": 0.1963
+        "p50Ms": 0.0722,
+        "p95Ms": 0.1889,
+        "p99Ms": 0.3679,
+        "worstMs": 0.3679
       },
       "systemTiming": {
         "commands": {
-          "p50Ms": 0.0006,
-          "p95Ms": 0.0017,
-          "p99Ms": 0.0324,
-          "worstMs": 0.0324
+          "p50Ms": 0.0007,
+          "p95Ms": 0.0022,
+          "p99Ms": 0.0208,
+          "worstMs": 0.0208
         },
         "unitOrders": {
-          "p50Ms": 0.0108,
-          "p95Ms": 0.0206,
-          "p99Ms": 0.0282,
-          "worstMs": 0.0282
+          "p50Ms": 0.0115,
+          "p95Ms": 0.0342,
+          "p99Ms": 0.0661,
+          "worstMs": 0.0661
         },
         "movement": {
-          "p50Ms": 0.0055,
-          "p95Ms": 0.0139,
-          "p99Ms": 0.0297,
-          "worstMs": 0.0297
+          "p50Ms": 0.0069,
+          "p95Ms": 0.0354,
+          "p99Ms": 0.0511,
+          "worstMs": 0.0511
         },
         "separation": {
-          "p50Ms": 0.0244,
-          "p95Ms": 0.0436,
-          "p99Ms": 0.0662,
-          "worstMs": 0.0662
+          "p50Ms": 0.0254,
+          "p95Ms": 0.0581,
+          "p99Ms": 0.1579,
+          "worstMs": 0.1579
         },
         "projectiles": {
-          "p50Ms": 0.0005,
-          "p95Ms": 0.0015,
-          "p99Ms": 0.0029,
-          "worstMs": 0.0029
+          "p50Ms": 0.0006,
+          "p95Ms": 0.0024,
+          "p99Ms": 0.0037,
+          "worstMs": 0.0037
         },
         "cleanup": {
-          "p50Ms": 0.0014,
-          "p95Ms": 0.0027,
-          "p99Ms": 0.0042,
-          "worstMs": 0.0042
+          "p50Ms": 0.0015,
+          "p95Ms": 0.0061,
+          "p99Ms": 0.0537,
+          "worstMs": 0.0537
         },
         "visibility": {
-          "p50Ms": 0.0195,
-          "p95Ms": 0.0474,
-          "p99Ms": 0.083,
-          "worstMs": 0.083
+          "p50Ms": 0.0206,
+          "p95Ms": 0.0549,
+          "p99Ms": 0.1292,
+          "worstMs": 0.1292
         },
         "matchResolution": {
-          "p50Ms": 0.0006,
-          "p95Ms": 0.0036,
-          "p99Ms": 0.0061,
-          "worstMs": 0.0061
+          "p50Ms": 0.0007,
+          "p95Ms": 0.0024,
+          "p99Ms": 0.0029,
+          "worstMs": 0.0029
         }
       },
       "allocation": {
-        "heapDeltaBytes": 1958208,
-        "heapUsedBeforeBytes": 33856256,
-        "heapUsedAfterBytes": 35814464
+        "heapDeltaBytes": 1896944,
+        "heapUsedBeforeBytes": 34594616,
+        "heapUsedAfterBytes": 36491560
       },
       "snapshot": {
         "bytes": 46606,
@@ -119,65 +119,65 @@
         "total": 300
       },
       "tickTiming": {
-        "p50Ms": 0.4222,
-        "p95Ms": 0.5488,
-        "p99Ms": 0.5805,
-        "worstMs": 0.5805
+        "p50Ms": 0.2914,
+        "p95Ms": 0.5246,
+        "p99Ms": 0.6009,
+        "worstMs": 0.6009
       },
       "systemTiming": {
         "commands": {
-          "p50Ms": 0.0009,
-          "p95Ms": 0.0013,
-          "p99Ms": 0.0036,
-          "worstMs": 0.0036
+          "p50Ms": 0.0004,
+          "p95Ms": 0.0017,
+          "p99Ms": 0.0027,
+          "worstMs": 0.0027
         },
         "unitOrders": {
-          "p50Ms": 0.0479,
-          "p95Ms": 0.0596,
-          "p99Ms": 0.0793,
-          "worstMs": 0.0793
+          "p50Ms": 0.0284,
+          "p95Ms": 0.0769,
+          "p99Ms": 0.1159,
+          "worstMs": 0.1159
         },
         "movement": {
-          "p50Ms": 0.0217,
-          "p95Ms": 0.0263,
-          "p99Ms": 0.0303,
-          "worstMs": 0.0303
+          "p50Ms": 0.0137,
+          "p95Ms": 0.0283,
+          "p99Ms": 0.0316,
+          "worstMs": 0.0316
         },
         "separation": {
-          "p50Ms": 0.2908,
-          "p95Ms": 0.3507,
-          "p99Ms": 0.3736,
-          "worstMs": 0.3736
+          "p50Ms": 0.2072,
+          "p95Ms": 0.3292,
+          "p99Ms": 0.3803,
+          "worstMs": 0.3803
         },
         "projectiles": {
-          "p50Ms": 0.001,
-          "p95Ms": 0.0018,
-          "p99Ms": 0.0038,
-          "worstMs": 0.0038
+          "p50Ms": 0.0004,
+          "p95Ms": 0.0024,
+          "p99Ms": 0.0026,
+          "worstMs": 0.0026
         },
         "cleanup": {
-          "p50Ms": 0.0044,
-          "p95Ms": 0.0081,
-          "p99Ms": 0.0292,
-          "worstMs": 0.0292
+          "p50Ms": 0.0025,
+          "p95Ms": 0.0066,
+          "p99Ms": 0.0163,
+          "worstMs": 0.0163
         },
         "visibility": {
-          "p50Ms": 0.0629,
-          "p95Ms": 0.095,
-          "p99Ms": 0.1271,
-          "worstMs": 0.1271
+          "p50Ms": 0.0369,
+          "p95Ms": 0.0744,
+          "p99Ms": 0.1171,
+          "worstMs": 0.1171
         },
         "matchResolution": {
-          "p50Ms": 0.0007,
-          "p95Ms": 0.0012,
-          "p99Ms": 0.0014,
-          "worstMs": 0.0014
+          "p50Ms": 0.0004,
+          "p95Ms": 0.0013,
+          "p99Ms": 0.0021,
+          "worstMs": 0.0021
         }
       },
       "allocation": {
-        "heapDeltaBytes": 5009488,
-        "heapUsedBeforeBytes": 38429952,
-        "heapUsedAfterBytes": 43439440
+        "heapDeltaBytes": 5014080,
+        "heapUsedBeforeBytes": 39129872,
+        "heapUsedAfterBytes": 44143952
       },
       "snapshot": {
         "bytes": 121512,
@@ -198,65 +198,65 @@
         "total": 600
       },
       "tickTiming": {
-        "p50Ms": 0.9424,
-        "p95Ms": 1.2757,
-        "p99Ms": 1.6056,
-        "worstMs": 1.6056
+        "p50Ms": 0.8268,
+        "p95Ms": 1.4333,
+        "p99Ms": 2.6903,
+        "worstMs": 2.6903
       },
       "systemTiming": {
         "commands": {
           "p50Ms": 0.0003,
-          "p95Ms": 0.0007,
-          "p99Ms": 0.0013,
-          "worstMs": 0.0013
+          "p95Ms": 0.0009,
+          "p99Ms": 0.0165,
+          "worstMs": 0.0165
         },
         "unitOrders": {
-          "p50Ms": 0.0362,
-          "p95Ms": 0.0595,
-          "p99Ms": 0.0664,
-          "worstMs": 0.0664
+          "p50Ms": 0.0326,
+          "p95Ms": 0.0546,
+          "p99Ms": 0.2291,
+          "worstMs": 0.2291
         },
         "movement": {
-          "p50Ms": 0.015,
-          "p95Ms": 0.0376,
-          "p99Ms": 0.0871,
-          "worstMs": 0.0871
+          "p50Ms": 0.0139,
+          "p95Ms": 0.0329,
+          "p99Ms": 0.0775,
+          "worstMs": 0.0775
         },
         "separation": {
-          "p50Ms": 0.8043,
-          "p95Ms": 1.0924,
-          "p99Ms": 1.3177,
-          "worstMs": 1.3177
+          "p50Ms": 0.707,
+          "p95Ms": 1.2267,
+          "p99Ms": 2.2398,
+          "worstMs": 2.2398
         },
         "projectiles": {
-          "p50Ms": 0.0003,
-          "p95Ms": 0.0032,
-          "p99Ms": 0.0052,
-          "worstMs": 0.0052
+          "p50Ms": 0.0004,
+          "p95Ms": 0.002,
+          "p99Ms": 0.0228,
+          "worstMs": 0.0228
         },
         "cleanup": {
-          "p50Ms": 0.0045,
-          "p95Ms": 0.0176,
-          "p99Ms": 0.0313,
-          "worstMs": 0.0313
+          "p50Ms": 0.0042,
+          "p95Ms": 0.0084,
+          "p99Ms": 0.0092,
+          "worstMs": 0.0092
         },
         "visibility": {
-          "p50Ms": 0.0697,
-          "p95Ms": 0.1234,
-          "p99Ms": 0.1556,
-          "worstMs": 0.1556
+          "p50Ms": 0.0622,
+          "p95Ms": 0.1,
+          "p99Ms": 0.1016,
+          "worstMs": 0.1016
         },
         "matchResolution": {
           "p50Ms": 0.0003,
-          "p95Ms": 0.0008,
-          "p99Ms": 0.0012,
-          "worstMs": 0.0012
+          "p95Ms": 0.0012,
+          "p99Ms": 0.0026,
+          "worstMs": 0.0026
         }
       },
       "allocation": {
-        "heapDeltaBytes": 9351056,
-        "heapUsedBeforeBytes": 32559976,
-        "heapUsedAfterBytes": 41911032
+        "heapDeltaBytes": 9363272,
+        "heapUsedBeforeBytes": 33315496,
+        "heapUsedAfterBytes": 42678768
       },
       "snapshot": {
         "bytes": 234146,
@@ -277,65 +277,65 @@
         "total": 1000
       },
       "tickTiming": {
-        "p50Ms": 2.3221,
-        "p95Ms": 2.6178,
-        "p99Ms": 3.6112,
-        "worstMs": 3.6112
+        "p50Ms": 2.1161,
+        "p95Ms": 3.7106,
+        "p99Ms": 5.0057,
+        "worstMs": 5.0057
       },
       "systemTiming": {
         "commands": {
           "p50Ms": 0.0003,
-          "p95Ms": 0.001,
-          "p99Ms": 0.0018,
-          "worstMs": 0.0018
+          "p95Ms": 0.0018,
+          "p99Ms": 0.0033,
+          "worstMs": 0.0033
         },
         "unitOrders": {
-          "p50Ms": 0.0606,
-          "p95Ms": 0.0789,
-          "p99Ms": 0.0978,
-          "worstMs": 0.0978
+          "p50Ms": 0.0523,
+          "p95Ms": 0.0763,
+          "p99Ms": 0.0891,
+          "worstMs": 0.0891
         },
         "movement": {
-          "p50Ms": 0.0253,
-          "p95Ms": 0.0409,
-          "p99Ms": 0.0418,
-          "worstMs": 0.0418
+          "p50Ms": 0.022,
+          "p95Ms": 0.0527,
+          "p99Ms": 0.2218,
+          "worstMs": 0.2218
         },
         "separation": {
-          "p50Ms": 2.1037,
-          "p95Ms": 2.3295,
-          "p99Ms": 3.3214,
-          "worstMs": 3.3214
+          "p50Ms": 1.9155,
+          "p95Ms": 3.3035,
+          "p99Ms": 4.6695,
+          "worstMs": 4.6695
         },
         "projectiles": {
-          "p50Ms": 0.0005,
-          "p95Ms": 0.0045,
-          "p99Ms": 0.0051,
-          "worstMs": 0.0051
+          "p50Ms": 0.0006,
+          "p95Ms": 0.0078,
+          "p99Ms": 0.0192,
+          "worstMs": 0.0192
         },
         "cleanup": {
-          "p50Ms": 0.0069,
-          "p95Ms": 0.0111,
-          "p99Ms": 0.0145,
-          "worstMs": 0.0145
+          "p50Ms": 0.0065,
+          "p95Ms": 0.0228,
+          "p99Ms": 0.0318,
+          "worstMs": 0.0318
         },
         "visibility": {
-          "p50Ms": 0.1262,
-          "p95Ms": 0.157,
-          "p99Ms": 0.1868,
-          "worstMs": 0.1868
+          "p50Ms": 0.1147,
+          "p95Ms": 0.1961,
+          "p99Ms": 0.7635,
+          "worstMs": 0.7635
         },
         "matchResolution": {
           "p50Ms": 0.0004,
-          "p95Ms": 0.001,
-          "p99Ms": 0.0013,
-          "worstMs": 0.0013
+          "p95Ms": 0.0034,
+          "p99Ms": 0.0043,
+          "worstMs": 0.0043
         }
       },
       "allocation": {
-        "heapDeltaBytes": 15281192,
-        "heapUsedBeforeBytes": 31140808,
-        "heapUsedAfterBytes": 46422000
+        "heapDeltaBytes": -1077976,
+        "heapUsedBeforeBytes": 32034016,
+        "heapUsedAfterBytes": 30956040
       },
       "snapshot": {
         "bytes": 384376,

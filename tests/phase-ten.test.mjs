@@ -53,6 +53,38 @@ test("step observers expose balanced system boundaries without changing state", 
   }
 });
 
+test("step observers attribute restarted systems to the reset timeline", () => {
+  const simulation = new Simulation(10_011, "skirmish");
+  for (let tick = 0; tick < 5; tick += 1) simulation.step();
+  simulation.enqueue({ kind: "restartCombat", seed: 10_012 });
+  const events = [];
+  const observer = {
+    begin(system, tick) {
+      events.push({ phase: "begin", system, tick });
+    },
+    end(system, tick) {
+      events.push({ phase: "end", system, tick });
+    },
+  };
+
+  simulation.step(observer);
+
+  const commandEvents = events.filter((event) => event.system === "commands");
+  const systemEvents = events.filter((event) => event.system !== "commands");
+  assert.equal(commandEvents.length, 2);
+  assert.equal(
+    commandEvents.every((event) => event.tick === 5),
+    true,
+  );
+  assert.ok(systemEvents.length > 0);
+  assert.equal(
+    systemEvents.every((event) => event.tick === 0),
+    true,
+  );
+  assert.equal(simulation.snapshot().tick, 1);
+  assert.equal(simulation.snapshot().seed, 10_012);
+});
+
 test("the headless benchmark emits machine-readable percentile results", async () => {
   const { stdout } = await execFileAsync(
     process.execPath,
