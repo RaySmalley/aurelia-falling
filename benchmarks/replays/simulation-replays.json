@@ -197,7 +197,7 @@
       ],
       "commands": [
         {
-          "tick": 5,
+          "tick": 20,
           "command": {
             "kind": "restartCombat",
             "seed": 10007

@@ -47,8 +47,19 @@ const runFixture = (Simulation, gameData, fixture) => {
   const checkpointHashes = {};
   let commandIndex = 0;
 
-  while (simulation.snapshot().tick < fixture.finalTick) {
+  while (
+    commandIndex < fixture.commands.length ||
+    simulation.snapshot().tick < fixture.finalTick
+  ) {
     const tick = simulation.snapshot().tick;
+    const nextCommand = fixture.commands[commandIndex];
+    if (nextCommand && nextCommand.tick < tick) {
+      throw new Error(
+        `Replay ${fixture.id} command ${commandIndex} targets tick ${
+          nextCommand.tick
+        }, which has already passed in the current epoch (tick ${tick}).`,
+      );
+    }
     while (fixture.commands[commandIndex]?.tick === tick) {
       const entry = fixture.commands[commandIndex];
       commandIndex += 1;
@@ -59,13 +70,6 @@ const runFixture = (Simulation, gameData, fixture) => {
     if (checkpointTicks.has(completedTick)) {
       checkpointHashes[completedTick] = hashReplayState(simulation);
     }
-  }
-  if (commandIndex !== fixture.commands.length) {
-    throw new Error(
-      `Replay ${fixture.id} ended with ${
-        fixture.commands.length - commandIndex
-      } unconsumed command(s).`,
-    );
   }
 
   return {

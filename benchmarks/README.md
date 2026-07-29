@@ -42,6 +42,8 @@ entities, RNG, command queues, AI memory, visibility, deterministic ID counters,
 control groups, and other fields that can affect future simulation behavior.
 Fixture commands are consumed once in recorded sequence, so tick values may
 decrease after a restart to represent commands in the reset timeline.
+`finalTick` applies to the last recorded command epoch; verification continues
+through earlier epochs even when they advance beyond that tick.
 When an explicitly reviewed simulation change requires a replay migration,
 regenerate hashes with:
 
