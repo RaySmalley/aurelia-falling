@@ -259,3 +259,51 @@ test("pending path searches participate in authoritative replay state", () => {
   right.processPathRequests(1);
   assert.notDeepEqual(left.authoritativeState(), right.authoritativeState());
 });
+
+test("pending move requests survive movement until their route resolves", () => {
+  const simulation = new Simulation(11_005, "economy");
+  const unit = simulation.createUnitState(
+    1,
+    1,
+    "argusRifle",
+    { x: 2, y: 2 },
+  );
+  simulation.units = [unit];
+  simulation.structures = [];
+  simulation.fields = [];
+  simulation.rebuildEntityIndexes();
+  unit.order = "move";
+  simulation.planPath(unit, { x: 60, y: 60 }, "background");
+  const requestKey = simulation.unitPendingPathRequests.get(unit.id);
+
+  simulation.moveUnit(unit);
+
+  assert.equal(simulation.unitPendingPathRequests.get(unit.id), requestKey);
+  assert.equal(simulation.pathRequests.has(requestKey), true);
+  assert.equal(unit.order, "move");
+  assert.notEqual(unit.destination, null);
+});
+
+test("persistent planner history and presentation state affect replay state", () => {
+  const left = new Simulation(11_006, "economy");
+  const right = new Simulation(11_006, "economy");
+  assert.deepEqual(left.authoritativeState(), right.authoritativeState());
+
+  right.nextPathRequestId += 1;
+  assert.notDeepEqual(left.authoritativeState(), right.authoritativeState());
+  right.nextPathRequestId -= 1;
+  right.unitPathingOverrides.set(1, "blocked");
+  assert.notDeepEqual(left.authoritativeState(), right.authoritativeState());
+
+  right.pathRequests.enqueue({
+    key: "temporary",
+    start: { x: 1, y: 1 },
+    goal: { x: 2, y: 1 },
+    priority: "background",
+  });
+  right.pathRequests.clear();
+  assert.equal(
+    right.pathRequests.authoritativeState().nextSequence,
+    0,
+  );
+});

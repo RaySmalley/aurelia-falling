@@ -58,19 +58,22 @@ export class DeterministicPathRequestQueue {
   }
 
   authoritativeState() {
-    return [...this.requests.values()]
-      .sort(
-        (left, right) =>
-          left.sequence - right.sequence ||
-          compareKeys(left.key, right.key),
-      )
-      .map((request) => ({
-        key: request.key,
-        priority: request.priority,
-        sequence: request.sequence,
-        started: request.started,
-        search: request.search.authoritativeState(),
-      }));
+    return {
+      nextSequence: this.nextSequence,
+      requests: [...this.requests.values()]
+        .sort(
+          (left, right) =>
+            left.sequence - right.sequence ||
+            compareKeys(left.key, right.key),
+        )
+        .map((request) => ({
+          key: request.key,
+          priority: request.priority,
+          sequence: request.sequence,
+          started: request.started,
+          search: request.search.authoritativeState(),
+        })),
+    };
   }
 
   enqueue(request: PathRequest) {
@@ -98,6 +101,7 @@ export class DeterministicPathRequestQueue {
 
   clear() {
     this.requests.clear();
+    this.nextSequence = 0;
   }
 
   stateOf(key: string): "queued" | "planning" | null {

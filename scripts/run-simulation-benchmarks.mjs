@@ -83,13 +83,15 @@ const summarize = (samples) => {
   };
 };
 
-const roundedSummary = (samples) =>
-  Object.fromEntries(
+const roundedSummary = (samples) => ({
+  sampleCount: samples.length,
+  ...Object.fromEntries(
     Object.entries(summarize(samples)).map(([key, value]) => [
       key,
       Number(value.toFixed(6)),
     ]),
-  );
+  ),
+});
 
 const revision = () => {
   try {
@@ -162,6 +164,7 @@ const runBenchmark = (
     systems.map((system) => [system, []]),
   );
   const startedAt = new Map();
+  const elapsedBySystem = new Map();
   const observer = {
     begin(system) {
       startedAt.set(system, performance.now());
@@ -169,7 +172,10 @@ const runBenchmark = (
     end(system) {
       const start = startedAt.get(system);
       if (start !== undefined) {
-        samplesBySystem.get(system).push(performance.now() - start);
+        elapsedBySystem.set(
+          system,
+          (elapsedBySystem.get(system) ?? 0) + performance.now() - start,
+        );
       }
     },
   };
@@ -177,9 +183,13 @@ const runBenchmark = (
   const tickSamples = [];
   const heapBefore = process.memoryUsage().heapUsed;
   for (let tick = 0; tick < measuredTicks; tick += 1) {
+    elapsedBySystem.clear();
     const start = performance.now();
     simulation.step(observer);
     tickSamples.push(performance.now() - start);
+    for (const [system, elapsed] of elapsedBySystem) {
+      samplesBySystem.get(system).push(elapsed);
+    }
   }
   const heapAfter = process.memoryUsage().heapUsed;
   const snapshotJson = JSON.stringify(simulation.snapshot());

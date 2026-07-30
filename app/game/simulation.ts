@@ -586,20 +586,20 @@ export class Simulation {
       aiKnownUnits: [...this.aiKnownUnits],
       aiKnownStructures: [...this.aiKnownStructures],
       aiDifficulty: this.aiDifficulty,
-      ...(this.pathRequests.size > 0
-        ? {
-            pathPlanning: {
-              queue: this.pathRequests.authoritativeState(),
-              pending: [...this.pendingPathRequests].sort(
-                ([left], [right]) =>
-                  left < right ? -1 : left > right ? 1 : 0,
-              ),
-              units: [...this.unitPendingPathRequests].sort(
-                ([left], [right]) => left - right,
-              ),
-            },
-          }
-        : {}),
+      pathPlanning: {
+        nextRequestId: this.nextPathRequestId,
+        queue: this.pathRequests.authoritativeState(),
+        pending: [...this.pendingPathRequests].sort(
+          ([left], [right]) =>
+            left < right ? -1 : left > right ? 1 : 0,
+        ),
+        units: [...this.unitPendingPathRequests].sort(
+          ([left], [right]) => left - right,
+        ),
+        pathingOverrides: [...this.unitPathingOverrides].sort(
+          ([left], [right]) => left - right,
+        ),
+      },
     });
   }
 
@@ -2488,6 +2488,7 @@ export class Simulation {
 
   private moveUnit(unit: UnitState) {
     if (unit.pathIndex >= unit.path.length) {
+      if (this.unitPendingPathRequests.has(unit.id)) return;
       if (unit.order === "move" && unit.destination) {
         this.clearPath(unit);
         unit.order = unit.aiScout ? "hold" : "idle";

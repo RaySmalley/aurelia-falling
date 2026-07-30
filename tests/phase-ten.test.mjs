@@ -589,6 +589,10 @@ test("the headless benchmark emits machine-readable percentile results", async (
     assert.ok(result.tickTiming[key] >= 0);
   }
   assert.ok(result.systemTiming.separation);
+  assert.equal(
+    result.systemTiming.pathfinding.sampleCount,
+    result.measuredTicks,
+  );
 });
 
 test("versioned deterministic replay fixtures retain their expected hashes", async () => {
