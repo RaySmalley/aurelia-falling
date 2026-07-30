@@ -1,4 +1,5 @@
 import { clampToMap, isTerrainBlocked, MAP_SIZE, tileKeyOf } from "./map";
+import { DeterministicMinHeap } from "./min-heap";
 import type { GridPoint } from "./types";
 
 const NEIGHBORS: readonly GridPoint[] = Object.freeze([
@@ -17,6 +18,11 @@ const heuristic = (a: GridPoint, b: GridPoint) =>
 export type PathOptions = Readonly<{
   occupied?: ReadonlySet<number>;
   reserved?: ReadonlySet<number>;
+}>;
+
+type OpenNode = Readonly<{
+  key: number;
+  score: number;
 }>;
 
 export function nearestWalkable(
@@ -64,21 +70,18 @@ export function findPath(
 
   const startKey = tileKeyOf(start);
   const goalKey = tileKeyOf(goal);
-  const open: number[] = [startKey];
-  const openSet = new Set(open);
   const cameFrom = new Map<number, number>();
   const gScore = new Map<number, number>([[startKey, 0]]);
   const fScore = new Map<number, number>([[startKey, heuristic(start, goal)]]);
+  const open = new DeterministicMinHeap<OpenNode>(
+    (left, right) => left.score - right.score || left.key - right.key,
+  );
+  open.push({ key: startKey, score: fScore.get(startKey)! });
 
-  while (open.length > 0) {
-    open.sort((a, b) => {
-      const scoreDelta =
-        (fScore.get(a) ?? Number.MAX_SAFE_INTEGER) -
-        (fScore.get(b) ?? Number.MAX_SAFE_INTEGER);
-      return scoreDelta || a - b;
-    });
-    const currentKey = open.shift()!;
-    openSet.delete(currentKey);
+  while (open.size > 0) {
+    const currentNode = open.pop()!;
+    if (fScore.get(currentNode.key) !== currentNode.score) continue;
+    const currentKey = currentNode.key;
     if (currentKey === goalKey) {
       const path: GridPoint[] = [];
       let cursor: number | undefined = currentKey;
@@ -92,14 +95,14 @@ export function findPath(
       return path.reverse();
     }
 
-    const current = {
+    const currentPoint = {
       x: currentKey % MAP_SIZE,
       y: Math.floor(currentKey / MAP_SIZE),
     };
     for (const offset of NEIGHBORS) {
       const neighbor = {
-        x: current.x + offset.x,
-        y: current.y + offset.y,
+        x: currentPoint.x + offset.x,
+        y: currentPoint.y + offset.y,
       };
       const neighborKey = tileKeyOf(neighbor);
       if (
@@ -117,11 +120,9 @@ export function findPath(
       }
       cameFrom.set(neighborKey, currentKey);
       gScore.set(neighborKey, tentative);
-      fScore.set(neighborKey, tentative + heuristic(neighbor, goal));
-      if (!openSet.has(neighborKey)) {
-        open.push(neighborKey);
-        openSet.add(neighborKey);
-      }
+      const score = tentative + heuristic(neighbor, goal);
+      fScore.set(neighborKey, score);
+      open.push({ key: neighborKey, score });
     }
   }
 
