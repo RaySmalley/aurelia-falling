@@ -15,9 +15,14 @@ const samePoint = (a: GridPoint, b: GridPoint) =>
 const heuristic = (a: GridPoint, b: GridPoint) =>
   Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 
+export type PathTileSet = Readonly<{
+  has(value: number): boolean;
+  [Symbol.iterator](): Iterator<number>;
+}>;
+
 export type PathOptions = Readonly<{
-  occupied?: ReadonlySet<number>;
-  reserved?: ReadonlySet<number>;
+  occupied?: PathTileSet;
+  reserved?: PathTileSet;
 }>;
 
 type OpenNode = Readonly<{

@@ -13,6 +13,7 @@ import {
   nearestWalkable,
   translateSharedPath,
   type PathOptions,
+  type PathTileSet,
 } from "./pathfinding";
 import {
   DeterministicPathRequestQueue,
@@ -462,6 +463,26 @@ export class DeterministicRng {
   }
 }
 
+class OccupiedTileView implements PathTileSet {
+  constructor(
+    private readonly counts: ReadonlyMap<number, number>,
+    private readonly excludedCounts: ReadonlyMap<number, number>,
+  ) {}
+
+  has(key: number) {
+    return (
+      (this.counts.get(key) ?? 0) >
+      (this.excludedCounts.get(key) ?? 0)
+    );
+  }
+
+  *[Symbol.iterator](): Iterator<number> {
+    for (const [key, count] of this.counts) {
+      if (count > (this.excludedCounts.get(key) ?? 0)) yield key;
+    }
+  }
+}
+
 export class Simulation {
   private tick = 0;
   private seed: number;
@@ -523,6 +544,8 @@ export class Simulation {
     new Map<string, SimulationPathRequest>();
   private readonly unitPendingPathRequests = new Map<UnitId, string>();
   private readonly unitPathingOverrides = new Map<UnitId, PathingState>();
+  private readonly pathOccupancyCounts =
+    new Map<PlayerId | 0, ReadonlyMap<number, number>>();
   private nextPathRequestId = 1;
   private lastPathExpansions = 0;
 
@@ -542,6 +565,14 @@ export class Simulation {
 
   enqueue(command: SimCommand) {
     this.commands.push(command);
+  }
+
+  pathfindingDiagnostics() {
+    return Object.freeze({
+      expansionBudget: PATH_EXPANSIONS_PER_TICK,
+      expansions: this.lastPathExpansions,
+      pendingRequests: this.pathRequests.size,
+    });
   }
 
   authoritativeState() {
@@ -607,9 +638,11 @@ export class Simulation {
     const commandTick = this.tick;
     observer?.begin("commands", commandTick);
     for (const command of this.commands.splice(0)) {
+      this.pathOccupancyCounts.clear();
       this.applyCommand(command);
     }
     for (const command of this.aiCommands.splice(0)) {
+      this.pathOccupancyCounts.clear();
       this.applyAiCommand(command);
     }
     observer?.end("commands", commandTick);
@@ -649,6 +682,7 @@ export class Simulation {
       observer?.end("fields", observedTick);
     }
 
+    this.pathOccupancyCounts.clear();
     observer?.begin("unitOrders", observedTick);
     for (const unit of this.sortedUnits()) {
       if (unit.cooldownTicks > 0) unit.cooldownTicks -= 1;
@@ -872,11 +906,6 @@ export class Simulation {
         1: this.solarSpearSnapshot(1),
         2: this.solarSpearSnapshot(2),
       }),
-      pathfinding: Object.freeze({
-        expansionBudget: PATH_EXPANSIONS_PER_TICK,
-        expansions: this.lastPathExpansions,
-        pendingRequests: this.pathRequests.size,
-      }),
       onboarding: Object.freeze({ ...this.onboarding }),
     });
   }
@@ -1052,6 +1081,7 @@ export class Simulation {
     this.pendingPathRequests.clear();
     this.unitPendingPathRequests.clear();
     this.unitPathingOverrides.clear();
+    this.pathOccupancyCounts.clear();
     this.nextPathRequestId = 1;
     this.lastPathExpansions = 0;
   }
@@ -1893,6 +1923,7 @@ export class Simulation {
   }
 
   private rebuildEntityIndexes() {
+    this.pathOccupancyCounts.clear();
     this.unitsById.clear();
     this.structuresById.clear();
     this.unitSpatialIndex.clear();
@@ -1982,20 +2013,47 @@ export class Simulation {
     excludedUnitIds = new Set<number>(),
     observer?: PlayerId,
   ) {
-    return new Set([
-      ...this.units
-        .filter(
-          (unit) =>
-            !excludedUnitIds.has(unit.id) &&
-            (!observer ||
-              this.scenario !== "skirmish" ||
-              unit.playerId === observer ||
-              this.isUnitVisibleTo(observer, unit)),
-        )
-        .map((unit) => tileKeyOf(toTile(unit.position))),
-      ...this.structures.map((structure) => tileKeyOf(structure.tile)),
-      ...this.fields.map((field) => tileKeyOf(field.tile)),
-    ]);
+    const cacheKey = observer ?? 0;
+    let counts = this.pathOccupancyCounts.get(cacheKey);
+    if (!counts) {
+      const mutableCounts = new Map<number, number>();
+      const add = (key: number) => {
+        mutableCounts.set(key, (mutableCounts.get(key) ?? 0) + 1);
+      };
+      for (const unit of this.units) {
+        if (
+          !observer ||
+          this.scenario !== "skirmish" ||
+          unit.playerId === observer ||
+          this.isUnitVisibleTo(observer, unit)
+        ) {
+          add(tileKeyOf(toTile(unit.position)));
+        }
+      }
+      for (const structure of this.structures) {
+        add(tileKeyOf(structure.tile));
+      }
+      for (const field of this.fields) add(tileKeyOf(field.tile));
+      counts = mutableCounts;
+      this.pathOccupancyCounts.set(cacheKey, counts);
+    }
+
+    const excludedCounts = new Map<number, number>();
+    for (const unitId of excludedUnitIds) {
+      const unit = this.unitById(unitId);
+      if (
+        !unit ||
+        (observer &&
+          this.scenario === "skirmish" &&
+          unit.playerId !== observer &&
+          !this.isUnitVisibleTo(observer, unit))
+      ) {
+        continue;
+      }
+      const key = tileKeyOf(toTile(unit.position));
+      excludedCounts.set(key, (excludedCounts.get(key) ?? 0) + 1);
+    }
+    return new OccupiedTileView(counts, excludedCounts);
   }
 
   private issueFormationMoveFor(

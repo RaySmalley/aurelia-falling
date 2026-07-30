@@ -257,11 +257,6 @@ export type SimulationSnapshot = Readonly<{
   visibility: VisibilitySnapshot;
   ai: AiSnapshot;
   solarSpears: Readonly<Record<PlayerId, SolarSpearSnapshot>>;
-  pathfinding: Readonly<{
-    expansionBudget: number;
-    expansions: number;
-    pendingRequests: number;
-  }>;
   onboarding: OnboardingSnapshot;
 }>;
 

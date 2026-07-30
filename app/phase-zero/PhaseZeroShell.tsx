@@ -78,11 +78,6 @@ const INITIAL_SNAPSHOT: RuntimeSnapshot = {
       1: EMPTY_SOLAR(1),
       2: EMPTY_SOLAR(2),
     },
-    pathfinding: {
-      expansionBudget: 4_096,
-      expansions: 0,
-      pendingRequests: 0,
-    },
     onboarding: {
       selection: false,
       reactor: false,

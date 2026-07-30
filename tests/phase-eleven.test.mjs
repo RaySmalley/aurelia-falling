@@ -178,6 +178,9 @@ test("path request queues replace and cancel requests deterministically", () => 
   });
 
   assert.equal(queue.size, 1);
+  const queued = queue.authoritativeState().requests[0];
+  assert.equal(queued.started, false);
+  assert.equal(queued.search.status, "queued");
   let completed = [];
   while (completed.length === 0) {
     const advanced = queue.advance(1);
@@ -293,13 +296,26 @@ test("live path planning never exceeds its per-tick expansion budget", () => {
     simulation.planPath(unit, { x: 60, y: 60 }, "direct");
   }
 
+  assert.equal(simulation.pathOccupancyCounts.size, 1);
+  assert.equal(
+    simulation.pathRequests
+      .authoritativeState()
+      .requests.every(
+        (request) =>
+          request.started === false &&
+          request.search.status === "queued",
+      ),
+    true,
+  );
   simulation.lastPathExpansions = 0;
   simulation.processPathRequests(PATH_EXPANSIONS_PER_TICK);
   const snapshot = simulation.snapshot();
+  const diagnostics = simulation.pathfindingDiagnostics();
 
-  assert.ok(snapshot.pathfinding.expansions <= PATH_EXPANSIONS_PER_TICK);
-  assert.equal(snapshot.pathfinding.expansionBudget, PATH_EXPANSIONS_PER_TICK);
-  assert.ok(snapshot.pathfinding.pendingRequests > 0);
+  assert.ok(diagnostics.expansions <= PATH_EXPANSIONS_PER_TICK);
+  assert.equal(diagnostics.expansionBudget, PATH_EXPANSIONS_PER_TICK);
+  assert.ok(diagnostics.pendingRequests > 0);
+  assert.equal(Object.hasOwn(snapshot, "pathfinding"), false);
   assert.equal(
     snapshot.units.some((unit) =>
       ["queued", "planning"].includes(unit.pathingState),
@@ -328,9 +344,20 @@ test("stop commands cancel queued paths before planning runs", () => {
 
   const snapshot = simulation.snapshot();
   const stopped = snapshot.units.find((candidate) => candidate.id === unit.id);
-  assert.equal(snapshot.pathfinding.pendingRequests, 0);
+  assert.equal(simulation.pathfindingDiagnostics().pendingRequests, 0);
   assert.equal(stopped.pathingState, "idle");
   assert.equal(stopped.order, "idle");
+});
+
+test("player snapshots do not expose hidden global planner activity", () => {
+  const simulation = new Simulation(11_011, "skirmish");
+  const enemy = simulation.units.find((unit) => unit.playerId === 2);
+  assert.notEqual(enemy, undefined);
+
+  simulation.planPath(enemy, { x: 2, y: 2 }, "ai");
+
+  assert.ok(simulation.pathfindingDiagnostics().pendingRequests > 0);
+  assert.equal(Object.hasOwn(simulation.snapshot(), "pathfinding"), false);
 });
 
 test("pending path searches participate in authoritative replay state", () => {

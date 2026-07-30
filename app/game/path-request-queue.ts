@@ -42,7 +42,10 @@ type QueuedRequest = {
   key: string;
   priority: PathRequestPriority;
   sequence: number;
-  search: IncrementalPathSearch;
+  start: GridPoint;
+  goal: GridPoint;
+  options?: PathOptions;
+  search: IncrementalPathSearch | null;
   started: boolean;
 };
 
@@ -73,7 +76,18 @@ export class DeterministicPathRequestQueue {
           priority: request.priority,
           sequence: request.sequence,
           started: request.started,
-          search: request.search.authoritativeState(),
+          search:
+            request.search?.authoritativeState() ?? {
+              start: request.start,
+              requestedGoal: request.goal,
+              occupied: [...(request.options?.occupied ?? [])].sort(
+                (left, right) => left - right,
+              ),
+              reserved: [...(request.options?.reserved ?? [])].sort(
+                (left, right) => left - right,
+              ),
+              status: "queued",
+            },
         })),
     };
   }
@@ -83,11 +97,10 @@ export class DeterministicPathRequestQueue {
       key: request.key,
       priority: request.priority,
       sequence: this.nextSequence,
-      search: createPathSearch(
-        request.start,
-        request.goal,
-        request.options,
-      ),
+      start: { ...request.start },
+      goal: { ...request.goal },
+      options: request.options,
+      search: null,
       started: false,
     });
     this.nextSequence += 1;
@@ -122,8 +135,13 @@ export class DeterministicPathRequestQueue {
     while (this.requests.size > 0) {
       const request = this.nextRequest()!;
       const remaining = expansionBudget - expansions;
-      if (remaining === 0 && request.search.status === "planning") break;
+      if (remaining === 0) break;
 
+      request.search ??= createPathSearch(
+        request.start,
+        request.goal,
+        request.options,
+      );
       request.started = true;
       const result = request.search.advance(remaining);
       expansions += result.expansions;
