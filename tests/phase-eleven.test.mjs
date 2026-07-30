@@ -14,8 +14,15 @@ const pathfinding = await vite.ssrLoadModule("/app/game/pathfinding.ts");
 const queueModule = await vite.ssrLoadModule(
   "/app/game/path-request-queue.ts",
 );
+const simulationModule = await vite.ssrLoadModule(
+  "/app/game/simulation.ts",
+);
 const { createPathSearch, findPath } = pathfinding;
 const { DeterministicPathRequestQueue } = queueModule;
+const {
+  PATH_EXPANSIONS_PER_TICK,
+  Simulation,
+} = simulationModule;
 
 test.after(() => vite.close());
 
@@ -136,4 +143,119 @@ test("path request queues replace and cancel requests deterministically", () => 
   });
   assert.equal(queue.cancel("unit:8"), true);
   assert.equal(queue.size, 0);
+});
+
+test("live formation orders share one budgeted anchor request", () => {
+  const simulation = new Simulation(11_001, "economy");
+  const units = Array.from({ length: 200 }, (_, index) =>
+    simulation.createUnitState(
+      index + 1,
+      1,
+      "argusRifle",
+      { x: 4 + (index % 10), y: 4 + Math.floor(index / 10) },
+    ),
+  );
+  simulation.units = units;
+  simulation.structures = [];
+  simulation.rebuildEntityIndexes();
+
+  simulation.issueFormationMoveFor(
+    units,
+    { x: 50, y: 50 },
+    "move",
+    "direct",
+  );
+
+  assert.equal(simulation.pathRequests.size, 1);
+  assert.equal(simulation.pendingPathRequests.size, 1);
+  assert.equal(
+    units.every(
+      (unit) => simulation.pathingStateOf(unit) === "queued",
+    ),
+    true,
+  );
+});
+
+test("live path planning never exceeds its per-tick expansion budget", () => {
+  const simulation = new Simulation(11_002, "economy");
+  const units = Array.from({ length: 80 }, (_, index) =>
+    simulation.createUnitState(
+      index + 1,
+      1,
+      "argusRifle",
+      { x: 1 + (index % 8), y: 1 + Math.floor(index / 8) },
+    ),
+  );
+  simulation.units = units;
+  simulation.structures = [];
+  simulation.rebuildEntityIndexes();
+  for (const unit of units) {
+    simulation.planPath(unit, { x: 60, y: 60 }, "direct");
+  }
+
+  simulation.lastPathExpansions = 0;
+  simulation.processPathRequests(PATH_EXPANSIONS_PER_TICK);
+  const snapshot = simulation.snapshot();
+
+  assert.ok(snapshot.pathfinding.expansions <= PATH_EXPANSIONS_PER_TICK);
+  assert.equal(snapshot.pathfinding.expansionBudget, PATH_EXPANSIONS_PER_TICK);
+  assert.ok(snapshot.pathfinding.pendingRequests > 0);
+  assert.equal(
+    snapshot.units.some((unit) =>
+      ["queued", "planning"].includes(unit.pathingState),
+    ),
+    true,
+  );
+});
+
+test("stop commands cancel queued paths before planning runs", () => {
+  const simulation = new Simulation(11_003, "economy");
+  const unit = simulation.createUnitState(
+    1,
+    1,
+    "argusRifle",
+    { x: 2, y: 2 },
+  );
+  simulation.units = [unit];
+  simulation.structures = [];
+  simulation.fields = [];
+  simulation.rebuildEntityIndexes();
+  simulation.planPath(unit, { x: 60, y: 60 }, "direct");
+  unit.selected = true;
+  simulation.enqueue({ kind: "stop" });
+
+  simulation.step();
+
+  const snapshot = simulation.snapshot();
+  const stopped = snapshot.units.find((candidate) => candidate.id === unit.id);
+  assert.equal(snapshot.pathfinding.pendingRequests, 0);
+  assert.equal(stopped.pathingState, "idle");
+  assert.equal(stopped.order, "idle");
+});
+
+test("pending path searches participate in authoritative replay state", () => {
+  const createPlanningSimulation = () => {
+    const simulation = new Simulation(11_004, "economy");
+    const unit = simulation.createUnitState(
+      1,
+      1,
+      "argusRifle",
+      { x: 2, y: 2 },
+    );
+    simulation.units = [unit];
+    simulation.structures = [];
+    simulation.fields = [];
+    simulation.rebuildEntityIndexes();
+    simulation.planPath(unit, { x: 60, y: 60 }, "direct");
+    simulation.processPathRequests(3);
+    return simulation;
+  };
+  const left = createPlanningSimulation();
+  const right = createPlanningSimulation();
+
+  assert.deepEqual(left.authoritativeState(), right.authoritativeState());
+  assert.ok(left.authoritativeState().pathPlanning);
+
+  right.processPathRequests(1);
+  assert.notDeepEqual(left.authoritativeState(), right.authoritativeState());
 });

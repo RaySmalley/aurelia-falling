@@ -9,6 +9,10 @@ export class DeterministicMinHeap<Value> {
     return this.values.length;
   }
 
+  authoritativeState() {
+    return this.values.map((value) => structuredClone(value));
+  }
+
   push(value: Value) {
     this.values.push(value);
     let index = this.values.length - 1;

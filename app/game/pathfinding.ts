@@ -26,6 +26,7 @@ type OpenNode = Readonly<{
 }>;
 
 export type PathSearchStatus = "planning" | "resolved" | "failed";
+export const MAX_PATH_EXPANSIONS = MAP_SIZE * MAP_SIZE * 4;
 
 export type PathSearchAdvance = Readonly<{
   expansions: number;
@@ -80,6 +81,7 @@ export class IncrementalPathSearch {
   );
   private currentStatus: PathSearchStatus;
   private currentPath: readonly GridPoint[] | null = null;
+  private totalExpansions = 0;
 
   constructor(
     startInput: GridPoint,
@@ -121,6 +123,24 @@ export class IncrementalPathSearch {
     return this.currentPath;
   }
 
+  authoritativeState() {
+    const orderedEntries = (entries: ReadonlyMap<number, number>) =>
+      [...entries].sort((left, right) => left[0] - right[0]);
+    return {
+      start: this.start,
+      goal: this.goal,
+      occupied: [...this.occupied].sort((left, right) => left - right),
+      reserved: [...this.reserved].sort((left, right) => left - right),
+      cameFrom: orderedEntries(this.cameFrom),
+      gScore: orderedEntries(this.gScore),
+      fScore: orderedEntries(this.fScore),
+      open: this.open.authoritativeState(),
+      totalExpansions: this.totalExpansions,
+      status: this.currentStatus,
+      path: this.currentPath,
+    };
+  }
+
   advance(expansionBudget: number): PathSearchAdvance {
     if (!Number.isSafeInteger(expansionBudget) || expansionBudget < 0) {
       throw new RangeError("expansionBudget must be a non-negative integer");
@@ -133,8 +153,12 @@ export class IncrementalPathSearch {
       };
     }
 
+    const allowedExpansions = Math.min(
+      expansionBudget,
+      MAX_PATH_EXPANSIONS - this.totalExpansions,
+    );
     let expansions = 0;
-    while (this.open.size > 0 && expansions < expansionBudget) {
+    while (this.open.size > 0 && expansions < allowedExpansions) {
       const currentNode = this.open.pop()!;
       expansions += 1;
       if (this.fScore.get(currentNode.key) !== currentNode.score) continue;
@@ -178,8 +202,13 @@ export class IncrementalPathSearch {
         this.open.push({ key: neighborKey, score });
       }
     }
+    this.totalExpansions += expansions;
 
-    if (this.currentStatus === "planning" && this.open.size === 0) {
+    if (
+      this.currentStatus === "planning" &&
+      (this.open.size === 0 ||
+        this.totalExpansions >= MAX_PATH_EXPANSIONS)
+    ) {
       this.currentStatus = "failed";
     }
 

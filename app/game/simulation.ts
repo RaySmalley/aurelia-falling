@@ -10,10 +10,15 @@ import {
   tileKeyOf,
 } from "./map";
 import {
-  findPath,
   nearestWalkable,
   translateSharedPath,
+  type PathOptions,
 } from "./pathfinding";
+import {
+  DeterministicPathRequestQueue,
+  type PathRequestPriority,
+  type PathRequestResult,
+} from "./path-request-queue";
 import { DeterministicSpatialIndex } from "./spatial-index";
 import { VisibilityGrid, type VisibilitySource } from "./visibility";
 import type {
@@ -25,6 +30,7 @@ import type {
   GridPoint,
   OnboardingSnapshot,
   OrderKind,
+  PathingState,
   PlacementFailure,
   PlayerId,
   PlayerSnapshot,
@@ -45,8 +51,10 @@ import type {
 export const TICKS_PER_SECOND = 20;
 export const SIM_STEP_MS = 1_000 / TICKS_PER_SECOND;
 export const DEFAULT_COMBAT_SEED = 0xa11e_1a;
+export const PATH_EXPANSIONS_PER_TICK = 4_096;
 export const SIMULATION_SYSTEMS = [
   "commands",
+  "pathfinding",
   "construction",
   "connectivity",
   "solarSpear",
@@ -122,6 +130,25 @@ type UnitState = {
   cargo: number;
   harvestFieldId: number | null;
 };
+
+type UnitPathRequest = Readonly<{
+  kind: "unit";
+  unitId: UnitId;
+  destination: GridPoint;
+}>;
+
+type FormationPathRequest = Readonly<{
+  kind: "formation";
+  unitIds: readonly UnitId[];
+  starts: readonly Readonly<{ unitId: UnitId; tile: GridPoint }>[];
+  anchorStart: GridPoint;
+  anchorTarget: GridPoint;
+  mode: "move" | "attackMove";
+  occupied: readonly number[];
+  priority: PathRequestPriority;
+}>;
+
+type SimulationPathRequest = UnitPathRequest | FormationPathRequest;
 
 type ProductionItem = {
   unitKind: UnitKind;
@@ -491,6 +518,13 @@ export class Simulation {
   private readonly aiKnownUnits = new Map<UnitId, EnemyMemory>();
   private readonly aiKnownStructures = new Map<StructureId, EnemyMemory>();
   private aiDifficulty: AiDifficulty;
+  private readonly pathRequests = new DeterministicPathRequestQueue();
+  private readonly pendingPathRequests =
+    new Map<string, SimulationPathRequest>();
+  private readonly unitPendingPathRequests = new Map<UnitId, string>();
+  private readonly unitPathingOverrides = new Map<UnitId, PathingState>();
+  private nextPathRequestId = 1;
+  private lastPathExpansions = 0;
 
   constructor(
     seed = DEFAULT_COMBAT_SEED,
@@ -552,6 +586,20 @@ export class Simulation {
       aiKnownUnits: [...this.aiKnownUnits],
       aiKnownStructures: [...this.aiKnownStructures],
       aiDifficulty: this.aiDifficulty,
+      ...(this.pathRequests.size > 0
+        ? {
+            pathPlanning: {
+              queue: this.pathRequests.authoritativeState(),
+              pending: [...this.pendingPathRequests].sort(
+                ([left], [right]) =>
+                  left < right ? -1 : left > right ? 1 : 0,
+              ),
+              units: [...this.unitPendingPathRequests].sort(
+                ([left], [right]) => left - right,
+              ),
+            },
+          }
+        : {}),
     });
   }
 
@@ -571,6 +619,10 @@ export class Simulation {
     }
 
     const observedTick = this.tick;
+    this.lastPathExpansions = 0;
+    observer?.begin("pathfinding", observedTick);
+    this.processPathRequests(PATH_EXPANSIONS_PER_TICK);
+    observer?.end("pathfinding", observedTick);
     if (this.scenario !== "combat") {
       observer?.begin("construction", observedTick);
       this.updateConstruction();
@@ -607,6 +659,11 @@ export class Simulation {
       }
     }
     observer?.end("unitOrders", observedTick);
+    observer?.begin("pathfinding", observedTick);
+    this.processPathRequests(
+      PATH_EXPANSIONS_PER_TICK - this.lastPathExpansions,
+    );
+    observer?.end("pathfinding", observedTick);
     if (this.scenario !== "combat") {
       observer?.begin("turrets", observedTick);
       this.updateTurrets();
@@ -662,6 +719,7 @@ export class Simulation {
           : null,
         selected: unit.selected,
         order: unit.order,
+        pathingState: this.pathingStateOf(unit),
         path: Object.freeze(
           unit.path
             .slice(unit.pathIndex)
@@ -813,6 +871,11 @@ export class Simulation {
       solarSpears: Object.freeze({
         1: this.solarSpearSnapshot(1),
         2: this.solarSpearSnapshot(2),
+      }),
+      pathfinding: Object.freeze({
+        expansionBudget: PATH_EXPANSIONS_PER_TICK,
+        expansions: this.lastPathExpansions,
+        pendingRequests: this.pathRequests.size,
       }),
       onboarding: Object.freeze({ ...this.onboarding }),
     });
@@ -985,6 +1048,12 @@ export class Simulation {
     this.aiUnitMixIndex = 0;
     this.aiKnownUnits.clear();
     this.aiKnownStructures.clear();
+    this.pathRequests.clear();
+    this.pendingPathRequests.clear();
+    this.unitPendingPathRequests.clear();
+    this.unitPathingOverrides.clear();
+    this.nextPathRequestId = 1;
+    this.lastPathExpansions = 0;
   }
 
   private resetCombat(seed: number) {
@@ -1282,7 +1351,7 @@ export class Simulation {
         unit.forcedTarget = true;
         unit.attackMoveDestination = null;
         unit.order = "attack";
-        this.planChase(unit, target.position);
+        this.planChase(unit, target.position, "direct");
       }
       return;
     }
@@ -1301,7 +1370,7 @@ export class Simulation {
         unit.forcedTarget = true;
         unit.attackMoveDestination = null;
         unit.order = "attack";
-        this.planChase(unit, tileCenter(target.tile));
+        this.planChase(unit, tileCenter(target.tile), "direct");
       }
       return;
     }
@@ -1349,6 +1418,7 @@ export class Simulation {
         units,
         command.target,
         command.mode,
+        "ai",
       );
       for (const unit of units) unit.aiScout = command.scout === true;
       return;
@@ -1363,7 +1433,7 @@ export class Simulation {
         unit.aiScout = false;
         unit.attackMoveDestination = null;
         unit.order = "attack";
-        this.planChase(unit, target.position);
+        this.planChase(unit, target.position, "ai");
       }
       return;
     }
@@ -1378,7 +1448,7 @@ export class Simulation {
       unit.aiScout = false;
       unit.attackMoveDestination = null;
       unit.order = "attack";
-      this.planChase(unit, tileCenter(target.tile));
+      this.planChase(unit, tileCenter(target.tile), "ai");
     }
   }
 
@@ -1897,6 +1967,7 @@ export class Simulation {
       this.units.filter((unit) => unit.playerId === playerId),
       target,
       mode,
+      "ai",
     );
   }
 
@@ -1904,7 +1975,7 @@ export class Simulation {
     target: GridPoint,
     mode: "move" | "attackMove",
   ) {
-    this.issueFormationMoveFor(this.selectedUnits(), target, mode);
+    this.issueFormationMoveFor(this.selectedUnits(), target, mode, "direct");
   }
 
   private occupiedTiles(
@@ -1931,6 +2002,7 @@ export class Simulation {
     selectedInput: readonly UnitState[],
     requestedTarget: GridPoint,
     mode: "move" | "attackMove",
+    priority: PathRequestPriority,
   ) {
     const selected = selectedInput.slice().sort((a, b) => a.id - b.id);
     if (selected.length === 0) return;
@@ -1947,47 +2019,51 @@ export class Simulation {
       ),
     };
     const anchorTarget = nearestWalkable(requestedTarget, { occupied });
-    if (!anchorTarget) return;
-    const anchorPath = findPath(anchorStart, anchorTarget, { occupied });
-    if (anchorPath.length === 0) return;
-
-    const reserved = new Set<number>();
-    for (const unit of selected) {
-      const start = toTile(unit.position);
-      const offset = {
-        x: start.x - anchorStart.x,
-        y: start.y - anchorStart.y,
-      };
-      let path = translateSharedPath(anchorPath, offset, {
-        occupied,
-        reserved,
-      });
-      const destination = nearestWalkable(
-        { x: anchorTarget.x + offset.x, y: anchorTarget.y + offset.y },
-        { occupied, reserved },
-      );
-      if (!destination) continue;
-      if (
-        path.length === 0 ||
-        path[path.length - 1].x !== destination.x ||
-        path[path.length - 1].y !== destination.y
-      ) {
-        path = [...findPath(start, destination, { occupied, reserved })];
+    if (!anchorTarget) {
+      for (const unit of selected) {
+        this.cancelPendingPathRequest(unit);
+        this.unitPathingOverrides.set(unit.id, "blocked");
       }
-      if (path.length === 0) continue;
-      unit.path = path.slice(1).map((point) => ({ ...point }));
+      return;
+    }
+
+    const requestKey = `formation:${this.nextPathRequestId}`;
+    this.nextPathRequestId += 1;
+    for (const unit of selected) {
+      this.cancelPendingPathRequest(unit);
+      unit.path = [];
       unit.pathIndex = 0;
-      unit.destination = { ...destination };
-      unit.attackMoveDestination =
-        mode === "attackMove" ? { ...destination } : null;
+      unit.destination = null;
+      unit.attackMoveDestination = null;
       unit.targetId = null;
       unit.targetStructureId = null;
       unit.harvestFieldId = null;
       unit.forcedTarget = false;
       unit.aiScout = false;
       unit.order = mode;
-      reserved.add(tileKeyOf(destination));
+      this.unitPendingPathRequests.set(unit.id, requestKey);
+      this.unitPathingOverrides.set(unit.id, "queued");
     }
+    this.pendingPathRequests.set(requestKey, {
+      kind: "formation",
+      unitIds: selected.map((unit) => unit.id),
+      starts: selected.map((unit) => ({
+        unitId: unit.id,
+        tile: toTile(unit.position),
+      })),
+      anchorStart,
+      anchorTarget,
+      mode,
+      occupied: [...occupied].sort((left, right) => left - right),
+      priority,
+    });
+    this.pathRequests.enqueue({
+      key: requestKey,
+      start: anchorStart,
+      goal: anchorTarget,
+      priority,
+      options: { occupied },
+    });
   }
 
   private updateCombatOrder(unit: UnitState) {
@@ -2026,7 +2102,7 @@ export class Simulation {
         unit.order = "idle";
         this.clearPath(unit);
       } else if (unit.order === "attackMove" && unit.attackMoveDestination) {
-        this.planPath(unit, unit.attackMoveDestination);
+        this.planPath(unit, unit.attackMoveDestination, "combat");
       }
     }
 
@@ -2056,7 +2132,7 @@ export class Simulation {
     ) {
       unit.order = "attackMove";
       unit.attackMoveDestination = { x: 21, y: 31 };
-      this.planPath(unit, unit.attackMoveDestination);
+      this.planPath(unit, unit.attackMoveDestination, "ai");
       return;
     }
     const targetPosition = unitTarget?.position ??
@@ -2085,7 +2161,7 @@ export class Simulation {
       return;
     }
     if (this.tick % CHASE_REPATH_TICKS === unit.id % CHASE_REPATH_TICKS) {
-      this.planChase(unit, targetPosition);
+      this.planChase(unit, targetPosition, "combat");
     }
   }
 
@@ -2155,24 +2231,190 @@ export class Simulation {
     this.nextProjectileId += 1;
   }
 
-  private planChase(unit: UnitState, position: Vec2) {
+  private planChase(
+    unit: UnitState,
+    position: Vec2,
+    priority: PathRequestPriority,
+  ) {
     const targetTile = toTile(position);
     const destination = this.nearestOpenAdjacentTile(targetTile, unit.id);
-    if (destination) this.planPath(unit, destination);
+    if (destination) this.planPath(unit, destination, priority);
   }
 
-  private planPath(unit: UnitState, requestedTarget: GridPoint) {
-    const occupied = this.occupiedTiles(
-      new Set([unit.id]),
-      unit.playerId,
+  private planPath(
+    unit: UnitState,
+    requestedTarget: GridPoint,
+    priority: PathRequestPriority,
+    options: PathOptions & Readonly<{ start?: GridPoint }> = {},
+  ) {
+    const occupied =
+      options.occupied ??
+      this.occupiedTiles(new Set([unit.id]), unit.playerId);
+    const destination = nearestWalkable(requestedTarget, {
+      occupied,
+      reserved: options.reserved,
+    });
+    if (!destination) {
+      this.cancelPendingPathRequest(unit);
+      this.unitPathingOverrides.set(unit.id, "blocked");
+      return;
+    }
+    const currentRequestKey = this.unitPendingPathRequests.get(unit.id);
+    const currentRequest = currentRequestKey
+      ? this.pendingPathRequests.get(currentRequestKey)
+      : undefined;
+    if (
+      currentRequest?.kind === "unit" &&
+      currentRequest.destination.x === destination.x &&
+      currentRequest.destination.y === destination.y
+    ) {
+      return;
+    }
+
+    const retrying = this.unitPathingOverrides.get(unit.id) === "blocked";
+    this.cancelPendingPathRequest(unit);
+    const requestKey = `unit:${unit.id}:${this.nextPathRequestId}`;
+    this.nextPathRequestId += 1;
+    this.pendingPathRequests.set(requestKey, {
+      kind: "unit",
+      unitId: unit.id,
+      destination: { ...destination },
+    });
+    this.unitPendingPathRequests.set(unit.id, requestKey);
+    this.unitPathingOverrides.set(
+      unit.id,
+      retrying ? "retrying" : "queued",
     );
-    const destination = nearestWalkable(requestedTarget, { occupied });
-    if (!destination) return;
-    const path = findPath(toTile(unit.position), destination, { occupied });
-    if (path.length === 0) return;
+    unit.destination = { ...destination };
+    this.pathRequests.enqueue({
+      key: requestKey,
+      start: options.start ?? toTile(unit.position),
+      goal: destination,
+      priority,
+      options: { occupied, reserved: options.reserved },
+    });
+  }
+
+  private processPathRequests(expansionBudget: number) {
+    let remaining = expansionBudget;
+    while (this.pathRequests.size > 0) {
+      for (const [unitId, requestKey] of this.unitPendingPathRequests) {
+        const queueState = this.pathRequests.stateOf(requestKey);
+        if (queueState === "planning") {
+          this.unitPathingOverrides.set(unitId, "planning");
+        }
+      }
+
+      const advanced = this.pathRequests.advance(remaining);
+      this.lastPathExpansions += advanced.expansions;
+      remaining -= advanced.expansions;
+      for (const result of advanced.completed) {
+        this.completePathRequest(result);
+      }
+      if (
+        remaining === 0 ||
+        (advanced.expansions === 0 && advanced.completed.length === 0)
+      ) {
+        break;
+      }
+    }
+  }
+
+  private completePathRequest(result: PathRequestResult) {
+    const request = this.pendingPathRequests.get(result.key);
+    this.pendingPathRequests.delete(result.key);
+    if (!request) return;
+    if (request.kind === "formation") {
+      this.completeFormationPath(result, request);
+      return;
+    }
+
+    const unit = this.unitById(request.unitId);
+    if (
+      !unit ||
+      this.unitPendingPathRequests.get(unit.id) !== result.key
+    ) {
+      return;
+    }
+    this.unitPendingPathRequests.delete(unit.id);
+    if (result.status === "failed" || result.path.length === 0) {
+      this.unitPathingOverrides.set(unit.id, "blocked");
+      return;
+    }
+    this.applyResolvedPath(unit, result.path, request.destination);
+  }
+
+  private completeFormationPath(
+    result: PathRequestResult,
+    request: FormationPathRequest,
+  ) {
+    const occupied = new Set(request.occupied);
+    const reserved = new Set<number>();
+    const starts = new Map(
+      request.starts.map(({ unitId, tile }) => [unitId, tile]),
+    );
+    for (const unitId of request.unitIds) {
+      const unit = this.unitById(unitId);
+      if (
+        !unit ||
+        this.unitPendingPathRequests.get(unitId) !== result.key
+      ) {
+        continue;
+      }
+      this.unitPendingPathRequests.delete(unitId);
+      if (result.status === "failed" || result.path.length === 0) {
+        this.unitPathingOverrides.set(unitId, "blocked");
+        continue;
+      }
+
+      const start = starts.get(unitId)!;
+      const offset = {
+        x: start.x - request.anchorStart.x,
+        y: start.y - request.anchorStart.y,
+      };
+      const destination = nearestWalkable(
+        {
+          x: request.anchorTarget.x + offset.x,
+          y: request.anchorTarget.y + offset.y,
+        },
+        { occupied, reserved },
+      );
+      if (!destination) {
+        this.unitPathingOverrides.set(unitId, "blocked");
+        continue;
+      }
+      const translated = translateSharedPath(result.path, offset, {
+        occupied,
+        reserved,
+      });
+      if (
+        translated.length === 0 ||
+        translated[translated.length - 1].x !== destination.x ||
+        translated[translated.length - 1].y !== destination.y
+      ) {
+        this.planPath(unit, destination, request.priority, {
+          occupied,
+          reserved,
+          start,
+        });
+      } else {
+        this.applyResolvedPath(unit, translated, destination);
+      }
+      unit.attackMoveDestination =
+        request.mode === "attackMove" ? { ...destination } : null;
+      reserved.add(tileKeyOf(destination));
+    }
+  }
+
+  private applyResolvedPath(
+    unit: UnitState,
+    path: readonly GridPoint[],
+    destination: GridPoint,
+  ) {
     unit.path = path.slice(1).map((point) => ({ ...point }));
     unit.pathIndex = 0;
     unit.destination = { ...destination };
+    this.unitPathingOverrides.delete(unit.id);
   }
 
   private nearestOpenAdjacentTile(tile: GridPoint, unitId: number) {
@@ -2204,9 +2446,44 @@ export class Simulation {
   }
 
   private clearPath(unit: UnitState) {
+    this.cancelPendingPathRequest(unit);
     unit.path = [];
     unit.pathIndex = 0;
     unit.destination = null;
+    this.unitPathingOverrides.delete(unit.id);
+  }
+
+  private cancelPendingPathRequest(unit: UnitState) {
+    const requestKey = this.unitPendingPathRequests.get(unit.id);
+    if (!requestKey) return;
+    this.unitPendingPathRequests.delete(unit.id);
+    const request = this.pendingPathRequests.get(requestKey);
+    if (request?.kind === "unit") {
+      this.pendingPathRequests.delete(requestKey);
+      this.pathRequests.cancel(requestKey);
+      return;
+    }
+    if (
+      request?.kind === "formation" &&
+      request.unitIds.every(
+        (unitId) =>
+          this.unitPendingPathRequests.get(unitId) !== requestKey,
+      )
+    ) {
+      this.pendingPathRequests.delete(requestKey);
+      this.pathRequests.cancel(requestKey);
+    }
+  }
+
+  private pathingStateOf(unit: UnitState): PathingState {
+    const requestKey = this.unitPendingPathRequests.get(unit.id);
+    if (requestKey) {
+      const override = this.unitPathingOverrides.get(unit.id);
+      if (override === "retrying") return override;
+      return this.pathRequests.stateOf(requestKey) ?? override ?? "queued";
+    }
+    if (unit.pathIndex < unit.path.length) return "following";
+    return this.unitPathingOverrides.get(unit.id) ?? "idle";
   }
 
   private moveUnit(unit: UnitState) {
@@ -2528,7 +2805,7 @@ export class Simulation {
         }
       } else if (unit.path.length === 0) {
         const adjacent = this.nearestOpenAdjacentTile(refinery.tile, unit.id);
-        if (adjacent) this.planPath(unit, adjacent);
+        if (adjacent) this.planPath(unit, adjacent, "harvest");
       }
       return;
     }
@@ -2567,7 +2844,7 @@ export class Simulation {
       }
     } else if (unit.path.length === 0) {
       const adjacent = this.nearestOpenAdjacentTile(field.tile, unit.id);
-      if (adjacent) this.planPath(unit, adjacent);
+      if (adjacent) this.planPath(unit, adjacent, "harvest");
     }
   }
 
@@ -2839,7 +3116,7 @@ export class Simulation {
     const rally = this.rallies.get(structure.playerId);
     if (rally) {
       unit.order = "move";
-      this.planPath(unit, rally);
+      this.planPath(unit, rally, "background");
     }
     return true;
   }
@@ -2921,6 +3198,8 @@ export class Simulation {
     for (const unit of destroyedUnits) {
       const killer = unit.playerId === 1 ? 2 : 1;
       this.kills[killer] += 1;
+      this.cancelPendingPathRequest(unit);
+      this.unitPathingOverrides.delete(unit.id);
       for (const group of this.controlGroups.values()) {
         const index = group.indexOf(unit.id);
         if (index >= 0) group.splice(index, 1);

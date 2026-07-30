@@ -46,6 +46,8 @@ type QueuedRequest = {
 
 const priorityRank = (priority: PathRequestPriority) =>
   PATH_REQUEST_PRIORITIES.indexOf(priority);
+const compareKeys = (left: string, right: string) =>
+  left < right ? -1 : left > right ? 1 : 0;
 
 export class DeterministicPathRequestQueue {
   private readonly requests = new Map<string, QueuedRequest>();
@@ -53,6 +55,22 @@ export class DeterministicPathRequestQueue {
 
   get size() {
     return this.requests.size;
+  }
+
+  authoritativeState() {
+    return [...this.requests.values()]
+      .sort(
+        (left, right) =>
+          left.sequence - right.sequence ||
+          compareKeys(left.key, right.key),
+      )
+      .map((request) => ({
+        key: request.key,
+        priority: request.priority,
+        sequence: request.sequence,
+        started: request.started,
+        search: request.search.authoritativeState(),
+      }));
   }
 
   enqueue(request: PathRequest) {
@@ -72,6 +90,10 @@ export class DeterministicPathRequestQueue {
 
   cancel(key: string) {
     return this.requests.delete(key);
+  }
+
+  has(key: string) {
+    return this.requests.has(key);
   }
 
   clear() {
@@ -120,7 +142,7 @@ export class DeterministicPathRequestQueue {
       (left, right) =>
         priorityRank(left.priority) - priorityRank(right.priority) ||
         left.sequence - right.sequence ||
-        left.key.localeCompare(right.key),
+        compareKeys(left.key, right.key),
     )[0];
   }
 }
