@@ -8,16 +8,42 @@ const vite = await createServer({
   configFile: false,
   server: { middlewareMode: true },
 });
-const [mapModule, pathfindingModule, simulationModule] = await Promise.all([
-  vite.ssrLoadModule("/app/game/map.ts"),
-  vite.ssrLoadModule("/app/game/pathfinding.ts"),
-  vite.ssrLoadModule("/app/game/simulation.ts"),
-]);
+const [mapModule, minHeapModule, pathfindingModule, simulationModule] =
+  await Promise.all([
+    vite.ssrLoadModule("/app/game/map.ts"),
+    vite.ssrLoadModule("/app/game/min-heap.ts"),
+    vite.ssrLoadModule("/app/game/pathfinding.ts"),
+    vite.ssrLoadModule("/app/game/simulation.ts"),
+  ]);
 const { MAP_SIZE, tileKeyOf } = mapModule;
+const { DeterministicMinHeap } = minHeapModule;
 const { findPath, nearestWalkable, translateSharedPath } = pathfindingModule;
 const { Simulation } = simulationModule;
 
 test.after(() => vite.close());
+
+test("deterministic min-heaps preserve score-then-id priority", () => {
+  const heap = new DeterministicMinHeap(
+    (left, right) => left.score - right.score || left.id - right.id,
+  );
+  heap.push({ id: 9, score: 4 });
+  heap.push({ id: 7, score: 2 });
+  heap.push({ id: 3, score: 4 });
+  heap.push({ id: 5, score: 2 });
+
+  assert.equal(heap.size, 4);
+  assert.deepEqual(
+    Array.from({ length: 4 }, () => heap.pop()),
+    [
+      { id: 5, score: 2 },
+      { id: 7, score: 2 },
+      { id: 3, score: 4 },
+      { id: 9, score: 4 },
+    ],
+  );
+  assert.equal(heap.size, 0);
+  assert.equal(heap.pop(), undefined);
+});
 
 test("Golden Scar pathfinding is deterministic and avoids blocked terrain", () => {
   const first = findPath({ x: 8, y: 8 }, { x: 52, y: 52 });
@@ -28,6 +54,16 @@ test("Golden Scar pathfinding is deterministic and avoids blocked terrain", () =
   assert.deepEqual(first.at(-1), { x: 52, y: 52 });
   assert.ok(first.every((point) => point.x >= 0 && point.x < MAP_SIZE));
   assert.ok(first.every((point) => point.y >= 0 && point.y < MAP_SIZE));
+});
+
+test("pathfinding preserves score-then-tile-id tie breaking", () => {
+  assert.deepEqual(findPath({ x: 2, y: 2 }, { x: 4, y: 4 }), [
+    { x: 2, y: 2 },
+    { x: 3, y: 2 },
+    { x: 4, y: 2 },
+    { x: 4, y: 3 },
+    { x: 4, y: 4 },
+  ]);
 });
 
 test("blocked and occupied destinations fall back to the nearest legal tile", () => {

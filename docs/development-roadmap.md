@@ -363,6 +363,13 @@ Combines Phases 0-1 and the recommended first implementation slice from the
 Prevent group movement and chase behavior from creating unbounded simulation
 tick spikes.
 
+### Current implementation slice
+
+The first slice replaces A*'s repeated full open-list sorting with a
+deterministic binary min-heap. Heap priority preserves the existing total order
+of lowest path score followed by lowest tile ID, and stale entries created by a
+better route are skipped without changing movement or replay outcomes.
+
 ### Work
 
 - Replace repeated open-list sorting with a deterministic binary heap.

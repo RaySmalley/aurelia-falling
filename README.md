@@ -57,7 +57,12 @@ is dynamically imported behind the client-only React boundary in
 
 ## Current milestone
 
-Phase 10 is underway with deterministic entity indices and a uniform spatial
+Phase 11 is underway with A* open nodes managed by a deterministic binary
+min-heap instead of repeated full-list sorting. Priority remains path score
+followed by tile ID, preserving existing path and replay outcomes while
+establishing the first boundary for budgeted path requests.
+
+Phase 10 established deterministic entity indices and a uniform spatial
 grid integrated into the simulation. Unit and structure ID resolution is
 constant-time; target acquisition uses bounded radius queries while preserving
 distance-then-ID selection; and local separation examines nearby cells instead
