@@ -2396,15 +2396,18 @@ export class Simulation {
         occupied,
         reserved,
       });
+      const currentStart = toTile(unit.position);
       if (
         translated.length === 0 ||
+        translated[0].x !== currentStart.x ||
+        translated[0].y !== currentStart.y ||
         translated[translated.length - 1].x !== destination.x ||
         translated[translated.length - 1].y !== destination.y
       ) {
         this.planPath(unit, destination, request.priority, {
           occupied,
           reserved,
-          start,
+          start: currentStart,
         });
       } else {
         this.applyResolvedPath(unit, translated, destination);

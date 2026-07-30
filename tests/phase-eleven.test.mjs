@@ -25,6 +25,7 @@ const {
 const {
   PATH_EXPANSIONS_PER_TICK,
   Simulation,
+  toTile,
 } = simulationModule;
 
 test.after(() => vite.close());
@@ -382,9 +383,62 @@ test("delayed replans pause paths anchored to the unit's current tile", () => {
   assert.equal(simulation.unitPendingPathRequests.has(unit.id), true);
 });
 
+test("formation completion rebases units displaced by separation", () => {
+  const simulation = new Simulation(11_008, "economy");
+  const unit = simulation.createUnitState(
+    1,
+    1,
+    "argusRifle",
+    { x: 2, y: 2 },
+  );
+  simulation.units = [unit];
+  simulation.structures = [];
+  simulation.fields = [];
+  simulation.rebuildEntityIndexes();
+  simulation.issueFormationMoveFor(
+    [unit],
+    { x: 50, y: 50 },
+    "move",
+    "direct",
+  );
+
+  const pushingUnits = Array.from({ length: 25 }, (_, index) => {
+    const pushingUnit = simulation.createUnitState(
+      index + 2,
+      1,
+      "argusRifle",
+      { x: 2, y: 2 },
+    );
+    pushingUnit.position = {
+      x: 2_001 - 24 * index,
+      y: 2_000,
+    };
+    return pushingUnit;
+  });
+  simulation.units.push(...pushingUnits);
+  simulation.rebuildEntityIndexes();
+  simulation.applySeparationFor(unit);
+  const displacedStart = toTile(unit.position);
+  assert.notDeepEqual(displacedStart, { x: 2, y: 2 });
+
+  const completed = simulation.pathRequests.advance(
+    PATH_EXPANSIONS_PER_TICK * 4,
+  ).completed;
+  assert.equal(completed.length, 1);
+  simulation.completePathRequest(completed[0]);
+
+  const rebasedRequestKey =
+    simulation.unitPendingPathRequests.get(unit.id);
+  const rebasedQueueRequest = simulation
+    .pathRequests
+    .authoritativeState()
+    .requests.find((request) => request.key === rebasedRequestKey);
+  assert.deepEqual(rebasedQueueRequest.search.start, displacedStart);
+});
+
 test("persistent planner history and presentation state affect replay state", () => {
-  const left = new Simulation(11_008, "economy");
-  const right = new Simulation(11_008, "economy");
+  const left = new Simulation(11_009, "economy");
+  const right = new Simulation(11_009, "economy");
   assert.deepEqual(left.authoritativeState(), right.authoritativeState());
 
   right.nextPathRequestId += 1;
