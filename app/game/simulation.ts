@@ -84,6 +84,22 @@ const MAX_BUILD_RADIUS_MILLI =
     ),
   ) * TILE_MILLI;
 
+const insertInIdOrder = <Entity extends { id: number }>(
+  entities: readonly Entity[],
+  entity: Entity,
+) => {
+  let low = 0;
+  let high = entities.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (entities[middle].id < entity.id) low = middle + 1;
+    else high = middle;
+  }
+  const ordered = entities.slice();
+  ordered.splice(low, 0, entity);
+  return ordered;
+};
+
 type UnitState = {
   id: UnitId;
   callsign: string;
@@ -429,6 +445,8 @@ export class Simulation {
   private controlledPlayer: PlayerId = 1;
   private units: UnitState[] = [];
   private structures: StructureState[] = [];
+  private orderedUnits: readonly UnitState[] = [];
+  private orderedStructures: readonly StructureState[] = [];
   private readonly unitsById = new Map<UnitId, UnitState>();
   private readonly structuresById = new Map<StructureId, StructureState>();
   private readonly unitSpatialIndex =
@@ -922,6 +940,8 @@ export class Simulation {
     this.controlledPlayer = 1;
     this.units = [];
     this.structures = [];
+    this.orderedUnits = [];
+    this.orderedStructures = [];
     this.unitsById.clear();
     this.structuresById.clear();
     this.unitSpatialIndex.clear();
@@ -1748,11 +1768,11 @@ export class Simulation {
   }
 
   private sortedUnits() {
-    return this.units.slice().sort((a, b) => a.id - b.id);
+    return this.orderedUnits;
   }
 
   private sortedStructures() {
-    return this.structures.slice().sort((a, b) => a.id - b.id);
+    return this.orderedStructures;
   }
 
   private unitById(id: UnitId) {
@@ -1810,15 +1830,24 @@ export class Simulation {
     this.structureSpatialIndex.clear();
     this.fieldsById.clear();
     this.fieldSpatialIndex.clear();
-    for (const unit of this.units) this.indexUnit(unit);
-    for (const structure of this.structures) this.indexStructure(structure);
+    for (const unit of this.units) this.indexUnit(unit, false);
+    for (const structure of this.structures) {
+      this.indexStructure(structure, false);
+    }
     for (const field of this.fields) this.indexField(field);
+    this.orderedUnits = this.units.slice().sort((a, b) => a.id - b.id);
+    this.orderedStructures = this.structures
+      .slice()
+      .sort((a, b) => a.id - b.id);
   }
 
-  private indexUnit(unit: UnitState) {
+  private indexUnit(unit: UnitState, maintainOrderedView = true) {
     this.unitsById.set(unit.id, unit);
     this.unitSpatialIndex.insert(unit.id, unit.position);
     this.unitTileSpatialIndex.insert(unit.id, tileCenter(toTile(unit.position)));
+    if (maintainOrderedView) {
+      this.orderedUnits = insertInIdOrder(this.orderedUnits, unit);
+    }
   }
 
   private moveUnitIndexes(unit: UnitState) {
@@ -1826,12 +1855,21 @@ export class Simulation {
     this.unitTileSpatialIndex.move(unit.id, tileCenter(toTile(unit.position)));
   }
 
-  private indexStructure(structure: StructureState) {
+  private indexStructure(
+    structure: StructureState,
+    maintainOrderedView = true,
+  ) {
     this.structuresById.set(structure.id, structure);
     this.structureSpatialIndex.insert(
       structure.id,
       tileCenter(structure.tile),
     );
+    if (maintainOrderedView) {
+      this.orderedStructures = insertInIdOrder(
+        this.orderedStructures,
+        structure,
+      );
+    }
   }
 
   private indexField(field: FieldState) {
@@ -2760,6 +2798,9 @@ export class Simulation {
     this.structures = this.structures.filter(
       (candidate) => candidate.id !== structureId,
     );
+    this.orderedStructures = this.orderedStructures.filter(
+      (candidate) => candidate.id !== structureId,
+    );
     this.structuresById.delete(structureId);
     this.structureSpatialIndex.remove(structureId);
     this.onboardingConstructionIds.delete(structureId);
@@ -2893,6 +2934,9 @@ export class Simulation {
         this.unitTileSpatialIndex.remove(id);
       }
       this.units = this.units.filter((unit) => !destroyedIds.has(unit.id));
+      this.orderedUnits = this.orderedUnits.filter(
+        (unit) => !destroyedIds.has(unit.id),
+      );
       this.projectiles = this.projectiles.filter(
         (projectile) =>
           projectile.targetType !== "unit" ||
@@ -2919,6 +2963,9 @@ export class Simulation {
         this.structureSpatialIndex.remove(id);
       }
       this.structures = this.structures.filter(
+        (structure) => !destroyedIds.has(structure.id),
+      );
+      this.orderedStructures = this.orderedStructures.filter(
         (structure) => !destroyedIds.has(structure.id),
       );
       this.projectiles = this.projectiles.filter(
