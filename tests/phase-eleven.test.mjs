@@ -284,9 +284,76 @@ test("pending move requests survive movement until their route resolves", () => 
   assert.notEqual(unit.destination, null);
 });
 
+test("pending attack-move formations retain their destination through combat", () => {
+  const simulation = new Simulation(11_006, "economy");
+  const unit = simulation.createUnitState(
+    1,
+    1,
+    "argusRifle",
+    { x: 2, y: 2 },
+  );
+  const enemy = simulation.createUnitState(
+    2,
+    2,
+    "argusRifle",
+    { x: 3, y: 2 },
+  );
+  simulation.units = [unit, enemy];
+  simulation.structures = [];
+  simulation.fields = [];
+  simulation.rebuildEntityIndexes();
+
+  simulation.issueFormationMoveFor(
+    [unit],
+    { x: 50, y: 50 },
+    "attackMove",
+    "direct",
+  );
+  const intendedDestination = { ...unit.attackMoveDestination };
+  assert.notEqual(unit.attackMoveDestination, null);
+
+  simulation.updateCombatOrder(unit);
+  assert.equal(simulation.unitPendingPathRequests.has(unit.id), false);
+  assert.deepEqual(unit.attackMoveDestination, intendedDestination);
+
+  enemy.health = 0;
+  simulation.updateCombatOrder(unit);
+  const resumedRequestKey = simulation.unitPendingPathRequests.get(unit.id);
+  const resumedRequest = simulation.pendingPathRequests.get(
+    resumedRequestKey,
+  );
+  assert.equal(resumedRequest.kind, "unit");
+  assert.deepEqual(resumedRequest.destination, intendedDestination);
+});
+
+test("delayed replans pause paths anchored to the unit's current tile", () => {
+  const simulation = new Simulation(11_007, "economy");
+  const unit = simulation.createUnitState(
+    1,
+    1,
+    "argusRifle",
+    { x: 2, y: 2 },
+  );
+  simulation.units = [unit];
+  simulation.structures = [];
+  simulation.fields = [];
+  simulation.rebuildEntityIndexes();
+  unit.path = [{ x: 3, y: 2 }];
+  unit.destination = { x: 3, y: 2 };
+
+  simulation.planPath(unit, { x: 60, y: 60 }, "background");
+  const positionBeforeMovement = { ...unit.position };
+  simulation.moveUnit(unit);
+
+  assert.deepEqual(unit.path, []);
+  assert.equal(unit.pathIndex, 0);
+  assert.deepEqual(unit.position, positionBeforeMovement);
+  assert.equal(simulation.unitPendingPathRequests.has(unit.id), true);
+});
+
 test("persistent planner history and presentation state affect replay state", () => {
-  const left = new Simulation(11_006, "economy");
-  const right = new Simulation(11_006, "economy");
+  const left = new Simulation(11_008, "economy");
+  const right = new Simulation(11_008, "economy");
   assert.deepEqual(left.authoritativeState(), right.authoritativeState());
 
   right.nextPathRequestId += 1;

@@ -2030,11 +2030,18 @@ export class Simulation {
     const requestKey = `formation:${this.nextPathRequestId}`;
     this.nextPathRequestId += 1;
     for (const unit of selected) {
+      const start = toTile(unit.position);
       this.cancelPendingPathRequest(unit);
       unit.path = [];
       unit.pathIndex = 0;
       unit.destination = null;
-      unit.attackMoveDestination = null;
+      unit.attackMoveDestination =
+        mode === "attackMove"
+          ? {
+              x: anchorTarget.x + start.x - anchorStart.x,
+              y: anchorTarget.y + start.y - anchorStart.y,
+            }
+          : null;
       unit.targetId = null;
       unit.targetStructureId = null;
       unit.harvestFieldId = null;
@@ -2273,6 +2280,8 @@ export class Simulation {
 
     const retrying = this.unitPathingOverrides.get(unit.id) === "blocked";
     this.cancelPendingPathRequest(unit);
+    unit.path = [];
+    unit.pathIndex = 0;
     const requestKey = `unit:${unit.id}:${this.nextPathRequestId}`;
     this.nextPathRequestId += 1;
     this.pendingPathRequests.set(requestKey, {
