@@ -18,7 +18,10 @@ const simulationModule = await vite.ssrLoadModule(
   "/app/game/simulation.ts",
 );
 const { createPathSearch, findPath } = pathfinding;
-const { DeterministicPathRequestQueue } = queueModule;
+const {
+  DeterministicPathRequestQueue,
+  PATH_REQUESTS_PER_PRIORITY_AGING_STEP,
+} = queueModule;
 const {
   PATH_EXPANSIONS_PER_TICK,
   Simulation,
@@ -105,6 +108,34 @@ test("path request queues enforce budgets and explicit priority order", () => {
   assert.equal(second.expansions, 1);
   assert.deepEqual(second.completed.map((result) => result.key), ["direct"]);
   assert.equal(queue.stateOf("direct"), null);
+});
+
+test("path request priority aging prevents background starvation", () => {
+  const queue = new DeterministicPathRequestQueue();
+  queue.enqueue({
+    key: "background",
+    start: { x: 1, y: 1 },
+    goal: { x: 60, y: 60 },
+    priority: "background",
+  });
+
+  const requestsUntilDirectPriority =
+    PATH_REQUESTS_PER_PRIORITY_AGING_STEP * 4;
+  for (let index = 0; index < requestsUntilDirectPriority; index += 1) {
+    queue.enqueue({
+      key: `direct:${index}`,
+      start: { x: 2, y: 2 },
+      goal: { x: 60, y: 60 },
+      priority: "direct",
+    });
+    queue.advance(1);
+  }
+
+  const background = queue
+    .authoritativeState()
+    .requests.find((request) => request.key === "background");
+  assert.equal(background.started, true);
+  assert.equal(background.search.totalExpansions, 1);
 });
 
 test("path request queues replace and cancel requests deterministically", () => {

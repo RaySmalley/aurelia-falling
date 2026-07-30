@@ -13,6 +13,7 @@ export const PATH_REQUEST_PRIORITIES = [
   "harvest",
   "background",
 ] as const;
+export const PATH_REQUESTS_PER_PRIORITY_AGING_STEP = 4;
 
 export type PathRequestPriority =
   (typeof PATH_REQUEST_PRIORITIES)[number];
@@ -144,9 +145,19 @@ export class DeterministicPathRequestQueue {
   private nextRequest() {
     return [...this.requests.values()].sort(
       (left, right) =>
-        priorityRank(left.priority) - priorityRank(right.priority) ||
+        this.effectivePriorityRank(left) -
+          this.effectivePriorityRank(right) ||
         left.sequence - right.sequence ||
         compareKeys(left.key, right.key),
     )[0];
+  }
+
+  private effectivePriorityRank(request: QueuedRequest) {
+    const laterRequestCount =
+      this.nextSequence - request.sequence - 1;
+    const agingSteps = Math.floor(
+      laterRequestCount / PATH_REQUESTS_PER_PRIORITY_AGING_STEP,
+    );
+    return Math.max(0, priorityRank(request.priority) - agingSteps);
   }
 }
