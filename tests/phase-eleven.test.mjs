@@ -231,7 +231,7 @@ test("live formation orders share one budgeted anchor request", () => {
   );
 });
 
-test("attack-move formations preserve pending and following shared routes", () => {
+test("attack-move formations preserve their pending shared request", () => {
   const simulation = new Simulation(11_002, "economy");
   const unit = simulation.createUnitState(
     1,
@@ -261,18 +261,7 @@ test("attack-move formations preserve pending and following shared routes", () =
     simulation.pendingPathRequests.get(formationRequestKey).kind,
     "formation",
   );
-
-  const completed = simulation.pathRequests.advance(
-    PATH_EXPANSIONS_PER_TICK * 4,
-  ).completed;
-  assert.equal(completed.length, 1);
-  simulation.completePathRequest(completed[0]);
-  const sharedPath = unit.path.map((point) => ({ ...point }));
-  assert.ok(sharedPath.length > 0);
-
-  simulation.updateCombatOrder(unit);
-  assert.equal(simulation.pathRequests.size, 0);
-  assert.deepEqual(unit.path, sharedPath);
+  assert.equal(simulation.pathRequests.size, 1);
 });
 
 test("live path planning never exceeds its per-tick expansion budget", () => {

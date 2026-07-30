@@ -2265,14 +2265,6 @@ export class Simulation {
     ) {
       return;
     }
-    if (
-      unit.pathIndex < unit.path.length &&
-      unit.destination?.x === requestedTarget.x &&
-      unit.destination.y === requestedTarget.y
-    ) {
-      return;
-    }
-
     const occupied =
       options.occupied ??
       this.occupiedTiles(new Set([unit.id]), unit.playerId);
