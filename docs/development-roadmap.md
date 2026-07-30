@@ -365,10 +365,12 @@ tick spikes.
 
 ### Current implementation slice
 
-The first slice replaces A*'s repeated full open-list sorting with a
-deterministic binary min-heap. Heap priority preserves the existing total order
-of lowest path score followed by lowest tile ID, and stale entries created by a
-better route are skipped without changing movement or replay outcomes.
+The first slice replaced A*'s repeated full open-list sorting with a
+deterministic binary min-heap. The current slice adds a pausable A* search and a
+deterministic request queue with exact expansion budgets, explicit priority
+ordering, replacement, and cancellation. Existing synchronous movement remains
+the comparison oracle until formation, chase, AI, and harvesting call sites
+migrate to the queue in the next slice.
 
 ### Work
 
