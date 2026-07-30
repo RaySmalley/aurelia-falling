@@ -28,6 +28,7 @@ export type PathRequest = Readonly<{
 
 export type PathRequestResult = Readonly<{
   key: string;
+  priority: PathRequestPriority;
   status: Exclude<PathSearchStatus, "planning">;
   path: readonly GridPoint[];
 }>;
@@ -131,6 +132,7 @@ export class DeterministicPathRequestQueue {
       this.requests.delete(request.key);
       completed.push({
         key: request.key,
+        priority: request.priority,
         status: result.status,
         path: result.path ?? [],
       });

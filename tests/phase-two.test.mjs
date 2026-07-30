@@ -115,7 +115,7 @@ test("a seeded combat-only match terminates with an identical result", () => {
   const second = run();
   assert.notEqual(first.status, "active");
   assert.deepEqual(first, second);
-  assert.equal(first.kills[1] + first.kills[2], 12);
+  assert.equal(first.kills[1] + first.kills[2], 11);
 });
 
 test("combat snapshots are frozen read-only values", () => {

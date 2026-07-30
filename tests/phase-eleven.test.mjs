@@ -30,6 +30,29 @@ const {
 
 test.after(() => vite.close());
 
+const displaceUnitAcrossTile = (simulation, unit) => {
+  const originalTile = toTile(unit.position);
+  const pushingUnits = Array.from({ length: 25 }, (_, index) => {
+    const pushingUnit = simulation.createUnitState(
+      index + 2,
+      unit.playerId,
+      "argusRifle",
+      originalTile,
+    );
+    pushingUnit.position = {
+      x: unit.position.x + 1 - 24 * index,
+      y: unit.position.y,
+    };
+    return pushingUnit;
+  });
+  simulation.units.push(...pushingUnits);
+  simulation.rebuildEntityIndexes();
+  simulation.applySeparationFor(unit);
+  const displacedTile = toTile(unit.position);
+  assert.notDeepEqual(displacedTile, originalTile);
+  return displacedTile;
+};
+
 test("incremental path searches preserve synchronous path outcomes", () => {
   const occupied = new Set([66, 67, 68, 69]);
   const expected = findPath(
@@ -208,8 +231,52 @@ test("live formation orders share one budgeted anchor request", () => {
   );
 });
 
-test("live path planning never exceeds its per-tick expansion budget", () => {
+test("attack-move formations preserve pending and following shared routes", () => {
   const simulation = new Simulation(11_002, "economy");
+  const unit = simulation.createUnitState(
+    1,
+    1,
+    "argusRifle",
+    { x: 2, y: 2 },
+  );
+  simulation.units = [unit];
+  simulation.structures = [];
+  simulation.fields = [];
+  simulation.rebuildEntityIndexes();
+  simulation.issueFormationMoveFor(
+    [unit],
+    { x: 50, y: 50 },
+    "attackMove",
+    "direct",
+  );
+  const formationRequestKey =
+    simulation.unitPendingPathRequests.get(unit.id);
+
+  simulation.updateCombatOrder(unit);
+  assert.equal(
+    simulation.unitPendingPathRequests.get(unit.id),
+    formationRequestKey,
+  );
+  assert.equal(
+    simulation.pendingPathRequests.get(formationRequestKey).kind,
+    "formation",
+  );
+
+  const completed = simulation.pathRequests.advance(
+    PATH_EXPANSIONS_PER_TICK * 4,
+  ).completed;
+  assert.equal(completed.length, 1);
+  simulation.completePathRequest(completed[0]);
+  const sharedPath = unit.path.map((point) => ({ ...point }));
+  assert.ok(sharedPath.length > 0);
+
+  simulation.updateCombatOrder(unit);
+  assert.equal(simulation.pathRequests.size, 0);
+  assert.deepEqual(unit.path, sharedPath);
+});
+
+test("live path planning never exceeds its per-tick expansion budget", () => {
+  const simulation = new Simulation(11_003, "economy");
   const units = Array.from({ length: 80 }, (_, index) =>
     simulation.createUnitState(
       index + 1,
@@ -241,7 +308,7 @@ test("live path planning never exceeds its per-tick expansion budget", () => {
 });
 
 test("stop commands cancel queued paths before planning runs", () => {
-  const simulation = new Simulation(11_003, "economy");
+  const simulation = new Simulation(11_004, "economy");
   const unit = simulation.createUnitState(
     1,
     1,
@@ -267,7 +334,7 @@ test("stop commands cancel queued paths before planning runs", () => {
 
 test("pending path searches participate in authoritative replay state", () => {
   const createPlanningSimulation = () => {
-    const simulation = new Simulation(11_004, "economy");
+    const simulation = new Simulation(11_005, "economy");
     const unit = simulation.createUnitState(
       1,
       1,
@@ -293,7 +360,7 @@ test("pending path searches participate in authoritative replay state", () => {
 });
 
 test("pending move requests survive movement until their route resolves", () => {
-  const simulation = new Simulation(11_005, "economy");
+  const simulation = new Simulation(11_006, "economy");
   const unit = simulation.createUnitState(
     1,
     1,
@@ -317,7 +384,7 @@ test("pending move requests survive movement until their route resolves", () => 
 });
 
 test("pending attack-move formations retain their destination through combat", () => {
-  const simulation = new Simulation(11_006, "economy");
+  const simulation = new Simulation(11_007, "economy");
   const unit = simulation.createUnitState(
     1,
     1,
@@ -359,7 +426,7 @@ test("pending attack-move formations retain their destination through combat", (
 });
 
 test("delayed replans pause paths anchored to the unit's current tile", () => {
-  const simulation = new Simulation(11_007, "economy");
+  const simulation = new Simulation(11_008, "economy");
   const unit = simulation.createUnitState(
     1,
     1,
@@ -384,7 +451,7 @@ test("delayed replans pause paths anchored to the unit's current tile", () => {
 });
 
 test("formation completion rebases units displaced by separation", () => {
-  const simulation = new Simulation(11_008, "economy");
+  const simulation = new Simulation(11_009, "economy");
   const unit = simulation.createUnitState(
     1,
     1,
@@ -402,24 +469,7 @@ test("formation completion rebases units displaced by separation", () => {
     "direct",
   );
 
-  const pushingUnits = Array.from({ length: 25 }, (_, index) => {
-    const pushingUnit = simulation.createUnitState(
-      index + 2,
-      1,
-      "argusRifle",
-      { x: 2, y: 2 },
-    );
-    pushingUnit.position = {
-      x: 2_001 - 24 * index,
-      y: 2_000,
-    };
-    return pushingUnit;
-  });
-  simulation.units.push(...pushingUnits);
-  simulation.rebuildEntityIndexes();
-  simulation.applySeparationFor(unit);
-  const displacedStart = toTile(unit.position);
-  assert.notDeepEqual(displacedStart, { x: 2, y: 2 });
+  const displacedStart = displaceUnitAcrossTile(simulation, unit);
 
   const completed = simulation.pathRequests.advance(
     PATH_EXPANSIONS_PER_TICK * 4,
@@ -436,9 +486,40 @@ test("formation completion rebases units displaced by separation", () => {
   assert.deepEqual(rebasedQueueRequest.search.start, displacedStart);
 });
 
+test("individual completion rebases units displaced by separation", () => {
+  const simulation = new Simulation(11_010, "economy");
+  const unit = simulation.createUnitState(
+    1,
+    1,
+    "argusRifle",
+    { x: 2, y: 2 },
+  );
+  simulation.units = [unit];
+  simulation.structures = [];
+  simulation.fields = [];
+  simulation.rebuildEntityIndexes();
+  simulation.planPath(unit, { x: 50, y: 50 }, "background");
+  const displacedStart = displaceUnitAcrossTile(simulation, unit);
+
+  const completed = simulation.pathRequests.advance(
+    PATH_EXPANSIONS_PER_TICK * 4,
+  ).completed;
+  assert.equal(completed.length, 1);
+  simulation.completePathRequest(completed[0]);
+
+  const rebasedRequestKey =
+    simulation.unitPendingPathRequests.get(unit.id);
+  const rebasedQueueRequest = simulation
+    .pathRequests
+    .authoritativeState()
+    .requests.find((request) => request.key === rebasedRequestKey);
+  assert.equal(rebasedQueueRequest.priority, "background");
+  assert.deepEqual(rebasedQueueRequest.search.start, displacedStart);
+});
+
 test("persistent planner history and presentation state affect replay state", () => {
-  const left = new Simulation(11_009, "economy");
-  const right = new Simulation(11_009, "economy");
+  const left = new Simulation(11_011, "economy");
+  const right = new Simulation(11_011, "economy");
   assert.deepEqual(left.authoritativeState(), right.authoritativeState());
 
   right.nextPathRequestId += 1;

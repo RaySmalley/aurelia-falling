@@ -55,11 +55,11 @@
       ],
       "expected": {
         "checkpoints": {
-          "0:1": "cb74ebb476f527ef13e5d6928b41482d8baeebec0f346a20664284c87581add2",
-          "0:120": "7d012ac12ce192b29e8669c07629e10a9a99bbaf78a7f4c32bc7af20802c5950",
-          "0:240": "75c45c0b8666767b8035695f2e0e017bb68891e6102435d0c743d5bea280185e"
+          "0:1": "f97d583df3171ca75102af8faf1c96cd9a7975bfce8c14d2da636f34b524915b",
+          "0:120": "ac2eee1e181463dbc0d2be9ecc3779892b44bb4e9adca99d36fc2f822b60272c",
+          "0:240": "440b3ad2b9ba57409f9957138cbeeec811f240dab8d355dea78f53b58b37e543"
         },
-        "final": "75c45c0b8666767b8035695f2e0e017bb68891e6102435d0c743d5bea280185e"
+        "final": "440b3ad2b9ba57409f9957138cbeeec811f240dab8d355dea78f53b58b37e543"
       }
     },
     {
@@ -307,10 +307,10 @@
       ],
       "expected": {
         "checkpoints": {
-          "0:10": "660373d41c194e2a73ebd70ba793ca907f244907a62ff068b641aa5cca4bfa0f",
-          "1:10": "9d618888ac4b12daa4684996d5607e70753e34ae2bed8340e7b13ea0bde266bf"
+          "0:10": "81b07799992aa82bc55c0a8b3bd881f7aea1497ab3ccf81cdee0efbed2581e9a",
+          "1:10": "51c231801d708fbee77caa4b9598529e4123c84f959b2832eeef65166408d9d0"
         },
-        "final": "9d618888ac4b12daa4684996d5607e70753e34ae2bed8340e7b13ea0bde266bf"
+        "final": "51c231801d708fbee77caa4b9598529e4123c84f959b2832eeef65166408d9d0"
       }
     }
   ]

@@ -2254,6 +2254,25 @@ export class Simulation {
     priority: PathRequestPriority,
     options: PathOptions & Readonly<{ start?: GridPoint }> = {},
   ) {
+    const currentRequestKey = this.unitPendingPathRequests.get(unit.id);
+    const currentRequest = currentRequestKey
+      ? this.pendingPathRequests.get(currentRequestKey)
+      : undefined;
+    if (
+      currentRequest?.kind === "formation" &&
+      unit.attackMoveDestination?.x === requestedTarget.x &&
+      unit.attackMoveDestination.y === requestedTarget.y
+    ) {
+      return;
+    }
+    if (
+      unit.pathIndex < unit.path.length &&
+      unit.destination?.x === requestedTarget.x &&
+      unit.destination.y === requestedTarget.y
+    ) {
+      return;
+    }
+
     const occupied =
       options.occupied ??
       this.occupiedTiles(new Set([unit.id]), unit.playerId);
@@ -2266,10 +2285,6 @@ export class Simulation {
       this.unitPathingOverrides.set(unit.id, "blocked");
       return;
     }
-    const currentRequestKey = this.unitPendingPathRequests.get(unit.id);
-    const currentRequest = currentRequestKey
-      ? this.pendingPathRequests.get(currentRequestKey)
-      : undefined;
     if (
       currentRequest?.kind === "unit" &&
       currentRequest.destination.x === destination.x &&
@@ -2346,6 +2361,21 @@ export class Simulation {
       return;
     }
     this.unitPendingPathRequests.delete(unit.id);
+    const currentStart = toTile(unit.position);
+    if (
+      result.status === "resolved" &&
+      result.path.length > 0 &&
+      (result.path[0].x !== currentStart.x ||
+        result.path[0].y !== currentStart.y)
+    ) {
+      this.planPath(
+        unit,
+        request.destination,
+        result.priority,
+        { start: currentStart },
+      );
+      return;
+    }
     if (result.status === "failed" || result.path.length === 0) {
       this.unitPathingOverrides.set(unit.id, "blocked");
       return;
