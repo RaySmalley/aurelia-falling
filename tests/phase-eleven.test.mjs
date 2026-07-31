@@ -23,7 +23,9 @@ const {
   PATH_REQUESTS_PER_PRIORITY_AGING_STEP,
 } = queueModule;
 const {
+  INITIAL_CONGESTED_PATH_EXPANSIONS_PER_TICK,
   PATH_EXPANSIONS_PER_TICK,
+  PATH_REQUEST_CONGESTION_THRESHOLD,
   Simulation,
   toTile,
 } = simulationModule;
@@ -321,6 +323,78 @@ test("live path planning never exceeds its per-tick expansion budget", () => {
       ["queued", "planning"].includes(unit.pathingState),
     ),
     true,
+  );
+});
+
+test("large path workloads use the deterministic congested budget", () => {
+  const simulation = new Simulation(11_012, "economy");
+  const units = Array.from(
+    { length: PATH_REQUEST_CONGESTION_THRESHOLD },
+    (_, index) =>
+      simulation.createUnitState(
+        index + 1,
+        1,
+        "argusRifle",
+        {
+          x: 1 + (index % 16),
+          y: 1 + Math.floor(index / 16),
+        },
+      ),
+  );
+  simulation.units = units;
+  simulation.structures = [];
+  simulation.fields = [];
+  simulation.rebuildEntityIndexes();
+  for (const unit of units) {
+    simulation.planPath(unit, { x: 60, y: 60 }, "direct");
+  }
+
+  simulation.lastPathExpansions = 0;
+  simulation.lastPathExpansionBudget = PATH_EXPANSIONS_PER_TICK;
+  simulation.processPathRequests(PATH_EXPANSIONS_PER_TICK);
+
+  const diagnostics = simulation.pathfindingDiagnostics();
+  assert.equal(
+    diagnostics.expansionBudget,
+    INITIAL_CONGESTED_PATH_EXPANSIONS_PER_TICK,
+  );
+  assert.ok(
+    diagnostics.expansions <=
+      INITIAL_CONGESTED_PATH_EXPANSIONS_PER_TICK,
+  );
+  assert.ok(diagnostics.pendingRequests > 0);
+  assert.equal(
+    simulation.authoritativeState().pathPlanning.congested,
+    true,
+  );
+
+  const formation = new Simulation(11_013, "economy");
+  formation.units = units.map((unit) =>
+    formation.createUnitState(
+      unit.id,
+      unit.playerId,
+      unit.kind,
+      toTile(unit.position),
+    ),
+  );
+  formation.structures = [];
+  formation.fields = [];
+  formation.rebuildEntityIndexes();
+  formation.issueFormationMoveFor(
+    formation.units,
+    { x: 60, y: 60 },
+    "move",
+    "direct",
+  );
+  formation.processPathRequests(PATH_EXPANSIONS_PER_TICK);
+
+  assert.equal(
+    formation.pathfindingDiagnostics().expansionBudget,
+    INITIAL_CONGESTED_PATH_EXPANSIONS_PER_TICK,
+  );
+  assert.ok(
+    formation.pathfindingDiagnostics().expansions <=
+      INITIAL_CONGESTED_PATH_EXPANSIONS_PER_TICK,
   );
 });
 

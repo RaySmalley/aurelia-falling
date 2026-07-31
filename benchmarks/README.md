@@ -1,13 +1,23 @@
 # Simulation performance contract
 
-The Phase 10 headless benchmark measures the fixed-step simulation without
-loading React or Phaser. It creates deterministic, balanced idle armies at 100,
-300, 600, and 1,000 units, warms the simulation, and records 50 measured ticks.
+The headless benchmark measures the fixed-step simulation without loading React
+or Phaser. The general benchmark covers deterministic balanced idle armies at
+100, 300, 600, and 1,000 units. A separate Phase 11 benchmark covers a 200-unit
+shared formation move and a 200-unit direct attack/chase fan-out. Keeping the
+workloads in separate processes prevents earlier high-count cases from
+contaminating the targeted worst-tick gate through heap and thermal state. Each
+workload warms the simulation and records 50 measured ticks.
 
 Run the benchmark with Node.js 24.18.0:
 
 ```powershell
 npm run benchmark:simulation
+```
+
+To run only the targeted pathfinding workloads with the 25 ms worst-tick gate:
+
+```powershell
+npm run benchmark:pathfinding
 ```
 
 To replace the checked-in machine baseline intentionally:
@@ -19,8 +29,18 @@ npm run benchmark:baseline
 The JSON report records the Git revision and dirty state, hardware and runtime
 profile, seed, object and snapshot sizes, heap deltas, snapshot hashes, and
 p50/p95/p99/worst timings for the complete tick and each observed simulation
-system. Heap deltas are process-level signals rather than exact allocation
-counts and should be compared across repeated runs on the same machine.
+system. Targeted results also record the maximum expansion count, initial
+command-phase request fan-out, and pending-request count. Their gate fails when
+pathfinding exceeds its expansion budget, a formation creates more than one
+initial request, a direct attack creates more than one request per attacker, or
+the worst measured tick exceeds 25 ms. The normal per-tick pathfinding cap
+remains 4,096 expansions. A queue with at least 128 requests, or a formation
+containing at least 128 units, uses a deterministic congested cap until that
+workload drains. Queued individual paths receive 2,048 expansions per tick. A
+newly congested workload's first tick and a large shared formation's anchor
+receive 1,024 expansions; subsequent individual paths receive the 2,048 cap.
+Heap deltas are process-level signals rather than exact allocation counts and
+should be compared across repeated runs on the same machine.
 
 The checked-in [baseline](./baseline.json) records the pre-index implementation.
 The [spatial-index result](./spatial-index.json) records the same benchmark

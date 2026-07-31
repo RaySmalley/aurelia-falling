@@ -53,6 +53,9 @@ export const TICKS_PER_SECOND = 20;
 export const SIM_STEP_MS = 1_000 / TICKS_PER_SECOND;
 export const DEFAULT_COMBAT_SEED = 0xa11e_1a;
 export const PATH_EXPANSIONS_PER_TICK = 4_096;
+export const CONGESTED_PATH_EXPANSIONS_PER_TICK = 2_048;
+export const INITIAL_CONGESTED_PATH_EXPANSIONS_PER_TICK = 1_024;
+export const PATH_REQUEST_CONGESTION_THRESHOLD = 128;
 export const SIMULATION_SYSTEMS = [
   "commands",
   "pathfinding",
@@ -548,6 +551,8 @@ export class Simulation {
     new Map<PlayerId | 0, ReadonlyMap<number, number>>();
   private nextPathRequestId = 1;
   private lastPathExpansions = 0;
+  private lastPathExpansionBudget = PATH_EXPANSIONS_PER_TICK;
+  private pathWorkloadExpansionBudget = PATH_EXPANSIONS_PER_TICK;
 
   constructor(
     seed = DEFAULT_COMBAT_SEED,
@@ -569,7 +574,7 @@ export class Simulation {
 
   pathfindingDiagnostics() {
     return Object.freeze({
-      expansionBudget: PATH_EXPANSIONS_PER_TICK,
+      expansionBudget: this.lastPathExpansionBudget,
       expansions: this.lastPathExpansions,
       pendingRequests: this.pathRequests.size,
     });
@@ -619,6 +624,12 @@ export class Simulation {
       aiDifficulty: this.aiDifficulty,
       pathPlanning: {
         nextRequestId: this.nextPathRequestId,
+        ...(this.pathWorkloadExpansionBudget < PATH_EXPANSIONS_PER_TICK
+          ? {
+              congested: true,
+              workloadBudget: this.pathWorkloadExpansionBudget,
+            }
+          : {}),
         queue: this.pathRequests.authoritativeState(),
         pending: [...this.pendingPathRequests].sort(
           ([left], [right]) =>
@@ -635,6 +646,11 @@ export class Simulation {
   }
 
   step(observer?: SimulationStepObserver) {
+    if (this.pathRequests.size === 0) {
+      this.pathWorkloadExpansionBudget = PATH_EXPANSIONS_PER_TICK;
+    }
+    this.lastPathExpansions = 0;
+    this.lastPathExpansionBudget = PATH_EXPANSIONS_PER_TICK;
     const commandTick = this.tick;
     observer?.begin("commands", commandTick);
     for (const command of this.commands.splice(0)) {
@@ -652,7 +668,6 @@ export class Simulation {
     }
 
     const observedTick = this.tick;
-    this.lastPathExpansions = 0;
     observer?.begin("pathfinding", observedTick);
     this.processPathRequests(PATH_EXPANSIONS_PER_TICK);
     observer?.end("pathfinding", observedTick);
@@ -694,9 +709,7 @@ export class Simulation {
     }
     observer?.end("unitOrders", observedTick);
     observer?.begin("pathfinding", observedTick);
-    this.processPathRequests(
-      PATH_EXPANSIONS_PER_TICK - this.lastPathExpansions,
-    );
+    this.processPathRequests(PATH_EXPANSIONS_PER_TICK);
     observer?.end("pathfinding", observedTick);
     if (this.scenario !== "combat") {
       observer?.begin("turrets", observedTick);
@@ -730,6 +743,21 @@ export class Simulation {
       observer?.begin("ai", observedTick);
       this.updateAi();
       observer?.end("ai", observedTick);
+    }
+    const largeFormationPending = [
+      ...this.pendingPathRequests.values(),
+    ].some(
+      (request) =>
+        request.kind === "formation" &&
+        request.unitIds.length >= PATH_REQUEST_CONGESTION_THRESHOLD,
+    );
+    if (
+      this.pathWorkloadExpansionBudget ===
+        INITIAL_CONGESTED_PATH_EXPANSIONS_PER_TICK &&
+      !largeFormationPending
+    ) {
+      this.pathWorkloadExpansionBudget =
+        CONGESTED_PATH_EXPANSIONS_PER_TICK;
     }
     this.tick += 1;
   }
@@ -1084,6 +1112,8 @@ export class Simulation {
     this.pathOccupancyCounts.clear();
     this.nextPathRequestId = 1;
     this.lastPathExpansions = 0;
+    this.lastPathExpansionBudget = PATH_EXPANSIONS_PER_TICK;
+    this.pathWorkloadExpansionBudget = PATH_EXPANSIONS_PER_TICK;
   }
 
   private resetCombat(seed: number) {
@@ -2381,8 +2411,39 @@ export class Simulation {
   }
 
   private processPathRequests(expansionBudget: number) {
-    let remaining = expansionBudget;
+    let remainingCallBudget = expansionBudget;
     while (this.pathRequests.size > 0) {
+      const largeFormation = [...this.pendingPathRequests.values()].some(
+        (request) =>
+          request.kind === "formation" &&
+          request.unitIds.length >= PATH_REQUEST_CONGESTION_THRESHOLD,
+      );
+      if (largeFormation) {
+        this.pathWorkloadExpansionBudget = Math.min(
+          this.pathWorkloadExpansionBudget,
+          INITIAL_CONGESTED_PATH_EXPANSIONS_PER_TICK,
+        );
+      } else if (
+        this.pathRequests.size >= PATH_REQUEST_CONGESTION_THRESHOLD
+      ) {
+        this.pathWorkloadExpansionBudget = Math.min(
+          this.pathWorkloadExpansionBudget,
+          this.pathWorkloadExpansionBudget === PATH_EXPANSIONS_PER_TICK
+            ? INITIAL_CONGESTED_PATH_EXPANSIONS_PER_TICK
+            : CONGESTED_PATH_EXPANSIONS_PER_TICK,
+        );
+      }
+      const activeBudget = Math.min(
+        this.lastPathExpansionBudget,
+        this.pathWorkloadExpansionBudget,
+      );
+      this.lastPathExpansionBudget = activeBudget;
+      const remaining = Math.min(
+        remainingCallBudget,
+        activeBudget - this.lastPathExpansions,
+      );
+      if (remaining <= 0) break;
+
       for (const [unitId, requestKey] of this.unitPendingPathRequests) {
         const queueState = this.pathRequests.stateOf(requestKey);
         if (queueState === "planning") {
@@ -2392,12 +2453,13 @@ export class Simulation {
 
       const advanced = this.pathRequests.advance(remaining);
       this.lastPathExpansions += advanced.expansions;
-      remaining -= advanced.expansions;
+      remainingCallBudget -= advanced.expansions;
       for (const result of advanced.completed) {
         this.completePathRequest(result);
       }
       if (
-        remaining === 0 ||
+        remainingCallBudget <= 0 ||
+        this.lastPathExpansions >= activeBudget ||
         (advanced.expansions === 0 && advanced.completed.length === 0)
       ) {
         break;
@@ -2411,6 +2473,10 @@ export class Simulation {
     if (!request) return;
     if (request.kind === "formation") {
       this.completeFormationPath(result, request);
+      this.pathWorkloadExpansionBudget = Math.max(
+        this.pathWorkloadExpansionBudget,
+        CONGESTED_PATH_EXPANSIONS_PER_TICK,
+      );
       return;
     }
 

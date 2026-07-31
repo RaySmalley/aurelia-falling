@@ -1,13 +1,14 @@
-import { clampToMap, isTerrainBlocked, MAP_SIZE, tileKeyOf } from "./map";
+import {
+  clampToMap,
+  isTerrainBlockedAt,
+  MAP_SIZE,
+  tileKeyOf,
+} from "./map";
 import { DeterministicMinHeap } from "./min-heap";
 import type { GridPoint } from "./types";
 
-const NEIGHBORS: readonly GridPoint[] = Object.freeze([
-  Object.freeze({ x: 0, y: -1 }),
-  Object.freeze({ x: 1, y: 0 }),
-  Object.freeze({ x: 0, y: 1 }),
-  Object.freeze({ x: -1, y: 0 }),
-]);
+const NEIGHBOR_X = new Int8Array([0, 1, 0, -1]);
+const NEIGHBOR_Y = new Int8Array([-1, 0, 1, 0]);
 
 const samePoint = (a: GridPoint, b: GridPoint) =>
   a.x === b.x && a.y === b.y;
@@ -39,21 +40,23 @@ export type PathSearchAdvance = Readonly<{
   path: readonly GridPoint[] | null;
 }>;
 
+const MAP_TILE_COUNT = MAP_SIZE * MAP_SIZE;
+
 export function nearestWalkable(
   requested: GridPoint,
   options: PathOptions = {},
 ): GridPoint | null {
   const center = clampToMap(requested);
-  const unavailable = (point: GridPoint) => {
-    const key = tileKeyOf(point);
+  const unavailable = (x: number, y: number) => {
+    if (isTerrainBlockedAt(x, y)) return true;
+    const key = y * MAP_SIZE + x;
     return (
-      isTerrainBlocked(point) ||
       options.occupied?.has(key) ||
       options.reserved?.has(key)
     );
   };
 
-  if (!unavailable(center)) return center;
+  if (!unavailable(center.x, center.y)) return center;
 
   for (let radius = 1; radius < MAP_SIZE; radius += 1) {
     for (let y = center.y - radius; y <= center.y + radius; y += 1) {
@@ -63,8 +66,7 @@ export function nearestWalkable(
         ) {
           continue;
         }
-        const candidate = { x, y };
-        if (!unavailable(candidate)) return candidate;
+        if (!unavailable(x, y)) return { x, y };
       }
     }
   }
@@ -76,11 +78,13 @@ export class IncrementalPathSearch {
   private readonly start: GridPoint;
   private readonly goal: GridPoint | null;
   private readonly goalKey: number | null;
+  private readonly startKey: number;
   private readonly occupied: ReadonlySet<number>;
   private readonly reserved: ReadonlySet<number>;
-  private readonly cameFrom = new Map<number, number>();
-  private readonly gScore = new Map<number, number>();
-  private readonly fScore = new Map<number, number>();
+  private readonly discovered = new Uint8Array(MAP_TILE_COUNT);
+  private readonly cameFrom = new Uint16Array(MAP_TILE_COUNT);
+  private readonly gScore = new Uint16Array(MAP_TILE_COUNT);
+  private readonly fScore = new Uint16Array(MAP_TILE_COUNT);
   private readonly open = new DeterministicMinHeap<OpenNode>(
     (left, right) => left.score - right.score || left.key - right.key,
   );
@@ -94,6 +98,7 @@ export class IncrementalPathSearch {
     options: PathOptions = {},
   ) {
     this.start = clampToMap(startInput);
+    this.startKey = tileKeyOf(this.start);
     this.occupied = new Set(options.occupied);
     this.reserved = new Set(options.reserved);
     this.goal = nearestWalkable(goalInput, {
@@ -112,11 +117,11 @@ export class IncrementalPathSearch {
       return;
     }
 
-    const startKey = tileKeyOf(this.start);
     const score = heuristic(this.start, this.goal);
-    this.gScore.set(startKey, 0);
-    this.fScore.set(startKey, score);
-    this.open.push({ key: startKey, score });
+    this.discovered[this.startKey] = 1;
+    this.gScore[this.startKey] = 0;
+    this.fScore[this.startKey] = score;
+    this.open.push({ key: this.startKey, score });
     this.currentStatus = "planning";
   }
 
@@ -129,14 +134,27 @@ export class IncrementalPathSearch {
   }
 
   authoritativeState() {
-    const orderedEntries = (entries: ReadonlyMap<number, number>) =>
-      [...entries].sort((left, right) => left[0] - right[0]);
+    const orderedEntries = (
+      entries: Uint16Array,
+      include: (key: number) => boolean = () => true,
+    ) => {
+      const result: [number, number][] = [];
+      for (let key = 0; key < MAP_TILE_COUNT; key += 1) {
+        if (this.discovered[key] === 1 && include(key)) {
+          result.push([key, entries[key]]);
+        }
+      }
+      return result;
+    };
     return {
       start: this.start,
       goal: this.goal,
       occupied: [...this.occupied].sort((left, right) => left - right),
       reserved: [...this.reserved].sort((left, right) => left - right),
-      cameFrom: orderedEntries(this.cameFrom),
+      cameFrom: orderedEntries(
+        this.cameFrom,
+        (key) => key !== this.startKey,
+      ),
       gScore: orderedEntries(this.gScore),
       fScore: orderedEntries(this.fScore),
       open: this.open.authoritativeState(),
@@ -166,7 +184,7 @@ export class IncrementalPathSearch {
     while (this.open.size > 0 && expansions < allowedExpansions) {
       const currentNode = this.open.pop()!;
       expansions += 1;
-      if (this.fScore.get(currentNode.key) !== currentNode.score) continue;
+      if (this.fScore[currentNode.key] !== currentNode.score) continue;
       const currentKey = currentNode.key;
       if (currentKey === this.goalKey) {
         this.currentPath = Object.freeze(this.reconstructPath(currentKey));
@@ -174,36 +192,36 @@ export class IncrementalPathSearch {
         break;
       }
 
-      const currentPoint = {
-        x: currentKey % MAP_SIZE,
-        y: Math.floor(currentKey / MAP_SIZE),
-      };
-      for (const offset of NEIGHBORS) {
-        const neighbor = {
-          x: currentPoint.x + offset.x,
-          y: currentPoint.y + offset.y,
-        };
-        const neighborKey = tileKeyOf(neighbor);
+      const currentX = currentKey % MAP_SIZE;
+      const currentY = Math.floor(currentKey / MAP_SIZE);
+      for (let index = 0; index < NEIGHBOR_X.length; index += 1) {
+        const neighborX = currentX + NEIGHBOR_X[index];
+        const neighborY = currentY + NEIGHBOR_Y[index];
+        if (isTerrainBlockedAt(neighborX, neighborY)) continue;
+        const neighborKey = neighborY * MAP_SIZE + neighborX;
         if (
-          isTerrainBlocked(neighbor) ||
-          (neighborKey !== this.goalKey &&
+          neighborKey !== this.goalKey &&
             (this.occupied.has(neighborKey) ||
-              this.reserved.has(neighborKey)))
+              this.reserved.has(neighborKey))
         ) {
           continue;
         }
 
-        const tentative = (this.gScore.get(currentKey) ?? 0) + 1;
+        const tentative = this.gScore[currentKey] + 1;
         if (
-          tentative >=
-          (this.gScore.get(neighborKey) ?? Number.MAX_SAFE_INTEGER)
+          this.discovered[neighborKey] === 1 &&
+          tentative >= this.gScore[neighborKey]
         ) {
           continue;
         }
-        this.cameFrom.set(neighborKey, currentKey);
-        this.gScore.set(neighborKey, tentative);
-        const score = tentative + heuristic(neighbor, this.goal!);
-        this.fScore.set(neighborKey, score);
+        this.discovered[neighborKey] = 1;
+        this.cameFrom[neighborKey] = currentKey;
+        this.gScore[neighborKey] = tentative;
+        const score =
+          tentative +
+          Math.abs(neighborX - this.goal!.x) +
+          Math.abs(neighborY - this.goal!.y);
+        this.fScore[neighborKey] = score;
         this.open.push({ key: neighborKey, score });
       }
     }
@@ -226,13 +244,14 @@ export class IncrementalPathSearch {
 
   private reconstructPath(goalKey: number) {
     const path: GridPoint[] = [];
-    let cursor: number | undefined = goalKey;
-    while (cursor !== undefined) {
+    let cursor = goalKey;
+    while (true) {
       path.push({
         x: cursor % MAP_SIZE,
         y: Math.floor(cursor / MAP_SIZE),
       });
-      cursor = this.cameFrom.get(cursor);
+      if (cursor === this.startKey) break;
+      cursor = this.cameFrom[cursor];
     }
     return path.reverse().map((point) => Object.freeze(point));
   }
@@ -263,15 +282,18 @@ export function translateSharedPath(
   offset: GridPoint,
   options: PathOptions = {},
 ): readonly GridPoint[] {
-  const translated = anchorPath.map((point) => ({
-    x: point.x + offset.x,
-    y: point.y + offset.y,
-  }));
-  const valid = translated.every((point, index) => {
-    if (isTerrainBlocked(point)) return false;
-    if (index === translated.length - 1) return true;
-    const key = tileKeyOf(point);
-    return !options.occupied?.has(key) && !options.reserved?.has(key);
-  });
-  return valid ? translated : [];
+  const translated: GridPoint[] = [];
+  for (let index = 0; index < anchorPath.length; index += 1) {
+    const x = anchorPath[index].x + offset.x;
+    const y = anchorPath[index].y + offset.y;
+    if (isTerrainBlockedAt(x, y)) return [];
+    if (index < anchorPath.length - 1) {
+      const key = y * MAP_SIZE + x;
+      if (options.occupied?.has(key) || options.reserved?.has(key)) {
+        return [];
+      }
+    }
+    translated.push({ x, y });
+  }
+  return translated;
 }

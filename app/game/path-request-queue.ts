@@ -163,13 +163,19 @@ export class DeterministicPathRequestQueue {
   }
 
   private nextRequest() {
-    return [...this.requests.values()].sort(
-      (left, right) =>
-        this.effectivePriorityRank(left) -
-          this.effectivePriorityRank(right) ||
-        left.sequence - right.sequence ||
-        compareKeys(left.key, right.key),
-    )[0];
+    let selected: QueuedRequest | undefined;
+    for (const request of this.requests.values()) {
+      const comparison = selected
+        ? this.effectivePriorityRank(request) -
+            this.effectivePriorityRank(selected) ||
+          request.sequence - selected.sequence ||
+          compareKeys(request.key, selected.key)
+        : -1;
+      if (comparison < 0) {
+        selected = request;
+      }
+    }
+    return selected;
   }
 
   private effectivePriorityRank(request: QueuedRequest) {

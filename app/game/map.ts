@@ -60,8 +60,18 @@ export function isInsideMap(point: GridPoint) {
   );
 }
 
+export function isTerrainBlockedAt(x: number, y: number) {
+  return (
+    x < 0 ||
+    y < 0 ||
+    x >= MAP_SIZE ||
+    y >= MAP_SIZE ||
+    blocked.has(tileKey(x, y))
+  );
+}
+
 export function isTerrainBlocked(point: GridPoint) {
-  return !isInsideMap(point) || blocked.has(tileKey(point.x, point.y));
+  return isTerrainBlockedAt(point.x, point.y);
 }
 
 export function clampToMap(point: GridPoint): GridPoint {

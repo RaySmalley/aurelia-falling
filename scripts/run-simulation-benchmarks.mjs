@@ -8,6 +8,11 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
+const BENCHMARK_SCENARIOS = [
+  "idle-armies",
+  "formation-move",
+  "direct-attack",
+];
 
 const parseInteger = (value, option, allowZero = false) => {
   const normalized = String(value).trim();
@@ -28,12 +33,23 @@ const parseInteger = (value, option, allowZero = false) => {
   return parsed;
 };
 
+const parsePositiveNumber = (value, option) => {
+  const parsed = Number(String(value).trim());
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`${option} must be a positive number`);
+  }
+  return parsed;
+};
+
 export const parseArguments = (argv) => {
   const options = {
     counts: [100, 300, 600, 1_000],
+    maxTargetedWorstMs: 25,
     measuredTicks: 50,
     output: null,
+    scenarios: ["idle-armies"],
     seed: 10_001,
+    targetedUnitCount: 200,
     warmupTicks: 10,
   };
 
@@ -44,6 +60,25 @@ export const parseArguments = (argv) => {
       options.counts = value
         .split(",")
         .map((count) => parseInteger(count, option));
+      index += 1;
+    } else if (option === "--scenarios" && value) {
+      options.scenarios = value.split(",");
+      if (
+        options.scenarios.length === 0 ||
+        options.scenarios.some(
+          (scenario) => !BENCHMARK_SCENARIOS.includes(scenario),
+        )
+      ) {
+        throw new Error(
+          `${option} must contain only: ${BENCHMARK_SCENARIOS.join(", ")}`,
+        );
+      }
+      index += 1;
+    } else if (option === "--targeted-count" && value) {
+      options.targetedUnitCount = parseInteger(value, option);
+      index += 1;
+    } else if (option === "--max-targeted-worst-ms" && value) {
+      options.maxTargetedWorstMs = parsePositiveNumber(value, option);
       index += 1;
     } else if (option === "--ticks" && value) {
       options.measuredTicks = parseInteger(value, option);
@@ -150,21 +185,103 @@ const createIdleArmy = (simulation, unitCount) => {
   simulation.updateVisibility(true);
 };
 
+const createPathfindingArmy = (simulation, unitCount) => {
+  const attackers = Array.from({ length: unitCount }, (_, index) =>
+    simulation.createUnitState(
+      index + 1,
+      1,
+      "argusRifle",
+      {
+        x: 4 + (index % 10),
+        y: 4 + Math.floor(index / 10),
+      },
+      `Pathfinder ${index + 1}`,
+    ),
+  );
+  for (const unit of attackers) unit.order = "hold";
+  const target = simulation.createUnitState(
+    unitCount + 1,
+    2,
+    "gorgonWalker",
+    { x: 58, y: 58 },
+    "Chase Target",
+  );
+  target.order = "hold";
+  simulation.units = [...attackers, target];
+  simulation.structures = [];
+  simulation.fields = [];
+  simulation.nextUnitId = simulation.units.length + 1;
+  simulation.rebuildEntityIndexes();
+  simulation.updateVisibility(true);
+  return { attackers, target };
+};
+
+const prepareWorkload = (Simulation, scenario, seed, unitCount) => {
+  if (scenario === "idle-armies") {
+    const simulation = new Simulation(seed, "combat");
+    createIdleArmy(simulation, unitCount);
+    return {
+      commandStream: "none",
+      enqueue: () => {},
+      simulation,
+    };
+  }
+
+  const simulation = new Simulation(seed, "combat");
+  const { attackers, target } = createPathfindingArmy(
+    simulation,
+    unitCount,
+  );
+  return {
+    commandStream:
+      scenario === "formation-move"
+        ? `select ${unitCount}; move formation`
+        : `select ${unitCount}; attack unit`,
+    enqueue() {
+      simulation.enqueue({
+        kind: "selectUnits",
+        unitIds: attackers.map((unit) => unit.id),
+        additive: false,
+      });
+      simulation.enqueue(
+        scenario === "formation-move"
+          ? {
+              kind: "move",
+              target: { x: 50, y: 50 },
+              mode: "move",
+            }
+          : {
+              kind: "attackUnit",
+              targetUnitId: target.id,
+            },
+      );
+    },
+    simulation,
+  };
+};
+
 const runBenchmark = (
   Simulation,
   systems,
-  { measuredTicks, seed, unitCount, warmupTicks },
+  { measuredTicks, scenario, seed, unitCount, warmupTicks },
 ) => {
-  const simulation = new Simulation(seed, "combat");
-  createIdleArmy(simulation, unitCount);
+  const workload = prepareWorkload(
+    Simulation,
+    scenario,
+    seed,
+    unitCount,
+  );
+  const { simulation } = workload;
 
   for (let tick = 0; tick < warmupTicks; tick += 1) simulation.step();
+  workload.enqueue();
 
   const samplesBySystem = new Map(
     systems.map((system) => [system, []]),
   );
   const startedAt = new Map();
   const elapsedBySystem = new Map();
+  const commandPhasePendingRequests = [];
   const observer = {
     begin(system) {
       startedAt.set(system, performance.now());
@@ -177,16 +294,23 @@ const runBenchmark = (
           (elapsedBySystem.get(system) ?? 0) + performance.now() - start,
         );
       }
+      if (system === "commands") {
+        commandPhasePendingRequests.push(
+          simulation.pathfindingDiagnostics().pendingRequests,
+        );
+      }
     },
   };
 
   const tickSamples = [];
+  const pathfindingSamples = [];
   const heapBefore = process.memoryUsage().heapUsed;
   for (let tick = 0; tick < measuredTicks; tick += 1) {
     elapsedBySystem.clear();
     const start = performance.now();
     simulation.step(observer);
     tickSamples.push(performance.now() - start);
+    pathfindingSamples.push(simulation.pathfindingDiagnostics());
     for (const [system, elapsed] of elapsedBySystem) {
       samplesBySystem.get(system).push(elapsed);
     }
@@ -195,10 +319,13 @@ const runBenchmark = (
   const snapshotJson = JSON.stringify(simulation.snapshot());
 
   return {
-    id: `idle-${unitCount}`,
-    scenario: "idle-armies",
+    id:
+      scenario === "idle-armies"
+        ? `idle-${unitCount}`
+        : `${scenario}-${unitCount}`,
+    scenario,
     seed,
-    commandStream: "none",
+    commandStream: workload.commandStream,
     warmupTicks,
     measuredTicks,
     objectCounts: {
@@ -216,6 +343,34 @@ const runBenchmark = (
         .filter(([, samples]) => samples.length > 0)
         .map(([system, samples]) => [system, roundedSummary(samples)]),
     ),
+    pathfinding: {
+      expansionBudget: Math.max(
+        0,
+        ...pathfindingSamples.map((sample) => sample.expansionBudget),
+      ),
+      minimumExpansionBudget: Math.min(
+        ...pathfindingSamples.map((sample) => sample.expansionBudget),
+      ),
+      expansionBudgetBreaches: pathfindingSamples.filter(
+        (sample) => sample.expansions > sample.expansionBudget,
+      ).length,
+      maxExpansionsPerTick: Math.max(
+        0,
+        ...pathfindingSamples.map((sample) => sample.expansions),
+      ),
+      maxPendingRequests: Math.max(
+        0,
+        ...pathfindingSamples.map((sample) => sample.pendingRequests),
+      ),
+      maxCommandPhasePendingRequests: Math.max(
+        0,
+        ...commandPhasePendingRequests,
+      ),
+      initialCommandPhasePendingRequests:
+        commandPhasePendingRequests[0] ?? 0,
+      finalPendingRequests:
+        pathfindingSamples.at(-1)?.pendingRequests ?? 0,
+    },
     allocation: {
       heapDeltaBytes: heapAfter - heapBefore,
       heapUsedBeforeBytes: heapBefore,
@@ -225,6 +380,27 @@ const runBenchmark = (
       bytes: Buffer.byteLength(snapshotJson),
       sha256: createHash("sha256").update(snapshotJson).digest("hex"),
     },
+  };
+};
+
+const evaluateTargetedGate = (result, maxWorstMs) => {
+  const expectedCommandRequests =
+    result.scenario === "formation-move"
+      ? 1
+      : result.objectCounts.units - 1;
+  const checks = {
+    expansionBudget:
+      result.pathfinding.expansionBudgetBreaches === 0,
+    requestFanout:
+      result.pathfinding.initialCommandPhasePendingRequests <=
+      expectedCommandRequests,
+    worstTick: result.tickTiming.worstMs <= maxWorstMs,
+  };
+  return {
+    id: result.id,
+    maxWorstMs,
+    checks,
+    passed: Object.values(checks).every(Boolean),
   };
 };
 
@@ -241,16 +417,30 @@ const main = async () => {
     const simulationModule = await vite.ssrLoadModule(
       "/app/game/simulation.ts",
     );
-    const results = options.counts.map((unitCount) =>
-      runBenchmark(
-        simulationModule.Simulation,
-        simulationModule.SIMULATION_SYSTEMS,
-        { ...options, unitCount },
-      ),
-    );
+    const results = [];
+    for (const scenario of options.scenarios) {
+      const counts =
+        scenario === "idle-armies"
+          ? options.counts
+          : [options.targetedUnitCount];
+      for (const unitCount of counts) {
+        results.push(
+          runBenchmark(
+            simulationModule.Simulation,
+            simulationModule.SIMULATION_SYSTEMS,
+            { ...options, scenario, unitCount },
+          ),
+        );
+      }
+    }
+    const targetedGates = results
+      .filter((result) => result.scenario !== "idle-armies")
+      .map((result) =>
+        evaluateTargetedGate(result, options.maxTargetedWorstMs),
+      );
     const cpu = cpus()[0];
     const report = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       recordedAt: new Date().toISOString(),
       revision: revision(),
       workingTreeDirty: workingTreeDirty(),
@@ -266,12 +456,18 @@ const main = async () => {
       },
       benchmark: {
         simulationRateHz: 20,
-        scenario: "idle-armies",
+        scenarios: options.scenarios,
         counts: options.counts,
+        targetedUnitCount: options.targetedUnitCount,
+        maxTargetedWorstMs: options.maxTargetedWorstMs,
         warmupTicks: options.warmupTicks,
         measuredTicks: options.measuredTicks,
       },
       results,
+      gates: {
+        passed: targetedGates.every((gate) => gate.passed),
+        targeted: targetedGates,
+      },
     };
     const serialized = `${JSON.stringify(report, null, 2)}\n`;
 
@@ -280,6 +476,15 @@ const main = async () => {
       await writeFile(options.output, serialized, "utf8");
     }
     process.stdout.write(serialized);
+    if (!report.gates.passed) {
+      process.stderr.write(
+        `Targeted benchmark gate failed: ${targetedGates
+          .filter((gate) => !gate.passed)
+          .map((gate) => gate.id)
+          .join(", ")}\n`,
+      );
+      process.exitCode = 1;
+    }
   } finally {
     await vite.close();
   }
