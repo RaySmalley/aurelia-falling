@@ -398,6 +398,43 @@ test("large path workloads use the deterministic congested budget", () => {
   );
 });
 
+test("a newly detected lower cap is deferred after tick work begins", () => {
+  const simulation = new Simulation(11_014, "economy");
+  const units = Array.from(
+    { length: PATH_REQUEST_CONGESTION_THRESHOLD },
+    (_, index) =>
+      simulation.createUnitState(
+        index + 1,
+        1,
+        "argusRifle",
+        {
+          x: 1 + (index % 16),
+          y: 1 + Math.floor(index / 16),
+        },
+      ),
+  );
+  simulation.units = units;
+  simulation.structures = [];
+  simulation.fields = [];
+  simulation.rebuildEntityIndexes();
+  for (const unit of units) {
+    simulation.planPath(unit, { x: 60, y: 60 }, "direct");
+  }
+  simulation.lastPathExpansions = 2_000;
+  simulation.lastPathExpansionBudget = PATH_EXPANSIONS_PER_TICK;
+  simulation.pathWorkloadExpansionBudget = PATH_EXPANSIONS_PER_TICK;
+
+  simulation.processPathRequests(PATH_EXPANSIONS_PER_TICK);
+
+  const diagnostics = simulation.pathfindingDiagnostics();
+  assert.equal(diagnostics.expansionBudget, PATH_EXPANSIONS_PER_TICK);
+  assert.ok(diagnostics.expansions <= diagnostics.expansionBudget);
+  assert.equal(
+    simulation.pathWorkloadExpansionBudget,
+    INITIAL_CONGESTED_PATH_EXPANSIONS_PER_TICK,
+  );
+});
+
 test("stop commands cancel queued paths before planning runs", () => {
   const simulation = new Simulation(11_004, "economy");
   const unit = simulation.createUnitState(
@@ -586,6 +623,56 @@ test("formation completion rebases units displaced by separation", () => {
     .authoritativeState()
     .requests.find((request) => request.key === rebasedRequestKey);
   assert.deepEqual(rebasedQueueRequest.search.start, displacedStart);
+});
+
+test("formation fallback requests snapshot earlier reservations", () => {
+  const simulation = new Simulation(11_015, "economy");
+  const units = [
+    simulation.createUnitState(
+      1,
+      1,
+      "argusRifle",
+      { x: 2, y: 2 },
+    ),
+    simulation.createUnitState(
+      2,
+      1,
+      "argusRifle",
+      { x: 3, y: 2 },
+    ),
+  ];
+  simulation.units = units;
+  simulation.structures = [];
+  simulation.fields = [];
+  simulation.rebuildEntityIndexes();
+  simulation.issueFormationMoveFor(
+    units,
+    { x: 50, y: 50 },
+    "move",
+    "direct",
+  );
+  for (const unit of units) unit.position.x += 1_000;
+  simulation.rebuildEntityIndexes();
+
+  const completed = simulation.pathRequests.advance(
+    PATH_EXPANSIONS_PER_TICK * 4,
+  ).completed;
+  assert.equal(completed.length, 1);
+  simulation.completePathRequest(completed[0]);
+
+  const fallbackRequests = simulation
+    .pathRequests
+    .authoritativeState()
+    .requests.filter((request) => request.key.startsWith("unit:"));
+  assert.equal(fallbackRequests.length, 2);
+  assert.deepEqual(fallbackRequests[0].search.reserved, []);
+  assert.equal(fallbackRequests[1].search.reserved.length, 1);
+  for (const request of fallbackRequests) {
+    const goalKey =
+      request.search.requestedGoal.y * 64 +
+      request.search.requestedGoal.x;
+    assert.equal(request.search.reserved.includes(goalKey), false);
+  }
 });
 
 test("individual completion rebases units displaced by separation", () => {

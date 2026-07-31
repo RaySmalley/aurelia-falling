@@ -2437,10 +2437,14 @@ export class Simulation {
         this.lastPathExpansionBudget,
         this.pathWorkloadExpansionBudget,
       );
-      this.lastPathExpansionBudget = activeBudget;
+      const tickBudget =
+        activeBudget < this.lastPathExpansions
+          ? this.lastPathExpansionBudget
+          : activeBudget;
+      this.lastPathExpansionBudget = tickBudget;
       const remaining = Math.min(
         remainingCallBudget,
-        activeBudget - this.lastPathExpansions,
+        tickBudget - this.lastPathExpansions,
       );
       if (remaining <= 0) break;
 
@@ -2459,7 +2463,7 @@ export class Simulation {
       }
       if (
         remainingCallBudget <= 0 ||
-        this.lastPathExpansions >= activeBudget ||
+        this.lastPathExpansions >= tickBudget ||
         (advanced.expansions === 0 && advanced.completed.length === 0)
       ) {
         break;
@@ -2563,7 +2567,7 @@ export class Simulation {
       ) {
         this.planPath(unit, destination, request.priority, {
           occupied,
-          reserved,
+          reserved: new Set(reserved),
           start: currentStart,
         });
       } else {

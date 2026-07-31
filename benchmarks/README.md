@@ -32,15 +32,19 @@ p50/p95/p99/worst timings for the complete tick and each observed simulation
 system. Targeted results also record the maximum expansion count, initial
 command-phase request fan-out, and pending-request count. Their gate fails when
 pathfinding exceeds its expansion budget, a formation creates more than one
-initial request, a direct attack creates more than one request per attacker, or
-the worst measured tick exceeds 25 ms. The normal per-tick pathfinding cap
-remains 4,096 expansions. A queue with at least 128 requests, or a formation
-containing at least 128 units, uses a deterministic congested cap until that
-workload drains. Queued individual paths receive 2,048 expansions per tick. A
-newly congested workload's first tick and a large shared formation's anchor
-receive 1,024 expansions; subsequent individual paths receive the 2,048 cap.
-Heap deltas are process-level signals rather than exact allocation counts and
-should be compared across repeated runs on the same machine.
+initial request, a direct attack creates anything other than one request per
+attacker, the worst measured tick exceeds 25 ms, or requests remain after the
+untimed deterministic completion window. The completion window holds direct
+attackers after measurement to prevent fresh chase replans, then allows the
+worst-case 16,384 expansions per queued unit at the 1,024 initial congested
+budget. The normal per-tick pathfinding cap remains 4,096 expansions. A queue
+with at least 128 requests, or a formation containing at least 128 units, uses
+a deterministic congested cap until that workload drains. Queued individual
+paths receive 2,048 expansions per tick. A newly congested workload's first
+tick and a large shared formation's anchor receive 1,024 expansions; subsequent
+individual paths receive the 2,048 cap. Heap deltas are process-level signals
+rather than exact allocation counts and should be compared across repeated runs
+on the same machine.
 
 The checked-in [baseline](./baseline.json) records the pre-index implementation.
 The [spatial-index result](./spatial-index.json) records the same benchmark

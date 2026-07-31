@@ -652,6 +652,9 @@ test("targeted pathfinding benchmarks enforce formation and chase gates", async 
   assert.equal(attack.pathfinding.initialCommandPhasePendingRequests, 20);
   for (const result of [formation, attack]) {
     assert.equal(result.pathfinding.expansionBudgetBreaches, 0);
+    assert.equal(result.pathfinding.finalPendingRequests, 0);
+    assert.equal(result.pathfinding.completionTicks <=
+      result.pathfinding.completionTickLimit, true);
     assert.ok(
       result.pathfinding.maxExpansionsPerTick <=
         result.pathfinding.expansionBudget,
@@ -659,6 +662,11 @@ test("targeted pathfinding benchmarks enforce formation and chase gates", async 
     assert.ok(
       result.pathfinding.minimumExpansionBudget <=
         result.pathfinding.expansionBudget,
+    );
+    assert.equal(
+      report.gates.targeted.find((gate) => gate.id === result.id)
+        .checks.boundedCompletion,
+      true,
     );
   }
 });

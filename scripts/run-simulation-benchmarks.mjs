@@ -223,6 +223,7 @@ const prepareWorkload = (Simulation, scenario, seed, unitCount) => {
     return {
       commandStream: "none",
       enqueue: () => {},
+      prepareDrain: () => {},
       simulation,
     };
   }
@@ -256,6 +257,15 @@ const prepareWorkload = (Simulation, scenario, seed, unitCount) => {
             },
       );
     },
+    prepareDrain() {
+      if (scenario !== "direct-attack") return;
+      for (const unit of attackers) {
+        unit.order = "hold";
+        unit.targetId = null;
+        unit.targetStructureId = null;
+        unit.forcedTarget = false;
+      }
+    },
     simulation,
   };
 };
@@ -263,7 +273,15 @@ const prepareWorkload = (Simulation, scenario, seed, unitCount) => {
 const runBenchmark = (
   Simulation,
   systems,
-  { measuredTicks, scenario, seed, unitCount, warmupTicks },
+  {
+    initialCongestedBudget,
+    maxPathExpansions,
+    measuredTicks,
+    scenario,
+    seed,
+    unitCount,
+    warmupTicks,
+  },
 ) => {
   const workload = prepareWorkload(
     Simulation,
@@ -316,6 +334,22 @@ const runBenchmark = (
     }
   }
   const heapAfter = process.memoryUsage().heapUsed;
+  const measuredFinalPendingRequests =
+    pathfindingSamples.at(-1)?.pendingRequests ?? 0;
+  const completionTickLimit =
+    scenario === "idle-armies"
+      ? 0
+      : (unitCount + 1) *
+        Math.ceil(maxPathExpansions / initialCongestedBudget);
+  let completionTicks = 0;
+  workload.prepareDrain();
+  while (
+    simulation.pathfindingDiagnostics().pendingRequests > 0 &&
+    completionTicks < completionTickLimit
+  ) {
+    simulation.step();
+    completionTicks += 1;
+  }
   const snapshotJson = JSON.stringify(simulation.snapshot());
 
   return {
@@ -368,8 +402,11 @@ const runBenchmark = (
       ),
       initialCommandPhasePendingRequests:
         commandPhasePendingRequests[0] ?? 0,
+      measuredFinalPendingRequests,
+      completionTickLimit,
+      completionTicks,
       finalPendingRequests:
-        pathfindingSamples.at(-1)?.pendingRequests ?? 0,
+        simulation.pathfindingDiagnostics().pendingRequests,
     },
     allocation: {
       heapDeltaBytes: heapAfter - heapBefore,
@@ -392,8 +429,12 @@ const evaluateTargetedGate = (result, maxWorstMs) => {
     expansionBudget:
       result.pathfinding.expansionBudgetBreaches === 0,
     requestFanout:
-      result.pathfinding.initialCommandPhasePendingRequests <=
+      result.pathfinding.initialCommandPhasePendingRequests ===
       expectedCommandRequests,
+    boundedCompletion:
+      result.pathfinding.finalPendingRequests === 0 &&
+      result.pathfinding.completionTicks <=
+        result.pathfinding.completionTickLimit,
     worstTick: result.tickTiming.worstMs <= maxWorstMs,
   };
   return {
@@ -417,6 +458,9 @@ const main = async () => {
     const simulationModule = await vite.ssrLoadModule(
       "/app/game/simulation.ts",
     );
+    const pathfindingModule = await vite.ssrLoadModule(
+      "/app/game/pathfinding.ts",
+    );
     const results = [];
     for (const scenario of options.scenarios) {
       const counts =
@@ -428,7 +472,16 @@ const main = async () => {
           runBenchmark(
             simulationModule.Simulation,
             simulationModule.SIMULATION_SYSTEMS,
-            { ...options, scenario, unitCount },
+            {
+              ...options,
+              initialCongestedBudget:
+                simulationModule
+                  .INITIAL_CONGESTED_PATH_EXPANSIONS_PER_TICK,
+              maxPathExpansions:
+                pathfindingModule.MAX_PATH_EXPANSIONS,
+              scenario,
+              unitCount,
+            },
           ),
         );
       }
