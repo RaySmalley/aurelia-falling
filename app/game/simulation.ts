@@ -754,6 +754,8 @@ export class Simulation {
     if (
       this.pathWorkloadExpansionBudget ===
         INITIAL_CONGESTED_PATH_EXPANSIONS_PER_TICK &&
+      this.lastPathExpansionBudget ===
+        INITIAL_CONGESTED_PATH_EXPANSIONS_PER_TICK &&
       !largeFormationPending
     ) {
       this.pathWorkloadExpansionBudget =

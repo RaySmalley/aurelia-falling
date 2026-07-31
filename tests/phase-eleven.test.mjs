@@ -23,6 +23,7 @@ const {
   PATH_REQUESTS_PER_PRIORITY_AGING_STEP,
 } = queueModule;
 const {
+  CONGESTED_PATH_EXPANSIONS_PER_TICK,
   INITIAL_CONGESTED_PATH_EXPANSIONS_PER_TICK,
   PATH_EXPANSIONS_PER_TICK,
   PATH_REQUEST_CONGESTION_THRESHOLD,
@@ -432,6 +433,17 @@ test("a newly detected lower cap is deferred after tick work begins", () => {
   assert.equal(
     simulation.pathWorkloadExpansionBudget,
     INITIAL_CONGESTED_PATH_EXPANSIONS_PER_TICK,
+  );
+
+  simulation.step();
+
+  assert.equal(
+    simulation.pathfindingDiagnostics().expansionBudget,
+    INITIAL_CONGESTED_PATH_EXPANSIONS_PER_TICK,
+  );
+  assert.equal(
+    simulation.pathWorkloadExpansionBudget,
+    CONGESTED_PATH_EXPANSIONS_PER_TICK,
   );
 });
 

@@ -222,6 +222,7 @@ const prepareWorkload = (Simulation, scenario, seed, unitCount) => {
     createIdleArmy(simulation, unitCount);
     return {
       commandStream: "none",
+      commandedUnitCount: 0,
       enqueue: () => {},
       prepareDrain: () => {},
       simulation,
@@ -234,6 +235,7 @@ const prepareWorkload = (Simulation, scenario, seed, unitCount) => {
     unitCount,
   );
   return {
+    commandedUnitCount: unitCount,
     commandStream:
       scenario === "formation-move"
         ? `select ${unitCount}; move formation`
@@ -359,6 +361,7 @@ const runBenchmark = (
         : `${scenario}-${unitCount}`,
     scenario,
     seed,
+    commandedUnitCount: workload.commandedUnitCount,
     commandStream: workload.commandStream,
     warmupTicks,
     measuredTicks,
@@ -424,7 +427,7 @@ const evaluateTargetedGate = (result, maxWorstMs) => {
   const expectedCommandRequests =
     result.scenario === "formation-move"
       ? 1
-      : result.objectCounts.units - 1;
+      : result.commandedUnitCount;
   const checks = {
     expansionBudget:
       result.pathfinding.expansionBudgetBreaches === 0,

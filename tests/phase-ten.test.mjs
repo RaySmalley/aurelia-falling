@@ -646,9 +646,11 @@ test("targeted pathfinding benchmarks enforce formation and chase gates", async 
   );
 
   assert.equal(report.gates.passed, true);
+  assert.equal(formation.commandedUnitCount, 20);
   assert.equal(formation.objectCounts.units, 21);
   assert.equal(formation.pathfinding.initialCommandPhasePendingRequests, 1);
   assert.equal(attack.objectCounts.units, 21);
+  assert.equal(attack.commandedUnitCount, 20);
   assert.equal(attack.pathfinding.initialCommandPhasePendingRequests, 20);
   for (const result of [formation, attack]) {
     assert.equal(result.pathfinding.expansionBudgetBreaches, 0);
