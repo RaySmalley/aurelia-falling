@@ -6,6 +6,8 @@ const VIEWPORTS = [
   { name: "minimum", width: 1024, height: 640 },
 ] as const;
 const SETTINGS_KEY = "aurelia-falling.settings.v1";
+// Phase 9A deliberately preserves Phaser's canonical logical game contract.
+const LOGICAL_GAME_SIZE = { width: 1280, height: 720 } as const;
 
 type Rect = {
   top: number;
@@ -113,8 +115,8 @@ async function clickLogicalCanvas(page: Page, x: number, y: number) {
   const bounds = await canvas.boundingBox();
   if (!bounds) throw new Error("Missing canvas bounds");
   await page.mouse.click(
-    bounds.x + (x / 1280) * bounds.width,
-    bounds.y + (y / 720) * bounds.height,
+    bounds.x + (x / LOGICAL_GAME_SIZE.width) * bounds.width,
+    bounds.y + (y / LOGICAL_GAME_SIZE.height) * bounds.height,
   );
 }
 
@@ -154,6 +156,15 @@ test("persisted 110% UI scale stays reachable at the minimum viewport", async ({
     "pointer-events",
     "none",
   );
+
+  await page.getByRole("button", { name: "Pause" }).click();
+  const surrenderButton = page.getByRole("button", { name: "Surrender" });
+  await expect(surrenderButton).toBeVisible();
+  await expect(surrenderButton).toBeEnabled();
+  await expect(surrenderButton).toHaveCSS("pointer-events", "auto");
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await surrenderButton.click();
+  await page.getByRole("button", { name: "Resume operation" }).click();
 
   await page.getByRole("button", { name: "Settings" }).click();
   const settingsDialog = page.getByRole("dialog");
