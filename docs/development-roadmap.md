@@ -365,12 +365,17 @@ tick spikes.
 
 ### Current implementation slice
 
-The first slice replaced A*'s repeated full open-list sorting with a
-deterministic binary min-heap. The current slice adds a pausable A* search and a
-deterministic request queue with exact expansion budgets, explicit priority
-ordering, replacement, and cancellation. Existing synchronous movement remains
-the comparison oracle until formation, chase, AI, and harvesting call sites
-migrate to the queue in the next slice.
+The first slices replaced A*'s repeated full open-list sorting with a
+deterministic binary min-heap, then added a pausable search and deterministic
+request queue. The current slice integrates that queue into formation anchors,
+combat chasing, AI movement, harvesting, and rally movement. Two planning
+passes share one exact per-tick expansion budget, compatible formations reuse
+one anchor route, pending searches participate in authoritative replay state,
+and snapshots expose queued, planning, following, blocked, and retrying states.
+Each request is capped at 16,384 node expansions. With the 4,096-expansion
+tick budget, a finite batch of `R` full-cost requests therefore completes or
+fails within at most `4R` planning ticks; shared formations normally consume
+one request rather than one request per unit.
 
 ### Work
 

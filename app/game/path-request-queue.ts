@@ -13,6 +13,7 @@ export const PATH_REQUEST_PRIORITIES = [
   "harvest",
   "background",
 ] as const;
+export const PATH_REQUESTS_PER_PRIORITY_AGING_STEP = 4;
 
 export type PathRequestPriority =
   (typeof PATH_REQUEST_PRIORITIES)[number];
@@ -27,6 +28,7 @@ export type PathRequest = Readonly<{
 
 export type PathRequestResult = Readonly<{
   key: string;
+  priority: PathRequestPriority;
   status: Exclude<PathSearchStatus, "planning">;
   path: readonly GridPoint[];
 }>;
@@ -40,12 +42,17 @@ type QueuedRequest = {
   key: string;
   priority: PathRequestPriority;
   sequence: number;
-  search: IncrementalPathSearch;
+  start: GridPoint;
+  goal: GridPoint;
+  options?: PathOptions;
+  search: IncrementalPathSearch | null;
   started: boolean;
 };
 
 const priorityRank = (priority: PathRequestPriority) =>
   PATH_REQUEST_PRIORITIES.indexOf(priority);
+const compareKeys = (left: string, right: string) =>
+  left < right ? -1 : left > right ? 1 : 0;
 
 export class DeterministicPathRequestQueue {
   private readonly requests = new Map<string, QueuedRequest>();
@@ -55,16 +62,45 @@ export class DeterministicPathRequestQueue {
     return this.requests.size;
   }
 
+  authoritativeState() {
+    return {
+      nextSequence: this.nextSequence,
+      requests: [...this.requests.values()]
+        .sort(
+          (left, right) =>
+            left.sequence - right.sequence ||
+            compareKeys(left.key, right.key),
+        )
+        .map((request) => ({
+          key: request.key,
+          priority: request.priority,
+          sequence: request.sequence,
+          started: request.started,
+          search:
+            request.search?.authoritativeState() ?? {
+              start: request.start,
+              requestedGoal: request.goal,
+              occupied: [...(request.options?.occupied ?? [])].sort(
+                (left, right) => left - right,
+              ),
+              reserved: [...(request.options?.reserved ?? [])].sort(
+                (left, right) => left - right,
+              ),
+              status: "queued",
+            },
+        })),
+    };
+  }
+
   enqueue(request: PathRequest) {
     this.requests.set(request.key, {
       key: request.key,
       priority: request.priority,
       sequence: this.nextSequence,
-      search: createPathSearch(
-        request.start,
-        request.goal,
-        request.options,
-      ),
+      start: { ...request.start },
+      goal: { ...request.goal },
+      options: request.options,
+      search: null,
       started: false,
     });
     this.nextSequence += 1;
@@ -74,8 +110,13 @@ export class DeterministicPathRequestQueue {
     return this.requests.delete(key);
   }
 
+  has(key: string) {
+    return this.requests.has(key);
+  }
+
   clear() {
     this.requests.clear();
+    this.nextSequence = 0;
   }
 
   stateOf(key: string): "queued" | "planning" | null {
@@ -94,8 +135,13 @@ export class DeterministicPathRequestQueue {
     while (this.requests.size > 0) {
       const request = this.nextRequest()!;
       const remaining = expansionBudget - expansions;
-      if (remaining === 0 && request.search.status === "planning") break;
+      if (remaining === 0) break;
 
+      request.search ??= createPathSearch(
+        request.start,
+        request.goal,
+        request.options,
+      );
       request.started = true;
       const result = request.search.advance(remaining);
       expansions += result.expansions;
@@ -104,6 +150,7 @@ export class DeterministicPathRequestQueue {
       this.requests.delete(request.key);
       completed.push({
         key: request.key,
+        priority: request.priority,
         status: result.status,
         path: result.path ?? [],
       });
@@ -116,11 +163,27 @@ export class DeterministicPathRequestQueue {
   }
 
   private nextRequest() {
-    return [...this.requests.values()].sort(
-      (left, right) =>
-        priorityRank(left.priority) - priorityRank(right.priority) ||
-        left.sequence - right.sequence ||
-        left.key.localeCompare(right.key),
-    )[0];
+    let selected: QueuedRequest | undefined;
+    for (const request of this.requests.values()) {
+      const comparison = selected
+        ? this.effectivePriorityRank(request) -
+            this.effectivePriorityRank(selected) ||
+          request.sequence - selected.sequence ||
+          compareKeys(request.key, selected.key)
+        : -1;
+      if (comparison < 0) {
+        selected = request;
+      }
+    }
+    return selected;
+  }
+
+  private effectivePriorityRank(request: QueuedRequest) {
+    const laterRequestCount =
+      this.nextSequence - request.sequence - 1;
+    const agingSteps = Math.floor(
+      laterRequestCount / PATH_REQUESTS_PER_PRIORITY_AGING_STEP,
+    );
+    return Math.max(0, priorityRank(request.priority) - agingSteps);
   }
 }

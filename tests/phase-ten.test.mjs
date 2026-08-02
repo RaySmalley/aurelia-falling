@@ -532,6 +532,12 @@ test("benchmark arguments reject partial numbers and preserve zero seed", () => 
     parseArguments([
       "--counts",
       "20,40",
+      "--scenarios",
+      "idle-armies,direct-attack",
+      "--targeted-count",
+      "12",
+      "--max-targeted-worst-ms",
+      "30.5",
       "--ticks",
       "3",
       "--warmup",
@@ -541,9 +547,12 @@ test("benchmark arguments reject partial numbers and preserve zero seed", () => 
     ]),
     {
       counts: [20, 40],
+      maxTargetedWorstMs: 30.5,
       measuredTicks: 3,
       output: null,
+      scenarios: ["idle-armies", "direct-attack"],
       seed: 0,
+      targetedUnitCount: 12,
       warmupTicks: 0,
     },
   );
@@ -557,6 +566,14 @@ test("benchmark arguments reject partial numbers and preserve zero seed", () => 
     () => parseArguments(["--counts", "20,,40"]),
     /must be a positive integer/,
   );
+  assert.throws(
+    () => parseArguments(["--scenarios", "idle-armies,unknown"]),
+    /must contain only/,
+  );
+  assert.throws(
+    () => parseArguments(["--max-targeted-worst-ms", "0"]),
+    /must be a positive number/,
+  );
 });
 
 test("the headless benchmark emits machine-readable percentile results", async () => {
@@ -566,6 +583,8 @@ test("the headless benchmark emits machine-readable percentile results", async (
       "scripts/run-simulation-benchmarks.mjs",
       "--counts",
       "20",
+      "--scenarios",
+      "idle-armies",
       "--warmup",
       "1",
       "--ticks",
@@ -578,8 +597,9 @@ test("the headless benchmark emits machine-readable percentile results", async (
   const report = JSON.parse(stdout);
   const result = report.results[0];
 
-  assert.equal(report.schemaVersion, 1);
+  assert.equal(report.schemaVersion, 2);
   assert.equal(report.runtime.node, process.version);
+  assert.deepEqual(report.benchmark.scenarios, ["idle-armies"]);
   assert.deepEqual(report.benchmark.counts, [20]);
   assert.equal(result.objectCounts.units, 20);
   assert.equal(result.measuredTicks, 3);
@@ -589,6 +609,68 @@ test("the headless benchmark emits machine-readable percentile results", async (
     assert.ok(result.tickTiming[key] >= 0);
   }
   assert.ok(result.systemTiming.separation);
+  assert.equal(
+    result.systemTiming.pathfinding.sampleCount,
+    result.measuredTicks,
+  );
+  assert.equal(report.gates.passed, true);
+  assert.deepEqual(report.gates.targeted, []);
+});
+
+test("targeted pathfinding benchmarks enforce formation and chase gates", async () => {
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    [
+      "scripts/run-simulation-benchmarks.mjs",
+      "--scenarios",
+      "formation-move,direct-attack",
+      "--targeted-count",
+      "20",
+      "--warmup",
+      "1",
+      "--ticks",
+      "3",
+      "--seed",
+      "10101",
+      "--max-targeted-worst-ms",
+      "1000",
+    ],
+    { cwd: root, maxBuffer: 4 * 1024 * 1024 },
+  );
+  const report = JSON.parse(stdout);
+  const formation = report.results.find(
+    (result) => result.scenario === "formation-move",
+  );
+  const attack = report.results.find(
+    (result) => result.scenario === "direct-attack",
+  );
+
+  assert.equal(report.gates.passed, true);
+  assert.equal(formation.commandedUnitCount, 20);
+  assert.equal(formation.objectCounts.units, 21);
+  assert.equal(formation.pathfinding.initialCommandPhasePendingRequests, 1);
+  assert.equal(attack.objectCounts.units, 21);
+  assert.equal(attack.commandedUnitCount, 20);
+  assert.equal(attack.pathfinding.initialCommandPhasePendingRequests, 20);
+  for (const result of [formation, attack]) {
+    assert.equal(result.pathfinding.expansionBudgetBreaches, 0);
+    assert.equal(result.pathfinding.finalPendingRequests, 0);
+    assert.equal(result.pathfinding.completionTicks <=
+      result.pathfinding.completionTickLimit, true);
+    assert.ok(
+      result.pathfinding.maxExpansionsPerTick <=
+        result.pathfinding.expansionBudget,
+    );
+    assert.ok(
+      result.pathfinding.minimumExpansionBudget <=
+        result.pathfinding.expansionBudget,
+    );
+    assert.equal(
+      report.gates.targeted.find((gate) => gate.id === result.id)
+        .checks.boundedCompletion,
+      true,
+    );
+  }
 });
 
 test("versioned deterministic replay fixtures retain their expected hashes", async () => {

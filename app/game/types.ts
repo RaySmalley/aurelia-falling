@@ -35,6 +35,13 @@ export type OrderKind =
   | "hold"
   | "harvest"
   | "unload";
+export type PathingState =
+  | "idle"
+  | "queued"
+  | "planning"
+  | "following"
+  | "blocked"
+  | "retrying";
 export type MatchStatus = "active" | "victory" | "defeat" | "draw";
 export type SimulationScenario = "combat" | "economy" | "skirmish";
 export type AiDifficulty = "easy" | "normal" | "hard";
@@ -111,6 +118,7 @@ export type UnitSnapshot = Readonly<{
   destination: GridPoint | null;
   selected: boolean;
   order: OrderKind;
+  pathingState: PathingState;
   path: readonly GridPoint[];
   health: number;
   maxHealth: number;
