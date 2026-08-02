@@ -188,6 +188,11 @@ test("Phase 9A persistent HUD defines compact safe regions and primary controls"
   assert.match(styles, /--hud-safe-top: max\([^;]+safe-area-inset-top/);
   assert.match(styles, /--hud-safe-bottom: max\([^;]+safe-area-inset-bottom/);
   assert.match(styles, /--hud-hit-target: 2\.75rem/);
+  assert.match(shell, /const HUD_HIT_TARGET_PX = 44/);
+  assert.match(
+    shell,
+    /"--hud-hit-target": `\$\{HUD_HIT_TARGET_PX \/ settings\.uiScale\}px`/,
+  );
   assert.match(
     styles,
     /--command-dock-max-height: clamp\(9rem, 24dvh, 11rem\)/,

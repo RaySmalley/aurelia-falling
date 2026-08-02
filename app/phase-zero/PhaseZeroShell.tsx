@@ -151,6 +151,7 @@ const DEFAULT_SETTINGS: AppSettings = Object.freeze({
 const SETTINGS_KEY = "aurelia-falling.settings.v1";
 const ONBOARDING_KEY = "aurelia-falling.onboarding.v1";
 const CAMERA_ZOOM_LEVELS = [0.75, 0.9, 1, 1.1, 1.25] as const;
+const HUD_HIT_TARGET_PX = 44;
 
 const TUTORIAL_STEPS = [
   {
@@ -522,6 +523,7 @@ export default function SkirmishShell() {
     "--ui-shell-width": `${100 / settings.uiScale}vw`,
     "--ui-shell-height-fallback": `${100 / settings.uiScale}vh`,
     "--ui-shell-height": `${100 / settings.uiScale}dvh`,
+    "--hud-hit-target": `${HUD_HIT_TARGET_PX / settings.uiScale}px`,
   } as CSSProperties;
 
   return (
