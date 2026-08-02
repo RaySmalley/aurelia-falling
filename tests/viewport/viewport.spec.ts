@@ -25,6 +25,7 @@ type LayoutMetrics = {
   battlefield: Rect;
   host: Rect;
   canvas: Rect;
+  statusHud: Rect;
   commandDock: Rect | null;
   subtitle: Rect | null;
 };
@@ -71,6 +72,7 @@ async function readLayout(page: Page): Promise<LayoutMetrics> {
       battlefield: rect(".battlefield-frame"),
       host: rect(".game-host"),
       canvas: rect(".game-host canvas"),
+      statusHud: rect(".topbar"),
       commandDock:
         commandDock instanceof HTMLElement
           ? commandDock.getBoundingClientRect().toJSON()
@@ -100,6 +102,7 @@ function expectViewportContract(metrics: LayoutMetrics) {
   expect(metrics.canvas.width).toBeGreaterThan(0);
   expect(metrics.canvas.height).toBeGreaterThan(0);
   expectContained(metrics.canvas, metrics.battlefield);
+  expectContained(metrics.statusHud, metrics.shell);
   if (metrics.commandDock) expectContained(metrics.commandDock, metrics.shell);
 }
 
@@ -221,6 +224,20 @@ for (const viewport of VIEWPORTS) {
     expectViewportContract(playing);
     expectFullBleedBattlefield(playing);
     expect(playing.canvas.height).toBeGreaterThanOrEqual(575);
+    expect(playing.statusHud.height).toBeLessThanOrEqual(72);
+    expect(playing.commandDock!.height).toBeLessThanOrEqual(
+      playing.viewport.height * 0.28,
+    );
+    await expect(page.getByLabel("Economy status")).toBeVisible();
+    await expect(page.locator(".selection-summary")).toHaveText(
+      "Awaiting selection",
+    );
+    for (const name of ["Stop [X]", "Hold [H]"]) {
+      const control = page.getByRole("button", { name });
+      await expect(control).toBeVisible();
+      const bounds = await control.boundingBox();
+      expect(bounds?.height).toBeGreaterThanOrEqual(44);
+    }
     await capture(page, testInfo, `${viewport.name}-playing`);
   });
 }
