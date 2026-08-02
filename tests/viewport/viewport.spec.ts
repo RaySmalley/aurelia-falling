@@ -147,6 +147,18 @@ async function expectPrimaryHitTargets(page: Page) {
   }
 }
 
+async function expectBuildHitTargets(page: Page) {
+  const buttons = page.locator(".build-grid button");
+  const count = await buttons.count();
+  expect(count).toBeGreaterThan(0);
+
+  for (let index = 0; index < count; index += 1) {
+    const bounds = await buttons.nth(index).boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(bounds!.height).toBeGreaterThanOrEqual(PRIMARY_HIT_TARGET_PX - 0.1);
+  }
+}
+
 async function expectPrimaryCommandsInsideDock(page: Page) {
   const dock = page.locator(".economy-deck");
   const dockBounds = await dock.boundingBox();
@@ -262,6 +274,7 @@ for (const uiScale of [0.9, 1, 1.1]) {
     await page.getByRole("button", { name: "Begin operation" }).click();
     await expect(page.locator(".economy-deck")).toBeVisible();
     await expectPrimaryHitTargets(page);
+    await expectBuildHitTargets(page);
   });
 }
 
