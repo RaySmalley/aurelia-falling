@@ -24,6 +24,7 @@ type LayoutMetrics = {
   host: Rect;
   canvas: Rect;
   commandDock: Rect | null;
+  subtitle: Rect | null;
 };
 
 async function loadSetup(page: Page, uiScale = 1) {
@@ -57,6 +58,7 @@ async function readLayout(page: Page): Promise<LayoutMetrics> {
     };
 
     const commandDock = document.querySelector(".economy-deck");
+    const subtitle = document.querySelector(".radio-subtitle");
     return {
       viewport: { width: window.innerWidth, height: window.innerHeight },
       document: {
@@ -70,6 +72,10 @@ async function readLayout(page: Page): Promise<LayoutMetrics> {
       commandDock:
         commandDock instanceof HTMLElement
           ? commandDock.getBoundingClientRect().toJSON()
+          : null,
+      subtitle:
+        subtitle instanceof HTMLElement
+          ? subtitle.getBoundingClientRect().toJSON()
           : null,
     };
   });
@@ -136,6 +142,18 @@ test("persisted 110% UI scale stays reachable at the minimum viewport", async ({
   const playing = await readLayout(page);
   expectViewportContract(playing);
   expectFullBleedBattlefield(playing);
+
+  await expect(page.locator(".radio-subtitle")).toBeVisible();
+  const subtitleLayout = await readLayout(page);
+  expect(subtitleLayout.subtitle).not.toBeNull();
+  expect(subtitleLayout.commandDock).not.toBeNull();
+  expect(subtitleLayout.subtitle!.bottom).toBeLessThanOrEqual(
+    subtitleLayout.commandDock!.top,
+  );
+  await expect(page.locator(".radio-subtitle")).toHaveCSS(
+    "pointer-events",
+    "none",
+  );
 
   await page.getByRole("button", { name: "Settings" }).click();
   const settingsDialog = page.getByRole("dialog");

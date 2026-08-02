@@ -62,6 +62,8 @@ button:disabled {
 }
 
 .operations-shell {
+  --hud-edge-gap: clamp(0.55rem, 1.4vw, 1rem);
+  --command-dock-max-height: clamp(15rem, 42dvh, 22rem);
   position: relative;
   isolation: isolate;
   width: var(--ui-shell-width, 100vw);
@@ -84,9 +86,9 @@ button:disabled {
 .topbar {
   position: absolute;
   z-index: 5;
-  top: clamp(0.55rem, 1.4vw, 1rem);
-  right: clamp(0.55rem, 1.4vw, 1rem);
-  left: clamp(0.55rem, 1.4vw, 1rem);
+  top: var(--hud-edge-gap);
+  right: var(--hud-edge-gap);
+  left: var(--hud-edge-gap);
   padding: 0.85rem 1.15rem;
   display: flex;
   justify-content: space-between;
@@ -513,6 +515,13 @@ button.danger {
   font-size: 0.68rem;
   letter-spacing: 0.08em;
   text-align: center;
+  pointer-events: none;
+}
+
+.screen-playing .radio-subtitle {
+  bottom: calc(
+    var(--hud-edge-gap) + var(--command-dock-max-height) + 0.75rem
+  );
 }
 
 .command-deck {
@@ -525,13 +534,13 @@ button.danger {
 .economy-deck {
   position: absolute;
   z-index: 5;
-  right: clamp(0.55rem, 1.4vw, 1rem);
-  bottom: clamp(0.55rem, 1.4vw, 1rem);
-  left: clamp(0.55rem, 1.4vw, 1rem);
+  right: var(--hud-edge-gap);
+  bottom: var(--hud-edge-gap);
+  left: var(--hud-edge-gap);
   display: grid;
   grid-template-columns: minmax(260px, 0.95fr) minmax(360px, 1.35fr) minmax(280px, 0.9fr);
   gap: 1px;
-  max-height: clamp(15rem, 42dvh, 22rem);
+  max-height: var(--command-dock-max-height);
   overflow: auto;
   border: 1px solid var(--line);
   background: var(--line);
