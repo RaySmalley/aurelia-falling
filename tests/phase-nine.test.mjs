@@ -173,6 +173,37 @@ test("Phase 9 portraits and Aurelite icon use atlas-derived UI", async () => {
   assert.match(styles, /background-size: 400% 200%/);
 });
 
+test("Phase 9A persistent HUD defines compact safe regions and primary controls", async () => {
+  const [shell, styles] = await Promise.all([
+    readFile(
+      new URL("../app/phase-zero/PhaseZeroShell.tsx", import.meta.url),
+      "utf8",
+    ),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(shell, /aria-label="Match status HUD"/);
+  assert.match(shell, /aria-label="Primary command HUD"/);
+  assert.match(shell, /className="selection-summary"/);
+  assert.match(styles, /--hud-safe-top: max\([^;]+safe-area-inset-top/);
+  assert.match(styles, /--hud-safe-bottom: max\([^;]+safe-area-inset-bottom/);
+  assert.match(styles, /--hud-hit-target: 2\.75rem/);
+  assert.match(shell, /const HUD_HIT_TARGET_PX = 44/);
+  assert.match(
+    shell,
+    /"--hud-hit-target": `\$\{HUD_HIT_TARGET_PX \/ settings\.uiScale\}px`/,
+  );
+  assert.match(
+    styles,
+    /--command-dock-max-height: clamp\(9rem, 24dvh, 11rem\)/,
+  );
+  assert.match(styles, /button:focus-visible\s*\{[^}]*outline: 2px solid/s);
+  assert.match(
+    styles,
+    /\.economy-deck button\s*\{[^}]*min-height: var\(--hud-hit-target\)/s,
+  );
+});
+
 test("Phase 9 assets satisfy alpha, cell, dimension, and payload budgets", () => {
   const result = spawnSync(process.execPath, ["scripts/validate-assets.mjs"], {
     cwd: root,

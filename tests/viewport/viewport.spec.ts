@@ -6,6 +6,7 @@ const VIEWPORTS = [
   { name: "minimum", width: 1024, height: 640 },
 ] as const;
 const SETTINGS_KEY = "aurelia-falling.settings.v1";
+const PRIMARY_HIT_TARGET_PX = 44;
 // Phase 9A deliberately preserves Phaser's canonical logical game contract.
 const LOGICAL_GAME_SIZE = { width: 1280, height: 720 } as const;
 
@@ -25,6 +26,7 @@ type LayoutMetrics = {
   battlefield: Rect;
   host: Rect;
   canvas: Rect;
+  statusHud: Rect;
   commandDock: Rect | null;
   subtitle: Rect | null;
 };
@@ -71,6 +73,7 @@ async function readLayout(page: Page): Promise<LayoutMetrics> {
       battlefield: rect(".battlefield-frame"),
       host: rect(".game-host"),
       canvas: rect(".game-host canvas"),
+      statusHud: rect(".topbar"),
       commandDock:
         commandDock instanceof HTMLElement
           ? commandDock.getBoundingClientRect().toJSON()
@@ -100,6 +103,7 @@ function expectViewportContract(metrics: LayoutMetrics) {
   expect(metrics.canvas.width).toBeGreaterThan(0);
   expect(metrics.canvas.height).toBeGreaterThan(0);
   expectContained(metrics.canvas, metrics.battlefield);
+  expectContained(metrics.statusHud, metrics.shell);
   if (metrics.commandDock) expectContained(metrics.commandDock, metrics.shell);
 }
 
@@ -127,6 +131,20 @@ async function capture(page: Page, testInfo: TestInfo, state: string) {
     ),
     fullPage: true,
   });
+}
+
+async function expectPrimaryHitTargets(page: Page) {
+  for (const name of ["Settings", "Pause", "Stop [X]", "Hold [H]"]) {
+    const control = page.getByRole("button", { name, exact: true });
+    await expect(control).toBeVisible();
+    const bounds = await control.boundingBox();
+    expect(bounds).not.toBeNull();
+    // Fractional zoom geometry can round below the requested CSS pixel by a
+    // fraction while still occupying the full 44px device-independent target.
+    expect(Math.min(bounds!.width, bounds!.height)).toBeGreaterThanOrEqual(
+      PRIMARY_HIT_TARGET_PX - 0.1,
+    );
+  }
 }
 
 test("persisted 110% UI scale stays reachable at the minimum viewport", async ({
@@ -199,6 +217,18 @@ test("records the known Phase 6 overflow baseline", () => {
   }
 });
 
+for (const uiScale of [0.9, 1, 1.1]) {
+  test(`primary HUD targets remain 44px at ${Math.round(uiScale * 100)}% UI scale`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1024, height: 640 });
+    await loadSetup(page, uiScale);
+    await page.getByRole("button", { name: "Begin operation" }).click();
+    await expect(page.locator(".economy-deck")).toBeVisible();
+    await expectPrimaryHitTargets(page);
+  });
+}
+
 for (const viewport of VIEWPORTS) {
   test(`${viewport.name} setup and active play stay inside the viewport`, async ({
     page,
@@ -221,6 +251,15 @@ for (const viewport of VIEWPORTS) {
     expectViewportContract(playing);
     expectFullBleedBattlefield(playing);
     expect(playing.canvas.height).toBeGreaterThanOrEqual(575);
+    expect(playing.statusHud.height).toBeLessThanOrEqual(72);
+    expect(playing.commandDock!.height).toBeLessThanOrEqual(
+      playing.viewport.height * 0.28,
+    );
+    await expect(page.getByLabel("Economy status")).toBeVisible();
+    await expect(page.locator(".selection-summary")).toHaveText(
+      "Awaiting selection",
+    );
+    await expectPrimaryHitTargets(page);
     await capture(page, testInfo, `${viewport.name}-playing`);
   });
 }

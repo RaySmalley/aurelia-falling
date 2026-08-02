@@ -151,6 +151,7 @@ const DEFAULT_SETTINGS: AppSettings = Object.freeze({
 const SETTINGS_KEY = "aurelia-falling.settings.v1";
 const ONBOARDING_KEY = "aurelia-falling.onboarding.v1";
 const CAMERA_ZOOM_LEVELS = [0.75, 0.9, 1, 1.1, 1.25] as const;
+const HUD_HIT_TARGET_PX = 44;
 
 const TUTORIAL_STEPS = [
   {
@@ -522,6 +523,7 @@ export default function SkirmishShell() {
     "--ui-shell-width": `${100 / settings.uiScale}vw`,
     "--ui-shell-height-fallback": `${100 / settings.uiScale}vh`,
     "--ui-shell-height": `${100 / settings.uiScale}dvh`,
+    "--hud-hit-target": `${HUD_HIT_TARGET_PX / settings.uiScale}px`,
   } as CSSProperties;
 
   return (
@@ -531,10 +533,14 @@ export default function SkirmishShell() {
       } screen-${screen}`}
       style={shellStyle}
     >
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">ARCLIGHT COMMAND // GOLDEN SCAR</p>
-          <h1>Aurelia Falling</h1>
+      <header className="topbar" aria-label="Match status HUD">
+        <div className="match-identity">
+          <p className="eyebrow">
+            {screen === "playing"
+              ? "OPERATION FALLING STAR"
+              : "ARCLIGHT COMMAND // GOLDEN SCAR"}
+          </p>
+          <h1>{screen === "playing" ? "Golden Scar" : "Aurelia Falling"}</h1>
         </div>
         <div className="resource-bar" aria-label="Economy status">
           <div>
@@ -567,8 +573,10 @@ export default function SkirmishShell() {
             </button>
           )}
           <div className="phase-badge">
-            <span>PHASE 9</span>
-            <strong>BATTLEFIELD ART</strong>
+            <span>{screen === "playing" ? "SKIRMISH" : "PHASE 9A"}</span>
+            <strong>
+              {screen === "playing" ? "GOLD COMMAND" : "FULL-BLEED STAGE"}
+            </strong>
           </div>
         </div>
       </header>
@@ -870,7 +878,7 @@ export default function SkirmishShell() {
       </section>
 
       {screen === "playing" && (
-        <section className="economy-deck" aria-label="Economy command HUD">
+        <section className="economy-deck" aria-label="Primary command HUD">
         <aside className="build-sidebar">
           <div className="panel-heading">
             <p className="eyebrow">CONSTRUCTION GRID</p>
@@ -925,6 +933,17 @@ export default function SkirmishShell() {
                   leadUnit?.displayName ??
                   "No asset selected"}
               </h2>
+              <span className="selection-summary">
+                {selectedStructure
+                  ? `${selectedStructure.health}/${selectedStructure.maxHealth} integrity · ${
+                      selectedStructure.powered ? "grid online" : "low power"
+                    }`
+                  : leadUnit
+                    ? `${selectedUnits.length} unit${
+                        selectedUnits.length === 1 ? "" : "s"
+                      } · ${leadUnit.order}`
+                    : "Awaiting selection"}
+              </span>
             </div>
           </div>
           {selectedStructure ? (
