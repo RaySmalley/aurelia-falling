@@ -879,7 +879,7 @@ export default function SkirmishShell() {
 
       {screen === "playing" && (
         <section className="economy-deck" aria-label="Primary command HUD">
-        <aside className="build-sidebar">
+          <aside className="build-sidebar">
           <div className="panel-heading">
             <p className="eyebrow">CONSTRUCTION GRID</p>
             <h2>Build structures</h2>
@@ -909,9 +909,9 @@ export default function SkirmishShell() {
               {PLACEMENT_MESSAGES[placementFailure]}
             </p>
           )}
-        </aside>
+          </aside>
 
-        <section className="selection-panel">
+          <section className="selection-panel">
           <div className="selection-heading">
             {leadUnit ? (
               <div
@@ -1112,86 +1112,83 @@ export default function SkirmishShell() {
               </p>
             )}
           </article>
-        </section>
+          </section>
 
-        <aside className="controls">
-          <p>
-            <kbd>Drag / Shift</kbd> select · <kbd>Right click</kbd> move,
-            attack, or place
-          </p>
-          <p>
-            <kbd>F + right click</kbd> attack-move · <kbd>Ctrl+1–3</kbd>{" "}
-            control group
-          </p>
-          <div className="control-buttons">
-            <button onClick={() => runtimeRef.current?.enqueue({ kind: "stop" })}>
-              Stop [X]
-            </button>
-            <button onClick={() => runtimeRef.current?.enqueue({ kind: "hold" })}>
-              Hold [H]
-            </button>
-            <button onClick={() => runtimeRef.current?.centerCamera()}>
-              Recenter
-            </button>
-            <button
-              onClick={() => adjustCameraZoom(-1)}
-            >
-              Zoom −
-            </button>
-            <button
-              onClick={() => adjustCameraZoom(1)}
-            >
-              Zoom +
-            </button>
-          </div>
-          <dl className="mini-telemetry">
-            <div>
-              <dt>TICK</dt>
-              <dd>{simulation.tick}</dd>
+          <aside className="controls">
+            <div className="command-guide">
+              <p>
+                <kbd>Drag / Shift</kbd> select · <kbd>Right click</kbd> move,
+                attack, or place
+              </p>
+              <p>
+                <kbd>F + right click</kbd> attack-move · <kbd>Ctrl+1–3</kbd>{" "}
+                control group
+              </p>
             </div>
-            <div>
-              <dt>FORCES</dt>
-              <dd>
-                {simulation.units.filter((unit) => unit.playerId === side).length}
-                U /{" "}
-                {
-                  simulation.structures.filter(
-                    (structure) => structure.playerId === side,
-                  ).length
-                }
-                B
-              </dd>
+            <div className="control-buttons">
+              <button onClick={() => runtimeRef.current?.enqueue({ kind: "stop" })}>
+                Stop [X]
+              </button>
+              <button onClick={() => runtimeRef.current?.enqueue({ kind: "hold" })}>
+                Hold [H]
+              </button>
+              <button onClick={() => runtimeRef.current?.centerCamera()}>
+                Center
+              </button>
+              <button onClick={() => adjustCameraZoom(-1)}>Zoom −</button>
+              <button onClick={() => adjustCameraZoom(1)}>Zoom +</button>
             </div>
-            <div>
-              <dt>LINK</dt>
-              <dd>{snapshot.renderer}</dd>
-            </div>
-            <div>
-              <dt>AUDIO</dt>
-              <dd>{snapshot.audioReady ? "ONLINE" : "INTERACT TO ARM"}</dd>
-            </div>
-            <div>
-              <dt>INTEL</dt>
-              <dd>{visibleEnemies} CONTACTS</dd>
-            </div>
-            <div>
-              <dt>OPPOSITION</dt>
-              <dd>{simulation.ai.profile.toUpperCase()}</dd>
-            </div>
-            <div>
-              <dt>EXPLORED</dt>
-              <dd>
-                {simulation.visibility.tiles.length === 0
-                  ? 0
-                  : Math.floor(
-                      (100 * exploredTiles) /
-                        simulation.visibility.tiles.length,
-                    )}
-                %
-              </dd>
-            </div>
-          </dl>
-        </aside>
+            <details className="telemetry-disclosure">
+              <summary>Battlefield telemetry</summary>
+              <dl className="mini-telemetry">
+                <div>
+                  <dt>TICK</dt>
+                  <dd>{simulation.tick}</dd>
+                </div>
+                <div>
+                  <dt>FORCES</dt>
+                  <dd>
+                    {simulation.units.filter((unit) => unit.playerId === side).length}
+                    U /{" "}
+                    {
+                      simulation.structures.filter(
+                        (structure) => structure.playerId === side,
+                      ).length
+                    }
+                    B
+                  </dd>
+                </div>
+                <div>
+                  <dt>LINK</dt>
+                  <dd>{snapshot.renderer}</dd>
+                </div>
+                <div>
+                  <dt>AUDIO</dt>
+                  <dd>{snapshot.audioReady ? "ONLINE" : "INTERACT TO ARM"}</dd>
+                </div>
+                <div>
+                  <dt>INTEL</dt>
+                  <dd>{visibleEnemies} CONTACTS</dd>
+                </div>
+                <div>
+                  <dt>OPPOSITION</dt>
+                  <dd>{simulation.ai.profile.toUpperCase()}</dd>
+                </div>
+                <div>
+                  <dt>EXPLORED</dt>
+                  <dd>
+                    {simulation.visibility.tiles.length === 0
+                      ? 0
+                      : Math.floor(
+                          (100 * exploredTiles) /
+                            simulation.visibility.tiles.length,
+                        )}
+                    %
+                  </dd>
+                </div>
+              </dl>
+            </details>
+          </aside>
         </section>
       )}
     </main>

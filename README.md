@@ -122,8 +122,8 @@ battlefield direction, Phase 10 performance baseline, and remaining scaling
 phases are sequenced in the
 [development roadmap](docs/development-roadmap.md), with detailed supporting
 plans for the [overlay HUD](docs/full-bleed-battlefield-ui-plan.md), viewport
-fit, four-player scaling, and the deferred TypeScript 7 transition under
-`docs/`.
+fit, the [player UI upgrade](docs/ui-upgrade-plan.md), four-player scaling, and
+the deferred TypeScript 7 transition under `docs/`.
 
 ## Hosting
 
