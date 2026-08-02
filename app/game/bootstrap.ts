@@ -1448,7 +1448,10 @@ export async function createGameRuntime(
     loader: { maxRetries: 2 },
   });
   const syncCanvasSize = () => {
-    game.scale.setParentSize(host.clientWidth, host.clientHeight);
+    const width = host.clientWidth;
+    const height = host.clientHeight;
+    if (width <= 0 || height <= 0) return;
+    game.scale.setParentSize(width, height);
   };
   const resizeObserver = new ResizeObserver(syncCanvasSize);
   resizeObserver.observe(host);

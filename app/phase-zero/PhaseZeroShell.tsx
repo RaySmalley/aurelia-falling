@@ -519,16 +519,16 @@ export default function SkirmishShell() {
 
   const shellStyle = {
     "--ui-scale": settings.uiScale,
+    "--ui-shell-width": `${100 / settings.uiScale}vw`,
     "--ui-shell-height-fallback": `${100 / settings.uiScale}vh`,
     "--ui-shell-height": `${100 / settings.uiScale}dvh`,
-    "--ui-shell-max-width": `${1500 / settings.uiScale}px`,
   } as CSSProperties;
 
   return (
     <main
       className={`operations-shell economy-shell skirmish-shell ${
         settings.reducedMotion ? "reduced-motion" : ""
-      }`}
+      } screen-${screen}`}
       style={shellStyle}
     >
       <header className="topbar">

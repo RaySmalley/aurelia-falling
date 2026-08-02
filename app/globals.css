@@ -62,16 +62,17 @@ button:disabled {
 }
 
 .operations-shell {
-  width: min(var(--ui-shell-max-width, 1500px), 100%);
+  --hud-edge-gap: clamp(0.55rem, 1.4vw, 1rem);
+  --command-dock-max-height: clamp(15rem, 42dvh, 22rem);
+  position: relative;
+  isolation: isolate;
+  width: var(--ui-shell-width, 100vw);
   height: var(--ui-shell-height-fallback, 100vh);
   height: var(--ui-shell-height, 100dvh);
   min-width: 0;
   min-height: 0;
-  margin: 0 auto;
-  padding: clamp(0.75rem, 2vw, 1.5rem);
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 0.75rem;
+  margin: 0;
+  overflow: hidden;
   zoom: var(--ui-scale, 1);
 }
 
@@ -83,6 +84,11 @@ button:disabled {
 }
 
 .topbar {
+  position: absolute;
+  z-index: 5;
+  top: var(--hud-edge-gap);
+  right: var(--hud-edge-gap);
+  left: var(--hud-edge-gap);
   padding: 0.85rem 1.15rem;
   display: flex;
   justify-content: space-between;
@@ -201,11 +207,12 @@ h2 {
 }
 
 .battlefield-frame {
-  position: relative;
+  position: absolute;
+  inset: 0;
   overflow: hidden;
   min-width: 0;
   min-height: 0;
-  border: 1px solid #47696e;
+  border: 0;
   background: #071318;
 }
 
@@ -219,7 +226,7 @@ h2 {
 }
 
 .battlefield-frame::before {
-  box-shadow: inset 0 0 90px #000c;
+  display: none;
 }
 
 .battlefield-frame::after {
@@ -271,6 +278,7 @@ h2 {
 }
 
 .setup-curtain {
+  z-index: 4;
   background:
     linear-gradient(90deg, #02080bea 0%, #061015d9 46%, #06101599 100%),
     url("/assets/phase-six/golden-scar-key-art.webp") center / cover no-repeat;
@@ -507,6 +515,13 @@ button.danger {
   font-size: 0.68rem;
   letter-spacing: 0.08em;
   text-align: center;
+  pointer-events: none;
+}
+
+.screen-playing .radio-subtitle {
+  bottom: calc(
+    var(--hud-edge-gap) + var(--command-dock-max-height) + 0.75rem
+  );
 }
 
 .command-deck {
@@ -517,10 +532,15 @@ button.danger {
 }
 
 .economy-deck {
+  position: absolute;
+  z-index: 5;
+  right: var(--hud-edge-gap);
+  bottom: var(--hud-edge-gap);
+  left: var(--hud-edge-gap);
   display: grid;
   grid-template-columns: minmax(260px, 0.95fr) minmax(360px, 1.35fr) minmax(280px, 0.9fr);
   gap: 1px;
-  max-height: clamp(15rem, 42dvh, 22rem);
+  max-height: var(--command-dock-max-height);
   overflow: auto;
   border: 1px solid var(--line);
   background: var(--line);
@@ -867,10 +887,6 @@ kbd {
 }
 
 @media (max-width: 900px) {
-  .operations-shell {
-    grid-template-rows: auto minmax(0, 1fr) auto;
-  }
-
   .command-deck {
     grid-template-columns: 1fr;
   }
