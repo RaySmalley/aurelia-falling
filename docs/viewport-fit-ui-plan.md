@@ -2,10 +2,16 @@
 
 ## Status
 
-Proposed implementation roadmap for making Aurelia Falling behave like a
-fixed-height game application rather than a vertically scrolling web page.
-Its work is sequenced as Phases 7-8 of the
+Implemented foundation for making Aurelia Falling behave like a fixed-height
+game application rather than a vertically scrolling web page. Its work was
+sequenced as Phases 7-8 of the
 [current development roadmap](./development-roadmap.md).
+
+The three-region header, battlefield, and bounded-dock architecture in this
+document records the completed baseline, but it is no longer the intended final
+presentation. Phase 9A replaces the active-game composition with a full-bleed
+battlefield and overlay HUD. See the
+[full-bleed battlefield and overlay HUD plan](./full-bleed-battlefield-ui-plan.md).
 
 This is a presentation and runtime-integration refactor. It must preserve the
 deterministic simulation, command queue, read-only snapshots, client-only
@@ -129,6 +135,10 @@ Every phase must preserve these rules:
   simulation values, or command ordering.
 
 ## Target layout architecture
+
+> Historical baseline: this architecture solved document overflow and remains
+> useful context for the current implementation. It is superseded as the
+> active-game product target by the full-bleed battlefield plan.
 
 The shell will have three viewport-bounded regions:
 

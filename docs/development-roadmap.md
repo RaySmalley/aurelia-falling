@@ -2,14 +2,16 @@
 
 ## Status
 
-Current canonical roadmap following completion of Phases 7-9. Phase 10 is the
-active implementation phase.
+Current canonical roadmap following completion of Phases 7-9. Phase 9A records
+the approved full-bleed battlefield direction; performance and pathfinding work
+continues through Phases 10-11.
 
 This document defines the order of the next ten phases. Detailed technical
 design remains in the supporting plans:
 
 - [Initial v1 implementation plan](./initial-v1-implementation-plan.md)
 - [Viewport-fit UI refactor plan](./viewport-fit-ui-plan.md)
+- [Full-bleed battlefield and overlay HUD plan](./full-bleed-battlefield-ui-plan.md)
 - [Four-player scaling plan](./four-player-scaling-plan.md)
 - [TypeScript 7 adoption plan](./typescript-7-adoption-plan.md)
 
@@ -37,6 +39,10 @@ The implemented release through Phase 9 provides:
 - A production build and deployment path through Sites.
 
 The next work begins from the remaining scale limits:
+
+- The fixed-height presentation still reads as three separate page regions.
+  Phase 9A makes the battlefield full-bleed and layers the persistent and
+  contextual HUD over it.
 
 - The simulation is deterministic but still optimized for a two-player,
   small-skirmish object count.
@@ -282,6 +288,57 @@ dynamic tracks, extra detail layers, or a custom material shader.
   budget, uses bounded texture memory and decal counts, and does not perform
   map-wide texture updates every frame.
 - Asset dimension and transfer-budget validation passes.
+
+## Phase 9A: Full-bleed battlefield and overlay HUD
+
+### Objective
+
+Make the battlefield the viewport-filling primary application surface and
+layer compact, contextual controls and information over it. Remove the visual
+impression of a game running inside a smaller dashboard window.
+
+This is an approved correction to the presentation direction after the
+completed Phase 7-9 baseline. It preserves the fixed-height, no-scroll,
+ScaleManager, accessibility, and deterministic architecture already delivered.
+
+### Work
+
+- Replace the active-game header, battlefield, and command-dock rows with one
+  viewport-sized layered stage.
+- Remove the active-game shell max-width, decorative outer padding, and framed
+  canvas treatment.
+- Let the Phaser host fill the application viewport beneath React HUD layers.
+- Convert resources, power, Solar Spear status, match actions, and pause/settings
+  access into a compact top overlay.
+- Convert selection identity and high-frequency build and order controls into a
+  compact bottom overlay.
+- Move build catalogs, production queues, detailed asset statistics, telemetry,
+  and help into collapsible contextual panels.
+- Keep browser fullscreen optional and user initiated; the same full-bleed
+  composition must work in an ordinary browser window.
+- Define tested HUD safe regions for alerts, onboarding, subtitles, placement
+  feedback, and targeting guidance.
+- Preserve the 1280 x 720 logical game with `Phaser.Scale.FIT` first, then
+  evaluate `EXPAND` only if measured viewport use remains unsatisfactory.
+
+### Acceptance gates
+
+- Active play presents the battlefield to all four application edges except
+  unavoidable aspect-ratio letterboxing and safe-area insets.
+- No permanent header or command row subtracts from the battlefield rectangle.
+- The battlefield is visually dominant whenever contextual panels are closed.
+- High-frequency commands and critical status remain visible or one explicit
+  action away at every supported viewport and UI scale.
+- The largest contextual panel does not resize the document or Phaser game and
+  remains keyboard reachable and dismissible.
+- Pointer-to-world commands remain correct through viewport, panel, UI-scale,
+  and browser-fullscreen changes.
+- Deterministic tests and replay hashes remain unchanged.
+
+### Detailed plan
+
+See the
+[full-bleed battlefield and overlay HUD plan](./full-bleed-battlefield-ui-plan.md).
 
 ## Phase 10: Performance contract and deterministic spatial indexing
 
@@ -625,6 +682,7 @@ current proposal and exit condition.
 | 7. Viewport and Phaser containment | Implemented Phase 6 baseline | Stable canvas and layout geometry |
 | 8. Command dock and UI scaling | Phase 7 | No-scroll accessible application shell |
 | 9. Battlefield art/readability | Phase 7; may overlap late Phase 8 | Final visual language and asset baseline |
+| 9A. Full-bleed battlefield/overlay HUD | Phases 7-9 baseline | Immersive final game-screen composition |
 | 10. Performance and spatial indexing | Phases 7-9 release baseline | Measurable deterministic scale |
 | 11. Budgeted pathfinding | Phase 10 spatial index | Predictable large-group movement |
 | 12. Simulation worker | Phases 10-11 predictable costs | Main-thread-independent simulation |
@@ -635,14 +693,14 @@ current proposal and exit condition.
 
 ## Recommended next pull requests
 
-1. Add the viewport browser harness and contain the fixed-aspect Phaser canvas.
-2. Lock the shell to the viewport and make setup plus active play pass at 100%.
-3. Replace whole-shell zoom and build the bounded desktop command dock.
-4. Add compact dock tabs, overlay hardening, and the full UI-scale matrix.
-5. Add the Harvester cargo meter and structure atlas with procedural fallback.
-6. Add Aurelite, terrain, portrait, and asset-budget completion.
-7. Add replay hashes, benchmark instrumentation, entity indices, and the first
-   deterministic spatial-grid consumers.
+1. Complete and merge the current budgeted pathfinding slice without coupling
+   simulation work to presentation state.
+2. Establish the Phase 9A full-bleed battlefield stage and viewport assertions.
+3. Convert the top status and primary command surfaces into compact overlays.
+4. Move detailed build, production, selection, and telemetry content into
+   collapsible contextual panels.
+5. Harden overlay safe regions, accessibility, and the full viewport/UI-scale
+   matrix before resuming match-experience UI expansion.
 
 These are pull-request slices, not replacements for the phase acceptance gates.
 

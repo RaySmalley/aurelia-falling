@@ -93,6 +93,10 @@ as missing-asset fallbacks.
 Phases 7 and 8 also established the fixed viewport-height contract, Phaser
 containment, bounded command dock, internal overflow regions, and 90–110% UI
 scaling across the supported 1024×640 minimum and 1366×650 laptop baselines.
+That bounded three-region layout is now the implementation baseline rather than
+the final presentation target. Planned Phase 9A makes the battlefield full-bleed
+and layers compact status, primary commands, and collapsible contextual panels
+over it.
 
 The browser audio layer synthesizes original radio tones, selection and
 construction alerts, weapon and explosion effects, warnings, and an industrial
@@ -113,11 +117,13 @@ atlas edge below 2048 pixels.
 
 The initial Phase 0-6 baseline is recorded in the
 [initial v1 implementation plan](docs/initial-v1-implementation-plan.md).
-The completed Phase 7-9 presentation work, Phase 10 performance baseline, and
-remaining scaling phases are sequenced in the
+The completed Phase 7-9 presentation work, approved Phase 9A full-bleed
+battlefield direction, Phase 10 performance baseline, and remaining scaling
+phases are sequenced in the
 [development roadmap](docs/development-roadmap.md), with detailed supporting
-plans for viewport fit, four-player scaling, and the deferred TypeScript 7
-transition under `docs/`.
+plans for the [overlay HUD](docs/full-bleed-battlefield-ui-plan.md), viewport
+fit, four-player scaling, and the deferred TypeScript 7 transition under
+`docs/`.
 
 ## Hosting
 
