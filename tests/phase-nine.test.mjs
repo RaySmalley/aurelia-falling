@@ -158,8 +158,14 @@ test("Phase 9 portraits and Aurelite icon use atlas-derived UI", async () => {
   ]);
 
   assert.match(shell, /className="aurelite-icon"/);
+  assert.match(shell, /screen-\$\{screen\}/);
   assert.match(shell, /structure-portrait portrait-/);
   assert.match(styles, /phase-nine\/battlefield-atlas\.webp/);
+  assert.match(
+    styles,
+    /\.battlefield-frame\s*\{[^}]*position: absolute;[^}]*inset: 0;/s,
+  );
+  assert.match(styles, /\.economy-deck\s*\{[^}]*position: absolute;/s);
   assert.match(styles, /phase-nine\/structure-atlas\.webp/);
   assert.match(styles, /\.portrait-operationsCenter/);
   assert.match(styles, /background-size: 400% 200%/);

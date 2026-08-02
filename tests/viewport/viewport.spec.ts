@@ -95,6 +95,23 @@ function expectViewportContract(metrics: LayoutMetrics) {
   if (metrics.commandDock) expectContained(metrics.commandDock, metrics.shell);
 }
 
+function expectFullBleedBattlefield(metrics: LayoutMetrics) {
+  expect(metrics.battlefield.left).toBeCloseTo(0, 0);
+  expect(metrics.battlefield.top).toBeCloseTo(0, 0);
+  expect(metrics.battlefield.right).toBeCloseTo(metrics.viewport.width, 0);
+  expect(metrics.battlefield.bottom).toBeCloseTo(metrics.viewport.height, 0);
+}
+
+async function clickLogicalCanvas(page: Page, x: number, y: number) {
+  const canvas = page.locator(".game-host canvas");
+  const bounds = await canvas.boundingBox();
+  if (!bounds) throw new Error("Missing canvas bounds");
+  await page.mouse.click(
+    bounds.x + (x / 1280) * bounds.width,
+    bounds.y + (y / 720) * bounds.height,
+  );
+}
+
 async function capture(page: Page, testInfo: TestInfo, state: string) {
   await page.screenshot({
     path: testInfo.outputPath(
@@ -110,11 +127,15 @@ test("persisted 110% UI scale stays reachable at the minimum viewport", async ({
   await page.setViewportSize({ width: 1024, height: 640 });
   await loadSetup(page, 1.1);
 
-  expectViewportContract(await readLayout(page));
+  const setup = await readLayout(page);
+  expectViewportContract(setup);
+  expectFullBleedBattlefield(setup);
 
   await page.getByRole("button", { name: "Begin operation" }).click();
   await expect(page.locator(".economy-deck")).toBeVisible();
-  expectViewportContract(await readLayout(page));
+  const playing = await readLayout(page);
+  expectViewportContract(playing);
+  expectFullBleedBattlefield(playing);
 
   await page.getByRole("button", { name: "Settings" }).click();
   const settingsDialog = page.getByRole("dialog");
@@ -158,17 +179,19 @@ for (const viewport of VIEWPORTS) {
 
     const setup = await readLayout(page);
     expectViewportContract(setup);
+    expectFullBleedBattlefield(setup);
     await capture(page, testInfo, `${viewport.name}-setup`);
 
     await page.getByRole("button", { name: "Begin operation" }).click();
     await expect(page.locator(".economy-deck")).toBeVisible();
     await expect
       .poll(async () => (await readLayout(page)).canvas.height)
-      .toBeLessThan(setup.canvas.height);
+      .toBeCloseTo(setup.canvas.height, 0);
 
     const playing = await readLayout(page);
     expectViewportContract(playing);
-    expect(playing.canvas.height).toBeGreaterThanOrEqual(180);
+    expectFullBleedBattlefield(playing);
+    expect(playing.canvas.height).toBeGreaterThanOrEqual(575);
     await capture(page, testInfo, `${viewport.name}-playing`);
   });
 }
@@ -191,4 +214,33 @@ test("Phaser recomputes its display bounds after consecutive viewport changes", 
     .poll(async () => Math.round((await readLayout(page)).canvas.width))
     .toBe(Math.round(initial.canvas.width));
   expectViewportContract(await readLayout(page));
+});
+
+test("pointer-to-world selection stays accurate after viewport changes", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 650 });
+  await loadSetup(page);
+  await page.getByRole("button", { name: "Begin operation" }).click();
+  await expect(page.locator(".economy-deck")).toBeVisible();
+
+  await clickLogicalCanvas(page, 608, 242);
+  await expect(page.locator(".selection-panel h2")).toHaveText(
+    "Citadel Command Hub",
+  );
+
+  await clickLogicalCanvas(page, 640, 360);
+  await expect(page.locator(".selection-panel h2")).toHaveText(
+    "No asset selected",
+  );
+
+  await page.setViewportSize({ width: 1024, height: 640 });
+  await expect
+    .poll(async () => Math.round((await readLayout(page)).canvas.width))
+    .toBe(1024);
+  await clickLogicalCanvas(page, 608, 242);
+  await expect(page.locator(".selection-panel h2")).toHaveText(
+    "Citadel Command Hub",
+  );
+  expectFullBleedBattlefield(await readLayout(page));
 });
