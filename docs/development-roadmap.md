@@ -6,12 +6,13 @@ Current canonical roadmap following completion of Phases 7-9. Phase 9A records
 the approved full-bleed battlefield direction; performance and pathfinding work
 continues through Phases 10-11.
 
-This document defines the order of the next ten phases. Detailed technical
+This document defines the order of the remaining phases. Detailed technical
 design remains in the supporting plans:
 
 - [Initial v1 implementation plan](./initial-v1-implementation-plan.md)
 - [Viewport-fit UI refactor plan](./viewport-fit-ui-plan.md)
 - [Full-bleed battlefield and overlay HUD plan](./full-bleed-battlefield-ui-plan.md)
+- [Player UI upgrade plan](./ui-upgrade-plan.md)
 - [Four-player scaling plan](./four-player-scaling-plan.md)
 - [TypeScript 7 adoption plan](./typescript-7-adoption-plan.md)
 
@@ -57,6 +58,12 @@ Near-term work prioritizes the quality and usability of the existing
 single-player release before expanding its simulation envelope. Performance
 foundations come before four-player rules, and the generalized local world
 model comes before networking.
+
+The main player UI upgrade follows the stable worker and delta-presentation
+contracts in Phases 12-13 and precedes the four-player match experience in
+Phase 14. UX inventory, screenshot baselines, design tokens, and isolated
+low-risk usability fixes may proceed earlier, but the command-interface
+restructure must not race the snapshot protocol it will consume.
 
 The roadmap targets:
 
@@ -537,6 +544,72 @@ scale limit.
 See Phase 4 of the
 [four-player scaling plan](./four-player-scaling-plan.md).
 
+## Phase 13A: Player UI upgrade
+
+### Objective
+
+Build the final single-player information architecture on the stable Phase 13
+presentation contract before Phase 14 adds four-player identities, alliances,
+setup, and match-state complexity.
+
+### Execution boundary
+
+The UI upgrade uses a deliberately split schedule:
+
+- Before Phase 13A, only the UI plan's Phase 0 inventory, screenshot fixtures,
+  shared design tokens, component anatomy, and focused low-risk usability fixes
+  may proceed in parallel with Phases 11-13.
+- Phase 13A begins only after the Phase 13 acceptance gates pass and the
+  versioned slow UI/economy channel is stable.
+- The structural command-interface work in UI-plan Phases 2-5 belongs to Phase
+  13A and must not be folded into the worker or delta-rendering pull requests.
+- Core keyboard, screen-reader, motion, contrast, and responsive acceptance
+  gates ship in Phase 13A. Phase 16 repeats them under four-player, network,
+  soak, localization, and release conditions rather than deferring basic
+  accessibility until the end.
+
+### Work
+
+- Recompose the top status hierarchy and declare collision-free safe regions
+  for onboarding, subtitles, placement feedback, targeting, and warnings.
+- Introduce the unified command strip and presentation-only contextual-panel
+  controller for Build, Production, Selection, Intel, and Help.
+- Keep selection identity and primary valid orders visible while moving
+  secondary detail into bounded, dismissible, keyboard-operable surfaces.
+- Replace implementation-facing telemetry with player-facing intelligence and
+  retain diagnostics only in an explicitly labeled development surface.
+- Upgrade onboarding and action feedback for accepted, unavailable, queued,
+  completed, and failed commands.
+- Implement explicit wide, compact, short, and unsupported viewport modes,
+  including match-start prevention below the supported minimum.
+- Complete focus entry and restoration, live-region, disabled-reason,
+  reduced-motion, contrast, and keyboard-only workflows.
+- Consume the Phase 13 UI/economy presentation channel without coupling React
+  updates to render frequency or mutating simulation state.
+
+### Acceptance gates
+
+- The battlefield remains visually dominant with contextual panels closed.
+- Primary match status and commands never require scrolling at any supported
+  viewport or UI scale.
+- Secondary content has an obvious open, close, and overflow affordance.
+- No onboarding, subtitle, warning, targeting, or placement surface covers a
+  required status value or action.
+- Keyboard and assistive-technology users can complete the core
+  economy-to-Solar-Spear loop.
+- Unsupported viewports prevent match start and provide a non-scrolling
+  recovery path.
+- React UI update cost follows the slower presentation channel and does not
+  scale with render-frame frequency or total entity count.
+- Pointer-to-world commands, deterministic tests, replay hashes, worker parity,
+  and Phase 13 performance gates remain unchanged.
+- The complete viewport/UI-scale matrix, unit tests, type checking, linting,
+  production build, and Graphify update pass.
+
+### Detailed plan
+
+See the [player UI upgrade plan](./ui-upgrade-plan.md).
+
 ## Phase 14: Four-player world model and match experience
 
 ### Objective
@@ -558,7 +631,8 @@ player slots before adding networking.
 - Budget strategic AI decisions independently from per-unit tactics.
 - Define eliminated, disconnected, observer, and unoccupied-slot behavior.
 - Extend setup and the bounded command interface for team and free-for-all
-  matches.
+  matches by extending the Phase 13A panel and status patterns rather than
+  introducing a second interface architecture.
 - Preserve the current one-player-versus-AI configuration as the default
   regression case.
 
@@ -573,6 +647,8 @@ player slots before adding networking.
   area.
 - Existing two-player seeds and scenarios remain supported or receive an
   explicit versioned migration.
+- Four-player setup, team, alliance, color, observer, and victory status fit the
+  Phase 13A responsive and accessibility contracts.
 
 ### Detailed plan
 
@@ -631,6 +707,9 @@ deployment contract.
   worker restarts, memory growth, and hash mismatches.
 - Test maximum production, projectiles, destruction, fog exploration,
   reconnects, fullscreen changes, and UI-scale changes during long matches.
+- Repeat the Phase 13A keyboard, screen-reader, contrast, localization,
+  responsive, and reduced-motion matrix against four-player and multiplayer
+  states.
 - Document supported hardware, browsers, viewports, maps, players, and known
   stress behavior.
 - Tune gameplay only after the technical envelope is stable.
@@ -687,20 +766,31 @@ current proposal and exit condition.
 | 11. Budgeted pathfinding | Phase 10 spatial index | Predictable large-group movement |
 | 12. Simulation worker | Phases 10-11 predictable costs | Main-thread-independent simulation |
 | 13. Delta rendering | Phase 12 protocol | Scalable snapshots and renderer |
-| 14. Four-player world model | Phases 10-13 | General local player model |
+| 13A. Player UI upgrade | Phase 13 presentation contract; UI inventory/tokens may start earlier | Final single-player information architecture and interaction model |
+| 14. Four-player world model | Phases 10-13A | General local player model and match experience |
 | 15. Deterministic multiplayer | Phase 14 | Synchronized remote matches |
 | 16. Release hardening | Phases 7-15 | Maintained production envelope |
 
 ## Recommended next pull requests
 
-1. Complete and merge the current budgeted pathfinding slice without coupling
-   simulation work to presentation state.
-2. Establish the Phase 9A full-bleed battlefield stage and viewport assertions.
-3. Convert the top status and primary command surfaces into compact overlays.
-4. Move detailed build, production, selection, and telemetry content into
-   collapsible contextual panels.
-5. Harden overlay safe regions, accessibility, and the full viewport/UI-scale
-   matrix before resuming match-experience UI expansion.
+The critical execution path is Phase 11 -> Phase 12 -> Phase 13 -> Phase 13A ->
+Phase 14 -> Phase 15 -> Phase 16.
+
+1. Complete and merge Phase 11 budgeted pathfinding without coupling simulation
+   work to presentation state.
+2. Establish the Phase 12 simulation-worker boundary and parity tests.
+3. Deliver the Phase 13 delta protocol, slow UI/economy channel, and scalable
+   renderer before restructuring React presentation consumers.
+4. Execute Phase 13A in the pull-request slices defined by the player UI
+   upgrade plan: status/safe regions, command-panel architecture, panel
+   migrations, onboarding/feedback, responsive modes, and accessibility polish.
+5. Begin Phase 14 player-slot and match-experience integration only after the
+   Phase 13A acceptance gates pass.
+
+UI-plan Phase 0 inventory and Phase 1 token/component-foundation work may run as
+isolated parallel pull requests during Phases 11-13. They must not change the
+runtime snapshot contract, perform the contextual-panel migration, or delay the
+critical simulation sequence.
 
 These are pull-request slices, not replacements for the phase acceptance gates.
 

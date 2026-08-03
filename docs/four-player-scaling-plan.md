@@ -237,12 +237,22 @@ next bottleneck after the simulation moves off the main thread.
 
 The Phase 3 worker protocol provides the versioning and transport boundary.
 
+After this scaling-plan phase maps to roadmap Phase 13 and passes its acceptance
+gates, roadmap Phase 13A implements the main player UI upgrade against the
+stable delta and slow UI/economy channels. The UI inventory and token foundation
+may start earlier, but contextual-panel migration must not be coupled to this
+protocol phase.
+
 ## Phase 5: Four-player world model
 
 ### Objective
 
 Generalize the deterministic simulation from two fixed sides to one-to-four
 player slots while scaling map and visibility work.
+
+At the roadmap level, the Phase 13A player UI upgrade sits between this plan's
+Phases 4 and 5. Phase 5 extends that interface for four-player setup and match
+state; it does not create a separate presentation architecture.
 
 ### Work
 

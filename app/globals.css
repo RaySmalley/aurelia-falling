@@ -585,7 +585,7 @@ button.danger {
   bottom: var(--hud-safe-bottom);
   left: var(--hud-safe-left);
   display: grid;
-  grid-template-columns: minmax(260px, 0.95fr) minmax(360px, 1.35fr) minmax(280px, 0.9fr);
+  grid-template-columns: minmax(240px, 0.9fr) minmax(340px, 1.25fr) minmax(320px, 1.1fr);
   gap: 1px;
   max-height: var(--command-dock-max-height);
   overflow: hidden;
@@ -604,11 +604,21 @@ button.danger {
   padding: 0.55rem 0.65rem;
 }
 
+.build-sidebar .panel-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+  margin-bottom: 0.4rem;
+  white-space: nowrap;
+}
+
 .solar-panel {
   display: grid;
-  gap: 0.5rem;
-  margin-top: 0.8rem;
-  padding: 0.7rem;
+  grid-template-columns: minmax(8rem, 1fr) auto;
+  align-items: center;
+  gap: 0.3rem 0.65rem;
+  margin-top: 0.45rem;
+  padding: 0.4rem 0.5rem;
   border: 1px solid var(--line);
   background:
     linear-gradient(90deg, #e6a63f0b, transparent),
@@ -622,27 +632,35 @@ button.danger {
 
 .solar-panel > div:first-child {
   display: flex;
-  justify-content: space-between;
-  gap: 0.7rem;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.15rem;
 }
 
 .solar-panel strong {
+  overflow: hidden;
   color: var(--amber);
   font-family: "Courier New", monospace;
   font-size: 0.62rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .solar-panel button {
-  justify-self: start;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  justify-self: end;
   padding: 0.48rem 0.65rem;
 }
 
 .solar-panel p {
+  grid-column: 1 / -1;
   color: var(--muted);
   font-size: 0.66rem;
 }
 
 .solar-meter {
+  grid-column: 1;
   height: 0.35rem;
   overflow: hidden;
   border: 1px solid #3d5e62;
@@ -664,7 +682,7 @@ button.danger {
   position: sticky;
   z-index: 1;
   top: -0.55rem;
-  min-height: 4.6rem;
+  min-height: 3.75rem;
   display: flex;
   align-items: center;
   gap: 0.8rem;
@@ -696,7 +714,7 @@ button.danger {
 }
 
 .screen-playing .asset-portrait {
-  width: 3rem;
+  width: 2.5rem;
 }
 
 .unit-portrait {
@@ -777,9 +795,24 @@ button.danger {
   gap: 0.38rem;
 }
 
+.build-grid {
+  --build-grid-scrollbar-reserve: 0.75rem;
+  grid-template-columns: none;
+  grid-template-rows: repeat(2, minmax(var(--hud-hit-target), 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(7.5rem, 1fr);
+  height: calc(
+    var(--hud-hit-target) * 2 + 0.38rem +
+      var(--build-grid-scrollbar-reserve)
+  );
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
 .build-grid button,
 .production-grid button {
-  min-height: 3.4rem;
+  min-height: var(--hud-hit-target);
   display: grid;
   align-content: center;
   gap: 0.22rem;
@@ -944,13 +977,15 @@ button.active {
   background: var(--hud-surface-strong);
 }
 
-.economy-deck .control-buttons {
-  position: sticky;
-  z-index: 1;
-  top: -0.55rem;
-  margin: -0.55rem -0.65rem 0;
-  padding: 0.55rem 0.65rem 0.35rem;
-  background: var(--hud-surface-strong);
+.command-guide {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.command-guide p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .economy-deck button {
@@ -963,17 +998,72 @@ button.active {
 
 .control-buttons {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(5.2rem, 1fr));
-  gap: 0.4rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.25rem;
 }
 
 .control-buttons button {
-  padding-inline: 0.45rem;
+  min-width: 0;
+  padding-inline: 0.25rem;
+  font-size: 0.58rem;
+  letter-spacing: 0.02em;
+}
+
+.telemetry-disclosure {
+  min-width: 0;
+  border-top: 1px solid var(--line);
+}
+
+.telemetry-disclosure summary {
+  min-height: 1.8rem;
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  font-family: "Courier New", monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.telemetry-disclosure summary::before {
+  content: "+";
+  margin-right: 0.45rem;
+  color: var(--teal);
+}
+
+.telemetry-disclosure[open] summary::before {
+  content: "−";
+}
+
+.telemetry-disclosure .mini-telemetry {
+  margin-top: 0.2rem;
 }
 
 kbd {
   color: var(--paper);
   font-size: 0.7rem;
+}
+
+@media (max-height: 799px) {
+  .placement-help,
+  .command-guide {
+    display: none;
+  }
+
+  .panel-heading {
+    margin-bottom: 0.4rem;
+  }
+
+  .asset-stats {
+    margin-bottom: 0.4rem;
+  }
+}
+
+@media (max-width: 1100px) {
+  .build-sidebar .panel-heading h2 {
+    display: none;
+  }
 }
 
 @media (max-width: 900px) {

@@ -147,6 +147,39 @@ async function expectPrimaryHitTargets(page: Page) {
   }
 }
 
+async function expectBuildHitTargets(page: Page) {
+  const buttons = page.locator(".build-grid button");
+  const count = await buttons.count();
+  expect(count).toBeGreaterThan(0);
+
+  for (let index = 0; index < count; index += 1) {
+    const bounds = await buttons.nth(index).boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(bounds!.height).toBeGreaterThanOrEqual(PRIMARY_HIT_TARGET_PX - 0.1);
+  }
+}
+
+async function expectPrimaryCommandsInsideDock(page: Page) {
+  const dock = page.locator(".economy-deck");
+  const dockBounds = await dock.boundingBox();
+  expect(dockBounds).not.toBeNull();
+
+  for (const name of ["Stop [X]", "Hold [H]", "Center", "Zoom −", "Zoom +"]) {
+    const control = page.getByRole("button", { name, exact: true });
+    await expect(control).toBeInViewport();
+    const bounds = await control.boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(bounds!.x).toBeGreaterThanOrEqual(dockBounds!.x - 1);
+    expect(bounds!.y).toBeGreaterThanOrEqual(dockBounds!.y - 1);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(
+      dockBounds!.x + dockBounds!.width + 1,
+    );
+    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(
+      dockBounds!.y + dockBounds!.height + 1,
+    );
+  }
+}
+
 test("persisted 110% UI scale stays reachable at the minimum viewport", async ({
   page,
 }, testInfo) => {
@@ -217,6 +250,21 @@ test("records the known Phase 6 overflow baseline", () => {
   }
 });
 
+test("wide short viewports keep every primary command inside the bottom dock", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1895, height: 403 });
+  await loadSetup(page);
+  await page.getByRole("button", { name: "Begin operation" }).click();
+  await expect(page.locator(".economy-deck")).toBeVisible();
+
+  expectViewportContract(await readLayout(page));
+  await expectPrimaryCommandsInsideDock(page);
+  await expect(
+    page.getByText("Battlefield telemetry", { exact: true }),
+  ).toBeInViewport();
+});
+
 for (const uiScale of [0.9, 1, 1.1]) {
   test(`primary HUD targets remain 44px at ${Math.round(uiScale * 100)}% UI scale`, async ({
     page,
@@ -226,6 +274,7 @@ for (const uiScale of [0.9, 1, 1.1]) {
     await page.getByRole("button", { name: "Begin operation" }).click();
     await expect(page.locator(".economy-deck")).toBeVisible();
     await expectPrimaryHitTargets(page);
+    await expectBuildHitTargets(page);
   });
 }
 
