@@ -2,13 +2,61 @@
 
 ## Status
 
-Proposed product and implementation plan for the next presentation-focused
-milestone after the Phase 9A full-bleed battlefield baseline.
+Approved sequencing target for roadmap Phase 13A, after the Phase 13 delta
+snapshot and scalable-rendering contract and before the Phase 14 four-player
+world model and match experience.
 
 This plan extends the
 [full-bleed battlefield and overlay HUD plan](./full-bleed-battlefield-ui-plan.md)
 and the completed viewport-fit work. It does not replace their layout,
 responsive, input, accessibility, or deterministic architecture contracts.
+
+## Roadmap execution order
+
+The upgrade is intentionally split so useful preparation can start without
+building the final React information architecture on a presentation contract
+that Phases 12-13 will replace.
+
+```text
+Phase 11: Budgeted pathfinding
+        -> Phase 12: Simulation worker
+        -> Phase 13: Delta snapshots and stable UI/economy channel
+        -> Phase 13A: Main player UI upgrade
+        -> Phase 14: Four-player world model and match experience
+        -> Phase 15: Deterministic multiplayer
+        -> Phase 16: Scale and release hardening
+```
+
+### Safe prework during Phases 11-13
+
+- Run Phase 0 UX inventory and capture representative screenshot fixtures.
+- Define shared design tokens, component anatomy, copy conventions, and
+  acceptance measurements from Phase 1.
+- Make focused low-risk fixes that preserve the current snapshot and HUD
+  architecture.
+
+This prework must not restructure `PhaseZeroShell`, introduce the contextual
+panel controller, bind components to a temporary snapshot shape, or delay the
+worker and delta-protocol critical path.
+
+### Main Phase 13A implementation
+
+Begin the structural implementation only after Phase 13 passes and its slower
+UI/economy channel is versioned and stable. Phase 13A owns UI-plan Phases 2-5
+and the core release gates from Phase 6.
+
+### Phase 14 integration
+
+Phase 14 extends the Phase 13A status, panel, setup, and accessibility patterns
+for player slots, teams, alliances, colors, observers, and configurable victory
+conditions. It must not introduce a parallel four-player UI architecture.
+
+### Phase 16 hardening
+
+Phase 16 repeats the completed Phase 13A accessibility and responsive contracts
+under multiplayer, localization, soak, network-fault, and release conditions.
+Basic keyboard, screen-reader, contrast, reduced-motion, and unsupported-
+viewport behavior are Phase 13A requirements, not work deferred to Phase 16.
 
 ## Product outcome
 
@@ -436,17 +484,27 @@ Add targeted automated checks for:
 
 ## Recommended pull-request slices
 
-1. Add the UX state inventory, screenshot fixtures, design tokens, and shared
-   primitive anatomy.
-2. Recompose the top status hierarchy and implement collision-free transient
+Safe prework during Phases 11-13:
+
+1. Add the UX state inventory and representative screenshot fixtures.
+2. Add shared design tokens, copy conventions, and primitive component anatomy
+   without restructuring presentation consumers.
+
+Main Phase 13A, after Phase 13 passes:
+
+1. Recompose the top status hierarchy and implement collision-free transient
    safe regions.
-3. Build the unified command strip and contextual-panel controller.
-4. Migrate Build, Production, Selection, Intel, and Help into the new panel
+2. Build the unified command strip and contextual-panel controller against the
+   stable UI/economy channel.
+3. Migrate Build, Production, Selection, Intel, and Help into the new panel
    model.
-5. Upgrade onboarding, action feedback, and disabled explanations.
-6. Add responsive modes, the unsupported-viewport experience, and fullscreen
+4. Upgrade onboarding, action feedback, and disabled explanations.
+5. Add responsive modes, the unsupported-viewport experience, and fullscreen
    verification.
-7. Complete accessibility, motion, copy, visual regression, and release polish.
+6. Complete core accessibility, motion, copy, and visual-regression gates.
+
+Phase 14 extends these patterns for four-player match state. Phase 16 performs
+the final multiplayer, localization, soak, and release-hardening pass.
 
 Each slice is a large change under the repository workflow and must use a
 `codex/*` branch with a ready-for-review pull request.

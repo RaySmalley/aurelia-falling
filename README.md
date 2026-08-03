@@ -125,6 +125,11 @@ plans for the [overlay HUD](docs/full-bleed-battlefield-ui-plan.md), viewport
 fit, the [player UI upgrade](docs/ui-upgrade-plan.md), four-player scaling, and
 the deferred TypeScript 7 transition under `docs/`.
 
+The main player UI upgrade is scheduled as roadmap Phase 13A: after the Phase
+13 delta snapshot and stable UI/economy presentation contract, and before the
+Phase 14 four-player match experience. UX inventory and design-token work may
+start earlier, but structural command-panel migration waits for Phase 13.
+
 ## Hosting
 
 The project uses Codex Sites with the project identity recorded in
