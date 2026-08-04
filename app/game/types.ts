@@ -298,6 +298,7 @@ export type GameRuntime = {
   setAudioSettings(settings: AudioSettings): void;
   setCameraZoom(zoom: number): void;
   setReducedScreenShake(reduced: boolean): void;
+  setGameplayInputEnabled(enabled: boolean): void;
   centerCamera(): void;
   destroy(): void;
 };

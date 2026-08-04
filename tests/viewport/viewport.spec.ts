@@ -308,6 +308,42 @@ test("unsupported viewports block setup without introducing document scrolling",
   expectViewportContract(await readLayout(page));
 });
 
+test("unsupported viewport curtains block queued gameplay shortcuts", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1024, height: 640 });
+  await loadSetup(page);
+  await page.getByRole("button", { name: "Begin operation" }).click();
+  await expect(page.locator(".economy-deck")).toBeVisible();
+  await page.getByRole("button", { name: "Dismiss guidance" }).click();
+
+  const canvasBounds = await page.locator(".game-host canvas").boundingBox();
+  expect(canvasBounds).not.toBeNull();
+  await page.mouse.move(
+    canvasBounds!.x + canvasBounds!.width * 0.2,
+    canvasBounds!.y + canvasBounds!.height * 0.2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    canvasBounds!.x + canvasBounds!.width * 0.8,
+    canvasBounds!.y + canvasBounds!.height * 0.78,
+  );
+  await page.mouse.up();
+  await expect(page.locator(".selection-summary")).toHaveText(/1 unit/);
+  await page.getByRole("button", { name: "Hold [H]" }).click();
+  await expect(page.locator(".selection-summary")).toHaveText(/hold/);
+
+  await page.setViewportSize({ width: 900, height: 700 });
+  await expect(
+    page.getByRole("alertdialog", { name: "More battlefield space required" }),
+  ).toBeVisible();
+  await page.keyboard.press("X");
+
+  await page.setViewportSize({ width: 1024, height: 640 });
+  await page.getByRole("button", { name: "Resume operation" }).click();
+  await expect(page.locator(".selection-summary")).toHaveText(/hold/);
+});
+
 test("settings and pause dialogs trap focus, expose names, and restore triggers", async ({
   page,
 }) => {

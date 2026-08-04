@@ -213,12 +213,14 @@ test("Phase 9A persistent HUD defines compact safe regions and primary controls"
 });
 
 test("Phase 9A release overlays expose safe-region and accessibility contracts", async () => {
-  const [shell, styles] = await Promise.all([
+  const [shell, styles, bootstrap, types] = await Promise.all([
     readFile(
       new URL("../app/phase-zero/PhaseZeroShell.tsx", import.meta.url),
       "utf8",
     ),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/game/bootstrap.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/game/types.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(shell, /const MINIMUM_VIEWPORT = \{ width: 1024, height: 640 \}/);
@@ -242,6 +244,16 @@ test("Phase 9A release overlays expose safe-region and accessibility contracts",
   assert.match(
     styles,
     /@media \(prefers-reduced-motion: reduce\)/,
+  );
+  assert.match(types, /setGameplayInputEnabled\(enabled: boolean\): void/);
+  assert.match(
+    bootstrap,
+    /keyboard\.enabled = gameplayInputEnabled && !textEntryFocused/,
+  );
+  assert.match(bootstrap, /if \(!gameplayInputEnabled\) return/);
+  assert.match(
+    shell,
+    /screen === "playing" && activeBlockingOverlay === null/,
   );
 });
 

@@ -286,6 +286,7 @@ export default function SkirmishShell() {
   const contextPanelTriggerRef = useRef<HTMLElement | null>(null);
   const blockingOverlayRef = useRef<HTMLDivElement>(null);
   const blockingOverlayTriggerRef = useRef<HTMLElement | null>(null);
+  const gameplayInputEnabledRef = useRef(false);
   const [snapshot, setSnapshot] = useState(INITIAL_SNAPSHOT);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [screen, setScreen] = useState<"setup" | "playing">("setup");
@@ -341,6 +342,7 @@ export default function SkirmishShell() {
         runtime.setAudioSettings(settingsRef.current);
         runtime.setCameraZoom(settingsRef.current.cameraZoom);
         runtime.setReducedScreenShake(settingsRef.current.reducedMotion);
+        runtime.setGameplayInputEnabled(gameplayInputEnabledRef.current);
         runtime.pause("manual");
         unsubscribe = runtime.subscribe(setSnapshot);
       } catch (error) {
@@ -573,6 +575,12 @@ export default function SkirmishShell() {
       window.requestAnimationFrame(() => trigger?.focus());
     };
   }, [activeBlockingOverlay]);
+
+  useEffect(() => {
+    const enabled = screen === "playing" && activeBlockingOverlay === null;
+    gameplayInputEnabledRef.current = enabled;
+    runtimeRef.current?.setGameplayInputEnabled(enabled);
+  }, [activeBlockingOverlay, screen]);
 
   useEffect(() => {
     if (solar.state !== "ready" && solarTargeting) {
