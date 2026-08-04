@@ -32,6 +32,6 @@ test("the economy command HUD stays hidden until the match starts", async () => 
 
   assert.match(
     shell,
-    /\{screen === "playing" && \(\s*<section className="economy-deck"/,
+    /\{screen === "playing" && \(\s*<>[\s\S]*<section className="economy-deck"/,
   );
 });

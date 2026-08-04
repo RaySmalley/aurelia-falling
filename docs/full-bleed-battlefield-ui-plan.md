@@ -5,6 +5,11 @@
 Approved product-direction change following the completed Phase 7-9 presentation
 baseline.
 
+Slices 1-2 are complete: active play uses a viewport-filling battlefield with a
+compact persistent status and command HUD. Slice 3 moves construction,
+production, detailed selection data, telemetry, and help into bounded contextual
+panels without changing the Phaser host or simulation state.
+
 The existing fixed-height shell, Phaser containment, viewport testing, and
 bounded-overflow work remain valid foundations. The three-region presentation
 of permanent header, battlefield row, and permanent command dock is no longer
