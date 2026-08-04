@@ -195,12 +195,20 @@ test("Phase 9A persistent HUD defines compact safe regions and primary controls"
   );
   assert.match(
     styles,
-    /--command-dock-max-height: clamp\(9rem, 24dvh, 11rem\)/,
+    /--command-dock-max-height: clamp\(4\.75rem, 15dvh, 5\.8rem\)/,
   );
   assert.match(styles, /button:focus-visible\s*\{[^}]*outline: 2px solid/s);
   assert.match(
     styles,
     /\.economy-deck button\s*\{[^}]*min-height: var\(--hud-hit-target\)/s,
+  );
+  assert.match(shell, /useState<ContextPanel \| null>\(null\)/);
+  assert.match(shell, /role="dialog"/);
+  assert.match(shell, /data-context-panel-close/);
+  assert.match(styles, /\.context-panel\s*\{[^}]*position: absolute;/s);
+  assert.match(
+    styles,
+    /\.context-panel-scroll\s*\{[^}]*overflow: auto;/s,
   );
 });
 

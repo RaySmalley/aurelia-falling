@@ -308,6 +308,15 @@ This is an approved correction to the presentation direction after the
 completed Phase 7-9 baseline. It preserves the fixed-height, no-scroll,
 ScaleManager, accessibility, and deterministic architecture already delivered.
 
+### Current implementation slice
+
+The full-bleed stage and compact persistent HUD are complete. The current slice
+keeps selection identity, primary orders, camera controls, and Solar Spear
+access in the bottom overlay while moving construction, production, detailed
+asset data, telemetry, and help into a single bounded contextual panel. Panel
+visibility is presentation-only React state; opening, switching, and dismissing
+panels does not resize or recreate the Phaser runtime.
+
 ### Work
 
 - Replace the active-game header, battlefield, and command-dock rows with one

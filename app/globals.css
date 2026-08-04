@@ -76,7 +76,7 @@ button:disabled {
   --hud-surface-strong: #08181cf5;
   --hud-focus-ring: #f4c65a;
   --hud-hit-target: 2.75rem;
-  --command-dock-max-height: clamp(9rem, 24dvh, 11rem);
+  --command-dock-max-height: clamp(4.75rem, 15dvh, 5.8rem);
   position: relative;
   isolation: isolate;
   width: var(--ui-shell-width, 100vw);
@@ -593,6 +593,149 @@ button.danger {
   background: var(--line);
   box-shadow: inset 0 1px #7de4d31a, 0 18px 50px #0008;
   backdrop-filter: blur(10px);
+}
+
+.context-panel {
+  position: absolute;
+  z-index: 6;
+  top: calc(var(--hud-safe-top) + 4.25rem);
+  right: var(--hud-safe-right);
+  bottom: calc(
+    var(--hud-safe-bottom) + var(--command-dock-max-height) + 0.55rem
+  );
+  width: min(36rem, calc(100% - var(--hud-safe-left) - var(--hud-safe-right)));
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid #4a7779;
+  background: var(--hud-surface-strong);
+  box-shadow: inset 0 1px #7de4d31a, 0 20px 55px #000b;
+  backdrop-filter: blur(12px);
+}
+
+.context-panel-build {
+  width: min(46rem, calc(100% - var(--hud-safe-left) - var(--hud-safe-right)));
+}
+
+.context-panel-header {
+  min-height: var(--hud-hit-target);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.55rem 0.65rem;
+  border-bottom: 1px solid var(--line);
+  background: #0a2025f5;
+}
+
+.context-panel-header .eyebrow,
+.context-panel-header h2 {
+  margin: 0;
+}
+
+.context-panel-header button {
+  min-width: var(--hud-hit-target);
+  min-height: var(--hud-hit-target);
+}
+
+.context-panel-scroll {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.context-panel .build-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: none;
+  grid-auto-flow: row;
+  grid-auto-columns: auto;
+  height: auto;
+  overflow: visible;
+}
+
+.context-panel .mini-telemetry {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.intel-panel {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+  padding: 0.8rem;
+}
+
+.intel-panel .command-guide {
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--line);
+}
+
+.compact-selection,
+.primary-command-buttons,
+.secondary-command-buttons {
+  min-width: 0;
+  background: var(--hud-surface-strong);
+}
+
+.compact-selection {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.35rem 0.5rem;
+}
+
+.compact-selection > div:not(.asset-portrait) {
+  min-width: 0;
+}
+
+.compact-selection .eyebrow {
+  margin-bottom: 0.1rem;
+  font-size: 0.5rem;
+}
+
+.compact-selection h2,
+.compact-selection .selection-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-selection h2 {
+  font-size: 0.72rem;
+}
+
+.compact-selection > button,
+.primary-command-buttons button,
+.secondary-command-buttons button {
+  min-width: 0;
+  padding-inline: 0.4rem;
+  font-size: 0.58rem;
+  letter-spacing: 0.02em;
+}
+
+.primary-command-buttons,
+.secondary-command-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.45rem;
+}
+
+.dock-feedback {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 0.35rem);
+  max-width: min(30rem, 80vw);
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--line);
+  background: var(--hud-surface-strong);
+  color: var(--amber);
+  font-size: 0.68rem;
+  pointer-events: none;
 }
 
 .build-sidebar,

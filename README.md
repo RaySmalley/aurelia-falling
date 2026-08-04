@@ -57,10 +57,15 @@ is dynamically imported behind the client-only React boundary in
 
 ## Current milestone
 
-Phase 11 is underway with A* open nodes managed by a deterministic binary
-min-heap instead of repeated full-list sorting. Priority remains path score
-followed by tile ID, preserving existing path and replay outcomes while
-establishing the first boundary for budgeted path requests.
+Phase 9A now presents active play as a full-bleed battlefield with compact
+persistent status and command overlays. Construction, production, detailed
+asset data, telemetry, and help expand through bounded contextual panels without
+resizing the Phaser host or mutating simulation state.
+
+Phase 11 has integrated a deterministic, budgeted live path-request queue across
+formation movement, combat chasing, AI movement, harvesting, and rally orders.
+Compatible formations share anchor routes, pending work participates in replay
+state, and large-army performance gates enforce the per-tick planning budget.
 
 Phase 10 established deterministic entity indices and a uniform spatial
 grid integrated into the simulation. Unit and structure ID resolution is

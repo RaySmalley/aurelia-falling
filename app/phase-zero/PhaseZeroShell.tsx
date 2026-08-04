@@ -153,6 +153,8 @@ const ONBOARDING_KEY = "aurelia-falling.onboarding.v1";
 const CAMERA_ZOOM_LEVELS = [0.75, 0.9, 1, 1.1, 1.25] as const;
 const HUD_HIT_TARGET_PX = 44;
 
+type ContextPanel = "build" | "selection" | "intel";
+
 const TUTORIAL_STEPS = [
   {
     id: "cameraSelection",
@@ -273,6 +275,8 @@ export default function SkirmishShell() {
   const hostRef = useRef<HTMLDivElement>(null);
   const runtimeRef = useRef<GameRuntime | null>(null);
   const settingsRef = useRef<AppSettings>(DEFAULT_SETTINGS);
+  const contextPanelRef = useRef<HTMLElement>(null);
+  const contextPanelTriggerRef = useRef<HTMLElement | null>(null);
   const [snapshot, setSnapshot] = useState(INITIAL_SNAPSHOT);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [screen, setScreen] = useState<"setup" | "playing">("setup");
@@ -283,6 +287,8 @@ export default function SkirmishShell() {
   const [runtimeAttempt, setRuntimeAttempt] = useState(0);
   const [seedInput, setSeedInput] = useState("4115");
   const [difficulty, setDifficulty] = useState<AiDifficulty>("normal");
+  const [activeContextPanel, setActiveContextPanel] =
+    useState<ContextPanel | null>(null);
   const [tutorialProgress, setTutorialProgress] =
     useState<TutorialProgress>(EMPTY_TUTORIAL_PROGRESS);
 
@@ -332,7 +338,10 @@ export default function SkirmishShell() {
       }
     }
     const onVisibilityChange = () => {
-      if (document.hidden) runtimeRef.current?.pause("hidden");
+      if (document.hidden) {
+        setActiveContextPanel(null);
+        runtimeRef.current?.pause("hidden");
+      }
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
     void start();
@@ -354,6 +363,50 @@ export default function SkirmishShell() {
       window.removeEventListener("keydown", unlock);
     };
   }, []);
+
+  useEffect(() => {
+    if (!activeContextPanel) return;
+
+    const panel = contextPanelRef.current;
+    const focusPanel = window.setTimeout(() => {
+      panel
+        ?.querySelector<HTMLElement>("[data-context-panel-close]")
+        ?.focus();
+    });
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setActiveContextPanel(null);
+        const trigger = contextPanelTriggerRef.current;
+        window.requestAnimationFrame(() => trigger?.focus());
+        return;
+      }
+      if (event.key !== "Tab" || !panel) return;
+
+      const focusable = Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => element.getClientRects().length > 0);
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable.at(-1)!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.clearTimeout(focusPanel);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [activeContextPanel]);
 
   const simulation = snapshot.simulation;
   const placement = snapshot.pendingBuilding;
@@ -449,11 +502,13 @@ export default function SkirmishShell() {
       difficulty,
     });
     runtimeRef.current?.resume();
+    setActiveContextPanel(null);
     setScreen("playing");
   };
 
   const restartMatch = () => {
     runtimeRef.current?.clearTargetingModes();
+    setActiveContextPanel(null);
     runtimeRef.current?.enqueue({
       kind: "restartSkirmish",
       seed: simulation.seed,
@@ -466,10 +521,31 @@ export default function SkirmishShell() {
     runtimeRef.current?.pause("manual");
     setScreen("setup");
     setSettingsOpen(false);
+    setActiveContextPanel(null);
     runtimeRef.current?.clearTargetingModes();
   };
 
+  const toggleContextPanel = (
+    panel: ContextPanel,
+    trigger: HTMLElement,
+  ) => {
+    if (activeContextPanel === panel) {
+      setActiveContextPanel(null);
+      window.requestAnimationFrame(() => trigger.focus());
+      return;
+    }
+    contextPanelTriggerRef.current = trigger;
+    setActiveContextPanel(panel);
+  };
+
+  const closeContextPanel = () => {
+    setActiveContextPanel(null);
+    const trigger = contextPanelTriggerRef.current;
+    window.requestAnimationFrame(() => trigger?.focus());
+  };
+
   const openSettings = () => {
+    setActiveContextPanel(null);
     if (screen === "playing" && simulation.status === "active") {
       runtimeRef.current?.pause("manual");
     }
@@ -568,7 +644,12 @@ export default function SkirmishShell() {
         <div className="header-actions">
           <button onClick={openSettings}>Settings</button>
           {screen === "playing" && simulation.status === "active" && (
-            <button onClick={() => runtimeRef.current?.pause("manual")}>
+            <button
+              onClick={() => {
+                setActiveContextPanel(null);
+                runtimeRef.current?.pause("manual");
+              }}
+            >
               Pause
             </button>
           )}
@@ -878,318 +959,431 @@ export default function SkirmishShell() {
       </section>
 
       {screen === "playing" && (
-        <section className="economy-deck" aria-label="Primary command HUD">
-          <aside className="build-sidebar">
-          <div className="panel-heading">
-            <p className="eyebrow">CONSTRUCTION GRID</p>
-            <h2>Build structures</h2>
-          </div>
-          <div className="build-grid">
-            {BUILD_ORDER.map((kind) => {
-              const definition = gameData.buildings[kind];
-              return (
+        <>
+          {activeContextPanel &&
+            !snapshot.paused &&
+            simulation.status === "active" &&
+            !settingsOpen && (
+            <aside
+              ref={contextPanelRef}
+              id="context-panel"
+              className={`context-panel context-panel-${activeContextPanel}`}
+              role="dialog"
+              aria-modal="false"
+              aria-labelledby="context-panel-title"
+            >
+              <header className="context-panel-header">
+                <div>
+                  <p className="eyebrow">CONTEXTUAL COMMAND SURFACE</p>
+                  <h2 id="context-panel-title">
+                    {activeContextPanel === "build"
+                      ? "Build structures"
+                      : activeContextPanel === "selection"
+                        ? "Selected asset"
+                        : "Battlefield intel and help"}
+                  </h2>
+                </div>
                 <button
-                  key={kind}
-                  className={placement === kind ? "active" : ""}
-                  onClick={() => beginPlacement(kind)}
+                  data-context-panel-close
+                  onClick={closeContextPanel}
+                  aria-label="Close contextual panel"
                 >
-                  <span>{definition.displayName}</span>
-                  <small>{definition.cost} cr</small>
+                  Close
                 </button>
-              );
-            })}
-          </div>
-          <p className="placement-help">
-            {placement
-              ? `Right-click to place ${gameData.buildings[placement].displayName}. Invalid sites keep placement active.`
-              : "Choose a structure, then right-click inside a connected radius."}
-          </p>
-          {placementFailure && (
-            <p className="placement-error" role="status">
-              {PLACEMENT_MESSAGES[placementFailure]}
-            </p>
-          )}
-          </aside>
+              </header>
 
-          <section className="selection-panel">
-          <div className="selection-heading">
-            {leadUnit ? (
-              <div
-                className={`asset-portrait unit-portrait portrait-${leadUnit.kind}`}
-                role="img"
-                aria-label={`${leadUnit.displayName} portrait`}
-              />
-            ) : selectedStructure ? (
-              <div
-                className={`asset-portrait structure-portrait portrait-${selectedStructure.kind}`}
-                role="img"
-                aria-label={`${selectedStructure.displayName} portrait`}
-              />
-            ) : null}
-            <div className="panel-heading">
-              <p className="eyebrow">SELECTED ASSET</p>
-              <h2>
-                {selectedStructure?.displayName ??
-                  leadUnit?.displayName ??
-                  "No asset selected"}
-              </h2>
-              <span className="selection-summary">
-                {selectedStructure
-                  ? `${selectedStructure.health}/${selectedStructure.maxHealth} integrity · ${
-                      selectedStructure.powered ? "grid online" : "low power"
-                    }`
-                  : leadUnit
-                    ? `${selectedUnits.length} unit${
-                        selectedUnits.length === 1 ? "" : "s"
-                      } · ${leadUnit.order}`
-                    : "Awaiting selection"}
-              </span>
-            </div>
-          </div>
-          {selectedStructure ? (
-            <>
-              <dl className="asset-stats">
-                <div>
-                  <dt>INTEGRITY</dt>
-                  <dd>
-                    {selectedStructure.health}/{selectedStructure.maxHealth}
-                  </dd>
+              {activeContextPanel === "build" && (
+                <div className="context-panel-scroll build-sidebar">
+                  <div className="build-grid">
+                    {BUILD_ORDER.map((kind) => {
+                      const definition = gameData.buildings[kind];
+                      return (
+                        <button
+                          key={kind}
+                          className={placement === kind ? "active" : ""}
+                          onClick={() => beginPlacement(kind)}
+                        >
+                          <span>{definition.displayName}</span>
+                          <small>{definition.cost} cr</small>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="placement-help">
+                    {placement
+                      ? `Right-click to place ${gameData.buildings[placement].displayName}. Invalid sites keep placement active.`
+                      : "Choose a structure, then right-click inside a connected radius."}
+                  </p>
+                  {placementFailure && (
+                    <p className="placement-error" role="status">
+                      {PLACEMENT_MESSAGES[placementFailure]}
+                    </p>
+                  )}
                 </div>
-                <div>
-                  <dt>GRID</dt>
-                  <dd>
-                    {selectedStructure.powered ? "ONLINE" : "LOW POWER"}
-                  </dd>
+              )}
+
+              {activeContextPanel === "selection" && (
+                <div className="context-panel-scroll selection-panel">
+                  <div className="selection-heading">
+                    {leadUnit ? (
+                      <div
+                        className={`asset-portrait unit-portrait portrait-${leadUnit.kind}`}
+                        role="img"
+                        aria-label={`${leadUnit.displayName} portrait`}
+                      />
+                    ) : selectedStructure ? (
+                      <div
+                        className={`asset-portrait structure-portrait portrait-${selectedStructure.kind}`}
+                        role="img"
+                        aria-label={`${selectedStructure.displayName} portrait`}
+                      />
+                    ) : null}
+                    <div className="panel-heading">
+                      <p className="eyebrow">SELECTED ASSET</p>
+                      <h2>
+                        {selectedStructure?.displayName ??
+                          leadUnit?.displayName ??
+                          "No asset selected"}
+                      </h2>
+                      <span className="selection-summary">
+                        {selectedStructure
+                          ? `${selectedStructure.health}/${selectedStructure.maxHealth} integrity · ${
+                              selectedStructure.powered
+                                ? "grid online"
+                                : "low power"
+                            }`
+                          : leadUnit
+                            ? `${selectedUnits.length} unit${
+                                selectedUnits.length === 1 ? "" : "s"
+                              } · ${leadUnit.order}`
+                            : "Awaiting selection"}
+                      </span>
+                    </div>
+                  </div>
+                  {selectedStructure ? (
+                    <>
+                      <dl className="asset-stats">
+                        <div>
+                          <dt>INTEGRITY</dt>
+                          <dd>
+                            {selectedStructure.health}/
+                            {selectedStructure.maxHealth}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>GRID</dt>
+                          <dd>
+                            {selectedStructure.powered ? "ONLINE" : "LOW POWER"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>LINK</dt>
+                          <dd>
+                            {selectedStructure.connected
+                              ? "CONNECTED"
+                              : "ORPHANED"}
+                          </dd>
+                        </div>
+                      </dl>
+                      <div className="production-grid">
+                        {gameData.buildings[selectedStructure.kind].produces.map(
+                          (unitKind) => (
+                            <button
+                              key={unitKind}
+                              onClick={() => queueUnit(unitKind)}
+                            >
+                              <span>{gameData.units[unitKind].displayName}</span>
+                              <small>{gameData.units[unitKind].cost} cr</small>
+                            </button>
+                          ),
+                        )}
+                        {gameData.buildings[selectedStructure.kind].produces
+                          .length === 0 && <p>No production line installed.</p>}
+                      </div>
+                      <div className="queue-strip">
+                        {selectedStructure.queue.map((item, index) => (
+                          <button
+                            key={`${item.unitKind}-${index}`}
+                            onClick={() =>
+                              runtimeRef.current?.enqueue({
+                                kind: "cancelProduction",
+                                structureId: selectedStructure.id,
+                                queueIndex: index,
+                              })
+                            }
+                            title="Cancel for full refund"
+                          >
+                            {gameData.units[item.unitKind].displayName}{" "}
+                            {Math.ceil(
+                              (100 *
+                                (item.totalTicks - item.remainingTicks)) /
+                                item.totalTicks,
+                            )}
+                            %
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        className={
+                          selectedStructure.repairing ? "active" : ""
+                        }
+                        onClick={() =>
+                          runtimeRef.current?.enqueue({
+                            kind: "setRepair",
+                            structureId: selectedStructure.id,
+                            enabled: !selectedStructure.repairing,
+                          })
+                        }
+                      >
+                        {selectedStructure.repairing
+                          ? "Stop repairs"
+                          : "Repair"}
+                      </button>
+                      {selectedStructure.kind !== "citadel" && (
+                        <button
+                          className="sell-action"
+                          onClick={() => {
+                            const refund = Math.floor(
+                              (gameData.buildings[selectedStructure.kind].cost *
+                                gameData.economy
+                                  .structureSellRefundBasisPoints) /
+                                10_000,
+                            );
+                            if (
+                              window.confirm(
+                                `Sell ${selectedStructure.displayName} for ${refund} credits plus full queued-unit refunds?`,
+                              )
+                            ) {
+                              runtimeRef.current?.enqueue({
+                                kind: "sellStructure",
+                                structureId: selectedStructure.id,
+                              });
+                            }
+                          }}
+                        >
+                          Sell ·{" "}
+                          {Math.floor(
+                            (gameData.buildings[selectedStructure.kind].cost *
+                              gameData.economy.structureSellRefundBasisPoints) /
+                              10_000,
+                          )}{" "}
+                          cr
+                        </button>
+                      )}
+                    </>
+                  ) : leadUnit ? (
+                    <dl className="asset-stats">
+                      <div>
+                        <dt>FORMATION</dt>
+                        <dd>{selectedUnits.length}</dd>
+                      </div>
+                      <div>
+                        <dt>INTEGRITY</dt>
+                        <dd>
+                          {selectedUnits.reduce(
+                            (sum, unit) => sum + unit.health,
+                            0,
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>ORDERS</dt>
+                        <dd>{leadUnit.order.toUpperCase()}</dd>
+                      </div>
+                      {leadUnit.kind === "midasHarvester" && (
+                        <div>
+                          <dt>CARGO</dt>
+                          <dd>
+                            {leadUnit.cargo}/{leadUnit.cargoCapacity}
+                          </dd>
+                        </div>
+                      )}
+                    </dl>
+                  ) : (
+                    <p className="empty-state">
+                      Select one of your Gold units or structures.
+                    </p>
+                  )}
                 </div>
-                <div>
-                  <dt>LINK</dt>
-                  <dd>
-                    {selectedStructure.connected ? "CONNECTED" : "ORPHANED"}
-                  </dd>
+              )}
+
+              {activeContextPanel === "intel" && (
+                <div className="context-panel-scroll intel-panel">
+                  <dl className="mini-telemetry">
+                    <div>
+                      <dt>TICK</dt>
+                      <dd>{simulation.tick}</dd>
+                    </div>
+                    <div>
+                      <dt>FORCES</dt>
+                      <dd>
+                        {
+                          simulation.units.filter(
+                            (unit) => unit.playerId === side,
+                          ).length
+                        }
+                        U /{" "}
+                        {
+                          simulation.structures.filter(
+                            (structure) => structure.playerId === side,
+                          ).length
+                        }
+                        B
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>LINK</dt>
+                      <dd>{snapshot.renderer}</dd>
+                    </div>
+                    <div>
+                      <dt>AUDIO</dt>
+                      <dd>
+                        {snapshot.audioReady ? "ONLINE" : "INTERACT TO ARM"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>INTEL</dt>
+                      <dd>{visibleEnemies} CONTACTS</dd>
+                    </div>
+                    <div>
+                      <dt>OPPOSITION</dt>
+                      <dd>{simulation.ai.profile.toUpperCase()}</dd>
+                    </div>
+                    <div>
+                      <dt>EXPLORED</dt>
+                      <dd>
+                        {simulation.visibility.tiles.length === 0
+                          ? 0
+                          : Math.floor(
+                              (100 * exploredTiles) /
+                                simulation.visibility.tiles.length,
+                            )}
+                        %
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="command-guide">
+                    <p>
+                      <kbd>Drag / Shift</kbd> select · <kbd>Right click</kbd>{" "}
+                      move, attack, or place
+                    </p>
+                    <p>
+                      <kbd>F + right click</kbd> attack-move ·{" "}
+                      <kbd>Ctrl+1–3</kbd> control group
+                    </p>
+                  </div>
                 </div>
-              </dl>
-              <div className="production-grid">
-                {gameData.buildings[selectedStructure.kind].produces.map(
-                  (unitKind) => (
-                    <button
-                      key={unitKind}
-                      onClick={() => queueUnit(unitKind)}
-                    >
-                      <span>{gameData.units[unitKind].displayName}</span>
-                      <small>{gameData.units[unitKind].cost} cr</small>
-                    </button>
-                  ),
-                )}
-                {gameData.buildings[selectedStructure.kind].produces.length ===
-                  0 && <p>No production line installed.</p>}
-              </div>
-              <div className="queue-strip">
-                {selectedStructure.queue.map((item, index) => (
-                  <button
-                    key={`${item.unitKind}-${index}`}
-                    onClick={() =>
-                      runtimeRef.current?.enqueue({
-                        kind: "cancelProduction",
-                        structureId: selectedStructure.id,
-                        queueIndex: index,
-                      })
-                    }
-                    title="Cancel for full refund"
-                  >
-                    {gameData.units[item.unitKind].displayName}{" "}
-                    {Math.ceil(
-                      (100 *
-                        (item.totalTicks - item.remainingTicks)) /
-                        item.totalTicks,
-                    )}
-                    %
-                  </button>
-                ))}
+              )}
+            </aside>
+          )}
+
+          <section className="economy-deck" aria-label="Primary command HUD">
+            <div className="compact-selection">
+              {leadUnit ? (
+                <div
+                  className={`asset-portrait unit-portrait portrait-${leadUnit.kind}`}
+                  role="img"
+                  aria-label={`${leadUnit.displayName} portrait`}
+                />
+              ) : selectedStructure ? (
+                <div
+                  className={`asset-portrait structure-portrait portrait-${selectedStructure.kind}`}
+                  role="img"
+                  aria-label={`${selectedStructure.displayName} portrait`}
+                />
+              ) : null}
+              <div>
+                <p className="eyebrow">SELECTED ASSET</p>
+                <h2>
+                  {selectedStructure?.displayName ??
+                    leadUnit?.displayName ??
+                    "No asset selected"}
+                </h2>
+                <span className="selection-summary">
+                  {selectedStructure
+                    ? `${selectedStructure.health}/${selectedStructure.maxHealth} integrity`
+                    : leadUnit
+                      ? `${selectedUnits.length} unit${
+                          selectedUnits.length === 1 ? "" : "s"
+                        } · ${leadUnit.order}`
+                      : "Awaiting selection"}
+                </span>
               </div>
               <button
-                className={selectedStructure.repairing ? "active" : ""}
-                onClick={() =>
-                  runtimeRef.current?.enqueue({
-                    kind: "setRepair",
-                    structureId: selectedStructure.id,
-                    enabled: !selectedStructure.repairing,
-                  })
+                aria-controls="context-panel"
+                aria-expanded={activeContextPanel === "selection"}
+                onClick={(event) =>
+                  toggleContextPanel("selection", event.currentTarget)
                 }
               >
-                {selectedStructure.repairing ? "Stop repairs" : "Repair"}
+                Asset details
               </button>
-              {selectedStructure.kind !== "citadel" && (
-                <button
-                  className="sell-action"
-                  onClick={() => {
-                    const refund = Math.floor(
-                      (gameData.buildings[selectedStructure.kind].cost *
-                        gameData.economy.structureSellRefundBasisPoints) /
-                        10_000,
-                    );
-                    if (
-                      window.confirm(
-                        `Sell ${selectedStructure.displayName} for ${refund} credits plus full queued-unit refunds?`,
-                      )
-                    ) {
-                      runtimeRef.current?.enqueue({
-                        kind: "sellStructure",
-                        structureId: selectedStructure.id,
-                      });
-                    }
-                  }}
-                >
-                  Sell ·{" "}
-                  {Math.floor(
-                    (gameData.buildings[selectedStructure.kind].cost *
-                      gameData.economy.structureSellRefundBasisPoints) /
-                      10_000,
-                  )}{" "}
-                  cr
-                </button>
-              )}
-            </>
-          ) : leadUnit ? (
-            <dl className="asset-stats">
-              <div>
-                <dt>FORMATION</dt>
-                <dd>{selectedUnits.length}</dd>
-              </div>
-              <div>
-                <dt>INTEGRITY</dt>
-                <dd>
-                  {selectedUnits.reduce((sum, unit) => sum + unit.health, 0)}
-                </dd>
-              </div>
-              <div>
-                <dt>ORDERS</dt>
-                <dd>{leadUnit.order.toUpperCase()}</dd>
-              </div>
-              {leadUnit.kind === "midasHarvester" && (
-                <div>
-                  <dt>CARGO</dt>
-                  <dd>
-                    {leadUnit.cargo}/{leadUnit.cargoCapacity}
-                  </dd>
-                </div>
-              )}
-            </dl>
-          ) : (
-            <p className="empty-state">
-              Select one of your Gold units or structures.
-            </p>
-          )}
+            </div>
 
-          <article className={`solar-panel ${solarTargeting ? "active" : ""}`}>
-            <div>
-              <span>SOLAR SPEAR // {solar.state.toUpperCase()}</span>
-              <strong>
-                {solar.state === "charging"
-                  ? `${solarProgress}% CHARGED`
-                  : solar.state === "ready"
-                    ? "TARGETING AVAILABLE"
-                    : solar.state === "warning"
-                      ? "LAUNCH COMMITTED"
-                      : "POWERED ORACLE REQUIRED"}
-              </strong>
-            </div>
-            <div className="solar-meter">
-              <i style={{ width: `${solarProgress}%` }} />
-            </div>
-            <button
-              disabled={solar.state !== "ready"}
-              className={solarTargeting ? "active" : ""}
-              onClick={toggleSolarTargeting}
-            >
-              {solarTargeting ? "Cancel target mode" : "Arm Solar Spear"}
-            </button>
-            {solarTargeting && (
-              <p>Select visible ground in the battlefield to launch.</p>
-            )}
-            {simulation.lastSolarFailure && (
-              <p className="placement-error">
-                {SOLAR_MESSAGES[simulation.lastSolarFailure]}
-              </p>
-            )}
-          </article>
-          </section>
-
-          <aside className="controls">
-            <div className="command-guide">
-              <p>
-                <kbd>Drag / Shift</kbd> select · <kbd>Right click</kbd> move,
-                attack, or place
-              </p>
-              <p>
-                <kbd>F + right click</kbd> attack-move · <kbd>Ctrl+1–3</kbd>{" "}
-                control group
-              </p>
-            </div>
-            <div className="control-buttons">
-              <button onClick={() => runtimeRef.current?.enqueue({ kind: "stop" })}>
+            <div className="primary-command-buttons">
+              <button
+                aria-controls="context-panel"
+                aria-expanded={activeContextPanel === "build"}
+                onClick={(event) =>
+                  toggleContextPanel("build", event.currentTarget)
+                }
+              >
+                Build structures
+              </button>
+              <button
+                onClick={() => runtimeRef.current?.enqueue({ kind: "stop" })}
+              >
                 Stop [X]
               </button>
-              <button onClick={() => runtimeRef.current?.enqueue({ kind: "hold" })}>
+              <button
+                onClick={() => runtimeRef.current?.enqueue({ kind: "hold" })}
+              >
                 Hold [H]
               </button>
               <button onClick={() => runtimeRef.current?.centerCamera()}>
                 Center
               </button>
+            </div>
+
+            <div className="secondary-command-buttons">
+              <button
+                aria-controls="context-panel"
+                aria-expanded={activeContextPanel === "intel"}
+                onClick={(event) =>
+                  toggleContextPanel("intel", event.currentTarget)
+                }
+              >
+                Intel & help
+              </button>
               <button onClick={() => adjustCameraZoom(-1)}>Zoom −</button>
               <button onClick={() => adjustCameraZoom(1)}>Zoom +</button>
+              <button
+                disabled={solar.state !== "ready"}
+                className={solarTargeting ? "active" : ""}
+                onClick={toggleSolarTargeting}
+                title={
+                  solar.state === "charging"
+                    ? `Solar Spear ${solarProgress}% charged`
+                    : undefined
+                }
+              >
+                {solarTargeting
+                  ? "Cancel Solar"
+                  : solar.state === "ready"
+                    ? "Arm Solar Spear"
+                    : `Solar ${solar.state}`}
+              </button>
             </div>
-            <details className="telemetry-disclosure">
-              <summary>Battlefield telemetry</summary>
-              <dl className="mini-telemetry">
-                <div>
-                  <dt>TICK</dt>
-                  <dd>{simulation.tick}</dd>
-                </div>
-                <div>
-                  <dt>FORCES</dt>
-                  <dd>
-                    {simulation.units.filter((unit) => unit.playerId === side).length}
-                    U /{" "}
-                    {
-                      simulation.structures.filter(
-                        (structure) => structure.playerId === side,
-                      ).length
-                    }
-                    B
-                  </dd>
-                </div>
-                <div>
-                  <dt>LINK</dt>
-                  <dd>{snapshot.renderer}</dd>
-                </div>
-                <div>
-                  <dt>AUDIO</dt>
-                  <dd>{snapshot.audioReady ? "ONLINE" : "INTERACT TO ARM"}</dd>
-                </div>
-                <div>
-                  <dt>INTEL</dt>
-                  <dd>{visibleEnemies} CONTACTS</dd>
-                </div>
-                <div>
-                  <dt>OPPOSITION</dt>
-                  <dd>{simulation.ai.profile.toUpperCase()}</dd>
-                </div>
-                <div>
-                  <dt>EXPLORED</dt>
-                  <dd>
-                    {simulation.visibility.tiles.length === 0
-                      ? 0
-                      : Math.floor(
-                          (100 * exploredTiles) /
-                            simulation.visibility.tiles.length,
-                        )}
-                    %
-                  </dd>
-                </div>
-              </dl>
-            </details>
-          </aside>
-        </section>
+
+            {(solarTargeting || simulation.lastSolarFailure) && (
+              <p className="dock-feedback" role="status">
+                {simulation.lastSolarFailure
+                  ? SOLAR_MESSAGES[simulation.lastSolarFailure]
+                  : "Select visible ground in the battlefield to launch."}
+              </p>
+            )}
+          </section>
+        </>
       )}
     </main>
   );

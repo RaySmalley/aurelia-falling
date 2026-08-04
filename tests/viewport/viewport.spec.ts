@@ -28,6 +28,7 @@ type LayoutMetrics = {
   canvas: Rect;
   statusHud: Rect;
   commandDock: Rect | null;
+  contextPanel: Rect | null;
   subtitle: Rect | null;
 };
 
@@ -62,6 +63,7 @@ async function readLayout(page: Page): Promise<LayoutMetrics> {
     };
 
     const commandDock = document.querySelector(".economy-deck");
+    const contextPanel = document.querySelector(".context-panel");
     const subtitle = document.querySelector(".radio-subtitle");
     return {
       viewport: { width: window.innerWidth, height: window.innerHeight },
@@ -77,6 +79,10 @@ async function readLayout(page: Page): Promise<LayoutMetrics> {
       commandDock:
         commandDock instanceof HTMLElement
           ? commandDock.getBoundingClientRect().toJSON()
+          : null,
+      contextPanel:
+        contextPanel instanceof HTMLElement
+          ? contextPanel.getBoundingClientRect().toJSON()
           : null,
       subtitle:
         subtitle instanceof HTMLElement
@@ -105,6 +111,7 @@ function expectViewportContract(metrics: LayoutMetrics) {
   expectContained(metrics.canvas, metrics.battlefield);
   expectContained(metrics.statusHud, metrics.shell);
   if (metrics.commandDock) expectContained(metrics.commandDock, metrics.shell);
+  if (metrics.contextPanel) expectContained(metrics.contextPanel, metrics.shell);
 }
 
 function expectFullBleedBattlefield(metrics: LayoutMetrics) {
@@ -260,9 +267,11 @@ test("wide short viewports keep every primary command inside the bottom dock", a
 
   expectViewportContract(await readLayout(page));
   await expectPrimaryCommandsInsideDock(page);
+  await page.getByRole("button", { name: "Intel & help" }).click();
   await expect(
-    page.getByText("Battlefield telemetry", { exact: true }),
+    page.getByRole("heading", { name: "Battlefield intel and help" }),
   ).toBeInViewport();
+  expectViewportContract(await readLayout(page));
 });
 
 for (const uiScale of [0.9, 1, 1.1]) {
@@ -274,9 +283,56 @@ for (const uiScale of [0.9, 1, 1.1]) {
     await page.getByRole("button", { name: "Begin operation" }).click();
     await expect(page.locator(".economy-deck")).toBeVisible();
     await expectPrimaryHitTargets(page);
+    await page.getByRole("button", { name: "Build structures" }).click();
     await expectBuildHitTargets(page);
   });
 }
+
+test("contextual panels preserve the Phaser runtime and restore keyboard focus", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1024, height: 640 });
+  await loadSetup(page, 1.1);
+  await page.getByRole("button", { name: "Begin operation" }).click();
+  await expect(page.locator(".economy-deck")).toBeVisible();
+
+  const before = await readLayout(page);
+  await page.locator(".game-host canvas").evaluate((canvas) => {
+    canvas.setAttribute("data-runtime-sentinel", "preserved");
+  });
+
+  const buildTrigger = page.getByRole("button", { name: "Build structures" });
+  await buildTrigger.click();
+  const panel = page.getByRole("dialog", { name: "Build structures" });
+  await expect(panel).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Close contextual panel" }),
+  ).toBeFocused();
+
+  const open = await readLayout(page);
+  expectViewportContract(open);
+  expect(open.host.width).toBeCloseTo(before.host.width, 1);
+  expect(open.host.height).toBeCloseTo(before.host.height, 1);
+  expect(open.canvas.width).toBeCloseTo(before.canvas.width, 1);
+  expect(open.canvas.height).toBeCloseTo(before.canvas.height, 1);
+  await expect(page.locator('.game-host canvas[data-runtime-sentinel="preserved"]'))
+    .toHaveCount(1);
+
+  await page.keyboard.press("Shift+Tab");
+  await expect(page.getByRole("button", { name: "Turret" })).toBeFocused();
+  await capture(page, testInfo, "minimum-110-percent-build-panel");
+  await page.keyboard.press("Escape");
+  await expect(panel).toBeHidden();
+  await expect(buildTrigger).toBeFocused();
+  expectViewportContract(await readLayout(page));
+
+  await buildTrigger.click();
+  await page.getByRole("button", { name: "Pause" }).click();
+  await expect(panel).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Resume operation" }),
+  ).toBeVisible();
+});
 
 for (const viewport of VIEWPORTS) {
   test(`${viewport.name} setup and active play stay inside the viewport`, async ({
@@ -342,12 +398,12 @@ test("pointer-to-world selection stays accurate after viewport changes", async (
   await expect(page.locator(".economy-deck")).toBeVisible();
 
   await clickLogicalCanvas(page, 608, 242);
-  await expect(page.locator(".selection-panel h2")).toHaveText(
+  await expect(page.locator(".compact-selection h2")).toHaveText(
     "Citadel Command Hub",
   );
 
   await clickLogicalCanvas(page, 640, 360);
-  await expect(page.locator(".selection-panel h2")).toHaveText(
+  await expect(page.locator(".compact-selection h2")).toHaveText(
     "No asset selected",
   );
 
@@ -356,7 +412,7 @@ test("pointer-to-world selection stays accurate after viewport changes", async (
     .poll(async () => Math.round((await readLayout(page)).canvas.width))
     .toBe(1024);
   await clickLogicalCanvas(page, 608, 242);
-  await expect(page.locator(".selection-panel h2")).toHaveText(
+  await expect(page.locator(".compact-selection h2")).toHaveText(
     "Citadel Command Hub",
   );
   expectFullBleedBattlefield(await readLayout(page));
