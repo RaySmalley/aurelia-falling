@@ -178,7 +178,10 @@ test("Phase 6 presentation, keyboard focus, and retry hooks are integrated", asy
     bootstrap,
     /target\.matches\([^)]*button[^)]*\)/,
   );
-  assert.match(bootstrap, /keyboard\.enabled = !textEntryFocused/);
+  assert.match(
+    bootstrap,
+    /keyboard\.enabled = gameplayInputEnabled && !textEntryFocused/,
+  );
   assert.match(bootstrap, /addEventListener\("keydown", guardFormKey, true\)/);
   assert.match(bootstrap, /addEventListener\("keyup", guardFormKey, true\)/);
   assert.match(bootstrap, /detachKeyboardCaptureGuard\(\)/);

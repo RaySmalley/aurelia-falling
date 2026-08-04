@@ -30,6 +30,8 @@ type LayoutMetrics = {
   commandDock: Rect | null;
   contextPanel: Rect | null;
   subtitle: Rect | null;
+  onboarding: Rect | null;
+  feedback: Rect | null;
 };
 
 async function loadSetup(page: Page, uiScale = 1) {
@@ -65,6 +67,8 @@ async function readLayout(page: Page): Promise<LayoutMetrics> {
     const commandDock = document.querySelector(".economy-deck");
     const contextPanel = document.querySelector(".context-panel");
     const subtitle = document.querySelector(".radio-subtitle");
+    const onboarding = document.querySelector(".onboarding-card");
+    const feedback = document.querySelector(".dock-feedback");
     return {
       viewport: { width: window.innerWidth, height: window.innerHeight },
       document: {
@@ -88,6 +92,14 @@ async function readLayout(page: Page): Promise<LayoutMetrics> {
         subtitle instanceof HTMLElement
           ? subtitle.getBoundingClientRect().toJSON()
           : null,
+      onboarding:
+        onboarding instanceof HTMLElement
+          ? onboarding.getBoundingClientRect().toJSON()
+          : null,
+      feedback:
+        feedback instanceof HTMLElement
+          ? feedback.getBoundingClientRect().toJSON()
+          : null,
     };
   });
 }
@@ -97,6 +109,16 @@ function expectContained(inner: Rect, outer: Rect) {
   expect(inner.top).toBeGreaterThanOrEqual(outer.top - 1);
   expect(inner.right).toBeLessThanOrEqual(outer.right + 1);
   expect(inner.bottom).toBeLessThanOrEqual(outer.bottom + 1);
+}
+
+function expectNoOverlap(first: Rect, second: Rect) {
+  const overlaps = !(
+    first.right <= second.left ||
+    first.left >= second.right ||
+    first.bottom <= second.top ||
+    first.top >= second.bottom
+  );
+  expect(overlaps).toBe(false);
 }
 
 function expectViewportContract(metrics: LayoutMetrics) {
@@ -253,6 +275,146 @@ test("persisted 110% UI scale stays reachable at the minimum viewport", async ({
   await capture(page, testInfo, "minimum-110-percent-settings");
 });
 
+test("unsupported viewports block setup without introducing document scrolling", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 900, height: 700 });
+  await page.goto("/");
+
+  const notice = page.getByRole("alertdialog", {
+    name: "More battlefield space required",
+  });
+  await expect(notice).toBeVisible();
+  await expect(notice).toBeFocused();
+  await expect(
+    page.getByRole("button", { name: "Begin operation" }),
+  ).toHaveCount(0);
+  const unsupported = await page.evaluate(() => ({
+    viewport: { width: window.innerWidth, height: window.innerHeight },
+    document: {
+      width: document.documentElement.scrollWidth,
+      height: document.documentElement.scrollHeight,
+    },
+  }));
+  expect(unsupported.document.width).toBeLessThanOrEqual(unsupported.viewport.width);
+  expect(unsupported.document.height).toBeLessThanOrEqual(unsupported.viewport.height);
+
+  await page.setViewportSize({ width: 1024, height: 640 });
+  await expect(notice).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Begin operation" }),
+  ).toBeEnabled();
+  await expect(page.locator(".game-host canvas")).toBeVisible();
+  expectViewportContract(await readLayout(page));
+});
+
+test("unsupported viewport curtains block queued gameplay shortcuts", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1024, height: 640 });
+  await loadSetup(page);
+  await page.getByRole("button", { name: "Begin operation" }).click();
+  await expect(page.locator(".economy-deck")).toBeVisible();
+  await page.getByRole("button", { name: "Dismiss guidance" }).click();
+
+  const canvasBounds = await page.locator(".game-host canvas").boundingBox();
+  expect(canvasBounds).not.toBeNull();
+  await page.mouse.move(
+    canvasBounds!.x + canvasBounds!.width * 0.2,
+    canvasBounds!.y + canvasBounds!.height * 0.2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    canvasBounds!.x + canvasBounds!.width * 0.8,
+    canvasBounds!.y + canvasBounds!.height * 0.78,
+  );
+  await page.mouse.up();
+  await expect(page.locator(".selection-summary")).toHaveText(/1 unit/);
+  await page.getByRole("button", { name: "Hold [H]" }).click();
+  await expect(page.locator(".selection-summary")).toHaveText(/hold/);
+
+  await page.setViewportSize({ width: 900, height: 700 });
+  await expect(
+    page.getByRole("alertdialog", { name: "More battlefield space required" }),
+  ).toBeVisible();
+  await page.keyboard.press("X");
+
+  await page.setViewportSize({ width: 1024, height: 640 });
+  await page.getByRole("button", { name: "Resume operation" }).click();
+  await expect(page.locator(".selection-summary")).toHaveText(/hold/);
+});
+
+test("settings and pause dialogs trap focus, expose names, and restore triggers", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1024, height: 640 });
+  await loadSetup(page);
+
+  const settingsTrigger = page.getByRole("button", { name: "Settings" });
+  await settingsTrigger.click();
+  const settingsDialog = page.getByRole("dialog", {
+    name: "Audio and interface",
+  });
+  await expect(settingsDialog).toBeVisible();
+  await expect(page.getByLabel("Master volume")).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(
+    page.getByRole("button", { name: "Restart onboarding" }),
+  ).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(settingsDialog).toBeHidden();
+  await expect(settingsTrigger).toBeFocused();
+
+  await page.getByRole("button", { name: "Begin operation" }).click();
+  const pauseTrigger = page.getByRole("button", { name: "Pause" });
+  await pauseTrigger.click();
+  const pauseDialog = page.getByRole("dialog", { name: "Skirmish paused" });
+  await expect(pauseDialog).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Resume operation" }),
+  ).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(
+    page.getByRole("button", { name: "Match setup" }),
+  ).toBeFocused();
+  await page.getByRole("button", { name: "Resume operation" }).click();
+  await expect(pauseDialog).toBeHidden();
+  await expect(pauseTrigger).toBeFocused();
+});
+
+test("transient guidance occupies declared safe regions at minimum size", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1024, height: 640 });
+  await loadSetup(page, 1.1);
+  await page.getByRole("button", { name: "Begin operation" }).click();
+  await expect(page.locator(".onboarding-card")).toBeVisible();
+  await expect(page.locator(".radio-subtitle")).toBeVisible();
+
+  const layout = await readLayout(page);
+  expect(layout.onboarding).not.toBeNull();
+  expect(layout.subtitle).not.toBeNull();
+  expect(layout.commandDock).not.toBeNull();
+  expectContained(layout.onboarding!, layout.shell);
+  expectContained(layout.subtitle!, layout.shell);
+  expectNoOverlap(layout.onboarding!, layout.statusHud);
+  expectNoOverlap(layout.onboarding!, layout.commandDock!);
+  expectNoOverlap(layout.onboarding!, layout.subtitle!);
+  expectNoOverlap(layout.subtitle!, layout.commandDock!);
+});
+
+test("operating-system reduced-motion preference suppresses interface transitions", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 1024, height: 640 });
+  await loadSetup(page);
+  const transitionSeconds = await page.locator(".payload-status i").evaluate(
+    (element) => Number.parseFloat(getComputedStyle(element).transitionDuration),
+  );
+  expect(transitionSeconds).toBeLessThanOrEqual(0.000001);
+});
+
 test("records the known Phase 6 overflow baseline", () => {
   expect(baseline.measurements).toHaveLength(3);
   for (const measurement of baseline.measurements) {
@@ -266,7 +428,7 @@ test("records the known Phase 6 overflow baseline", () => {
 test("wide short viewports keep every primary command inside the bottom dock", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1895, height: 403 });
+  await page.setViewportSize({ width: 1895, height: 640 });
   await loadSetup(page);
   await page.getByRole("button", { name: "Begin operation" }).click();
   await expect(page.locator(".economy-deck")).toBeVisible();
@@ -427,5 +589,34 @@ test("pointer-to-world selection stays accurate after viewport changes", async (
   await expect(page.locator(".compact-selection h2")).toHaveText(
     "Citadel Command Hub",
   );
+  expectFullBleedBattlefield(await readLayout(page));
+});
+
+test("browser fullscreen transitions preserve canvas bounds and pointer mapping", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 650 });
+  await loadSetup(page);
+  await page.getByRole("button", { name: "Begin operation" }).click();
+  await expect(page.locator(".economy-deck")).toBeVisible();
+
+  await page.locator(".game-host canvas").click({ position: { x: 1, y: 1 } });
+  await page.evaluate(() => document.documentElement.requestFullscreen());
+  await expect
+    .poll(() => page.evaluate(() => Boolean(document.fullscreenElement)))
+    .toBe(true);
+  expectViewportContract(await readLayout(page));
+  expectFullBleedBattlefield(await readLayout(page));
+
+  await clickLogicalCanvas(page, 608, 242);
+  await expect(page.locator(".compact-selection h2")).toHaveText(
+    "Citadel Command Hub",
+  );
+
+  await page.evaluate(() => document.exitFullscreen());
+  await expect
+    .poll(() => page.evaluate(() => Boolean(document.fullscreenElement)))
+    .toBe(false);
+  expectViewportContract(await readLayout(page));
   expectFullBleedBattlefield(await readLayout(page));
 });

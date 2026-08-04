@@ -202,6 +202,8 @@ export async function createGameRuntime(
   let previousSnapshot = lastSnapshot;
   let lastEmittedTick = -1;
   let detachKeyboardCaptureGuard = () => {};
+  let refreshKeyboardInput = () => {};
+  let gameplayInputEnabled = false;
   let pendingFogMemoryReset = false;
 
   const emit = () => {
@@ -360,15 +362,22 @@ export async function createGameRuntime(
         target instanceof ownerWindow.HTMLElement &&
         (target.matches("input, select, textarea") ||
           target.isContentEditable);
-      const guardFormKey = (event: KeyboardEvent) => {
-        const textEntryFocused = isTextEntryControl(event.target);
-        keyboard.enabled = !textEntryFocused;
-        if (textEntryFocused) {
+      const syncKeyboardInput = (target: EventTarget | null) => {
+        const textEntryFocused = isTextEntryControl(target);
+        keyboard.enabled = gameplayInputEnabled && !textEntryFocused;
+        if (!keyboard.enabled) {
           keyboard.resetKeys();
           keyboard.disableGlobalCapture();
         } else {
           keyboard.enableGlobalCapture();
         }
+      };
+      const guardFormKey = (event: KeyboardEvent) => {
+        syncKeyboardInput(event.target);
+      };
+      refreshKeyboardInput = () => {
+        syncKeyboardInput(host.ownerDocument.activeElement);
+        if (!gameplayInputEnabled) this.pendingOrder = "move";
       };
       ownerWindow.addEventListener("keydown", guardFormKey, true);
       ownerWindow.addEventListener("keyup", guardFormKey, true);
@@ -378,20 +387,25 @@ export async function createGameRuntime(
       };
 
       this.input.keyboard!.on("keydown-F", () => {
+        if (!gameplayInputEnabled) return;
         this.pendingOrder = "attackMove";
       });
       this.input.keyboard!.on("keydown-R", () => {
+        if (!gameplayInputEnabled) return;
         this.pendingOrder = "rally";
       });
       this.input.keyboard!.on("keydown-X", () => {
+        if (!gameplayInputEnabled) return;
         simulation.enqueue({ kind: "stop" });
       });
       this.input.keyboard!.on("keydown-H", () => {
+        if (!gameplayInputEnabled) return;
         simulation.enqueue({ kind: "hold" });
       });
       for (let group = 1; group <= 3; group += 1) {
         const key = this.input.keyboard!.addKey(String(group));
         key.on("down", () => {
+          if (!gameplayInputEnabled) return;
           simulation.enqueue(
             this.ctrlKey.isDown
               ? { kind: "assignControlGroup", group }
@@ -556,6 +570,7 @@ export async function createGameRuntime(
     }
 
     private updateCamera(delta: number) {
+      if (!gameplayInputEnabled) return;
       const cameraSpeed = 0.46 * delta;
       const moved =
         this.cursorKeys.left.isDown ||
@@ -1514,6 +1529,10 @@ export async function createGameRuntime(
     },
     setReducedScreenShake(reduced: boolean) {
       reducedScreenShake = reduced;
+    },
+    setGameplayInputEnabled(enabled: boolean) {
+      gameplayInputEnabled = enabled;
+      refreshKeyboardInput();
     },
     centerCamera() {
       game.scene
