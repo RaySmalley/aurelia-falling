@@ -121,13 +121,19 @@ function expectFullBleedBattlefield(metrics: LayoutMetrics) {
   expect(metrics.battlefield.bottom).toBeCloseTo(metrics.viewport.height, 0);
 }
 
-async function clickLogicalCanvas(page: Page, x: number, y: number) {
+async function clickLogicalCanvas(
+  page: Page,
+  x: number,
+  y: number,
+  button: "left" | "right" = "left",
+) {
   const canvas = page.locator(".game-host canvas");
   const bounds = await canvas.boundingBox();
   if (!bounds) throw new Error("Missing canvas bounds");
   await page.mouse.click(
     bounds.x + (x / LOGICAL_GAME_SIZE.width) * bounds.width,
     bounds.y + (y / LOGICAL_GAME_SIZE.height) * bounds.height,
+    { button },
   );
 }
 
@@ -321,10 +327,16 @@ test("contextual panels preserve the Phaser runtime and restore keyboard focus",
   await page.keyboard.press("Shift+Tab");
   await expect(page.getByRole("button", { name: "Turret" })).toBeFocused();
   await capture(page, testInfo, "minimum-110-percent-build-panel");
+  await page.getByRole("button", { name: "Prometheus Reactor" }).click();
   await page.keyboard.press("Escape");
   await expect(panel).toBeHidden();
   await expect(buildTrigger).toBeFocused();
   expectViewportContract(await readLayout(page));
+
+  await clickLogicalCanvas(page, 1_220, 360, "right");
+  await expect(page.locator(".dock-feedback")).toHaveText(
+    /Placement is outside|Scorched terrain|occupies this tile|cannot be built over|requires current battlefield vision|outside connected construction radius|prerequisite is missing|Insufficient credits|only one Citadel/,
+  );
 
   await buildTrigger.click();
   await page.getByRole("button", { name: "Pause" }).click();

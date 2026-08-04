@@ -470,6 +470,14 @@ export default function SkirmishShell() {
   const currentTutorial = TUTORIAL_STEPS.find(
     (step) => !tutorialProgress[step.id],
   );
+  const dockFeedback =
+    placement && placementFailure
+      ? PLACEMENT_MESSAGES[placementFailure]
+      : simulation.lastSolarFailure
+        ? SOLAR_MESSAGES[simulation.lastSolarFailure]
+        : solarTargeting
+          ? "Select visible ground in the battlefield to launch."
+          : null;
 
   useEffect(() => {
     if (solar.state !== "ready" && solarTargeting) {
@@ -1014,11 +1022,6 @@ export default function SkirmishShell() {
                       ? `Right-click to place ${gameData.buildings[placement].displayName}. Invalid sites keep placement active.`
                       : "Choose a structure, then right-click inside a connected radius."}
                   </p>
-                  {placementFailure && (
-                    <p className="placement-error" role="status">
-                      {PLACEMENT_MESSAGES[placementFailure]}
-                    </p>
-                  )}
                 </div>
               )}
 
@@ -1375,11 +1378,9 @@ export default function SkirmishShell() {
               </button>
             </div>
 
-            {(solarTargeting || simulation.lastSolarFailure) && (
+            {dockFeedback && (
               <p className="dock-feedback" role="status">
-                {simulation.lastSolarFailure
-                  ? SOLAR_MESSAGES[simulation.lastSolarFailure]
-                  : "Select visible ground in the battlefield to launch."}
+                {dockFeedback}
               </p>
             )}
           </section>
