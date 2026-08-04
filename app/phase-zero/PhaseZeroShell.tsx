@@ -152,8 +152,15 @@ const SETTINGS_KEY = "aurelia-falling.settings.v1";
 const ONBOARDING_KEY = "aurelia-falling.onboarding.v1";
 const CAMERA_ZOOM_LEVELS = [0.75, 0.9, 1, 1.1, 1.25] as const;
 const HUD_HIT_TARGET_PX = 44;
+const MINIMUM_VIEWPORT = { width: 1024, height: 640 } as const;
 
 type ContextPanel = "build" | "selection" | "intel";
+type BlockingOverlay =
+  | "error"
+  | "viewport"
+  | "pause"
+  | "result"
+  | "settings";
 
 const TUTORIAL_STEPS = [
   {
@@ -277,6 +284,8 @@ export default function SkirmishShell() {
   const settingsRef = useRef<AppSettings>(DEFAULT_SETTINGS);
   const contextPanelRef = useRef<HTMLElement>(null);
   const contextPanelTriggerRef = useRef<HTMLElement | null>(null);
+  const blockingOverlayRef = useRef<HTMLDivElement>(null);
+  const blockingOverlayTriggerRef = useRef<HTMLElement | null>(null);
   const [snapshot, setSnapshot] = useState(INITIAL_SNAPSHOT);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [screen, setScreen] = useState<"setup" | "playing">("setup");
@@ -289,6 +298,7 @@ export default function SkirmishShell() {
   const [difficulty, setDifficulty] = useState<AiDifficulty>("normal");
   const [activeContextPanel, setActiveContextPanel] =
     useState<ContextPanel | null>(null);
+  const [viewportSupported, setViewportSupported] = useState(true);
   const [tutorialProgress, setTutorialProgress] =
     useState<TutorialProgress>(EMPTY_TUTORIAL_PROGRESS);
 
@@ -361,6 +371,29 @@ export default function SkirmishShell() {
     return () => {
       window.removeEventListener("pointerdown", unlock);
       window.removeEventListener("keydown", unlock);
+    };
+  }, []);
+
+  useEffect(() => {
+    const updateViewportSupport = () => {
+      const supported =
+        window.innerWidth >= MINIMUM_VIEWPORT.width &&
+        window.innerHeight >= MINIMUM_VIEWPORT.height &&
+        window.innerWidth >= window.innerHeight;
+      setViewportSupported(supported);
+      if (!supported) {
+        setActiveContextPanel(null);
+        setSettingsOpen(false);
+        runtimeRef.current?.pause("manual");
+      }
+    };
+    const initialFrame = window.requestAnimationFrame(updateViewportSupport);
+    window.addEventListener("resize", updateViewportSupport);
+    window.addEventListener("orientationchange", updateViewportSupport);
+    return () => {
+      window.cancelAnimationFrame(initialFrame);
+      window.removeEventListener("resize", updateViewportSupport);
+      window.removeEventListener("orientationchange", updateViewportSupport);
     };
   }, []);
 
@@ -478,6 +511,68 @@ export default function SkirmishShell() {
         : solarTargeting
           ? "Select visible ground in the battlefield to launch."
           : null;
+  const activeBlockingOverlay: BlockingOverlay | null = !viewportSupported
+    ? "viewport"
+    : loadError
+      ? "error"
+      : settingsOpen
+        ? "settings"
+        : screen === "playing" && simulation.status !== "active"
+          ? "result"
+          : screen === "playing" && snapshot.paused
+            ? "pause"
+            : null;
+
+  useEffect(() => {
+    if (!activeBlockingOverlay) return;
+
+    const overlay = blockingOverlayRef.current;
+    const focusOverlay = window.setTimeout(() => {
+      const preferred = overlay?.querySelector<HTMLElement>(
+        "[data-overlay-autofocus]",
+      );
+      const first = overlay?.querySelector<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      (preferred ?? first ?? overlay)?.focus();
+    });
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && activeBlockingOverlay === "settings") {
+        event.preventDefault();
+        setSettingsOpen(false);
+        return;
+      }
+      if (event.key !== "Tab" || !overlay) return;
+
+      const focusable = Array.from(
+        overlay.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => element.getClientRects().length > 0);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        overlay.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable.at(-1)!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.clearTimeout(focusOverlay);
+      document.removeEventListener("keydown", onKeyDown);
+      const trigger = blockingOverlayTriggerRef.current;
+      window.requestAnimationFrame(() => trigger?.focus());
+    };
+  }, [activeBlockingOverlay]);
 
   useEffect(() => {
     if (solar.state !== "ready" && solarTargeting) {
@@ -500,6 +595,7 @@ export default function SkirmishShell() {
   };
 
   const startMatch = () => {
+    if (!viewportSupported) return;
     const parsed = Number.parseInt(seedInput, 10);
     const seed = Number.isFinite(parsed) ? parsed >>> 0 : 4_115;
     setSeedInput(String(seed));
@@ -552,7 +648,8 @@ export default function SkirmishShell() {
     window.requestAnimationFrame(() => trigger?.focus());
   };
 
-  const openSettings = () => {
+  const openSettings = (trigger: HTMLElement) => {
+    blockingOverlayTriggerRef.current = trigger;
     setActiveContextPanel(null);
     if (screen === "playing" && simulation.status === "active") {
       runtimeRef.current?.pause("manual");
@@ -650,10 +747,13 @@ export default function SkirmishShell() {
           </div>
         </div>
         <div className="header-actions">
-          <button onClick={openSettings}>Settings</button>
+          <button onClick={(event) => openSettings(event.currentTarget)}>
+            Settings
+          </button>
           {screen === "playing" && simulation.status === "active" && (
             <button
-              onClick={() => {
+              onClick={(event) => {
+                blockingOverlayTriggerRef.current = event.currentTarget;
                 setActiveContextPanel(null);
                 runtimeRef.current?.pause("manual");
               }}
@@ -672,20 +772,53 @@ export default function SkirmishShell() {
 
       <section className="battlefield-frame" aria-label="RTS battlefield">
         <div ref={hostRef} className="game-host" />
-        {loadError && (
-          <div className="fatal-panel" role="alert">
-            <strong>Simulation link failed</strong>
-            <span>{loadError}</span>
-            <button onClick={() => setRuntimeAttempt((attempt) => attempt + 1)}>
+        {!viewportSupported && (
+          <div
+            ref={blockingOverlayRef}
+            className="pause-curtain viewport-curtain"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="viewport-notice-title"
+            aria-describedby="viewport-notice-description"
+            tabIndex={-1}
+          >
+            <p className="eyebrow">DISPLAY CONTRACT PAUSED</p>
+            <h2 id="viewport-notice-title">More battlefield space required</h2>
+            <span id="viewport-notice-description">
+              Aurelia Falling requires a landscape viewport of at least 1024 ×
+              640. Enlarge this window or rotate the display to continue.
+            </span>
+          </div>
+        )}
+        {loadError && viewportSupported && (
+          <div
+            ref={blockingOverlayRef}
+            className="fatal-panel"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="runtime-error-title"
+            aria-describedby="runtime-error-description"
+            tabIndex={-1}
+          >
+            <strong id="runtime-error-title">Simulation link failed</strong>
+            <span id="runtime-error-description">{loadError}</span>
+            <button
+              data-overlay-autofocus
+              onClick={() => setRuntimeAttempt((attempt) => attempt + 1)}
+            >
               Retry tactical payload
             </button>
           </div>
         )}
 
-        {screen === "setup" && !loadError && (
-          <div className="pause-curtain setup-curtain">
+        {screen === "setup" && !loadError && viewportSupported && (
+          <div
+            className="pause-curtain setup-curtain"
+            role="region"
+            aria-labelledby="match-setup-title"
+          >
             <p className="eyebrow">MATCH SETUP // OPERATION FALLING STAR</p>
-            <h2>Deploy to the Golden Scar</h2>
+            <h2 id="match-setup-title">Deploy to the Golden Scar</h2>
             <div className="setup-grid">
               <div>
                 <span>MAP</span>
@@ -739,7 +872,7 @@ export default function SkirmishShell() {
             </label>
             <button
               className="primary-action"
-              disabled={!runtimeReady}
+              disabled={!runtimeReady || !viewportSupported}
               onClick={startMatch}
             >
               Begin operation
@@ -758,20 +891,36 @@ export default function SkirmishShell() {
         {screen === "playing" &&
           snapshot.paused &&
           simulation.status === "active" &&
-          !settingsOpen && (
-            <div className="pause-curtain">
+          !settingsOpen &&
+          viewportSupported && (
+            <div
+              ref={blockingOverlayRef}
+              className="pause-curtain"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="pause-title"
+              aria-describedby="pause-description"
+              tabIndex={-1}
+            >
               <p>TACTICAL LINK SUSPENDED</p>
-              <h2>Skirmish paused</h2>
-              <span>
+              <h2 id="pause-title">Skirmish paused</h2>
+              <span id="pause-description">
                 {snapshot.pauseReason === "hidden"
                   ? "The hidden-tab interval was discarded. Resume explicitly; no simulation catch-up will occur."
                   : "Fixed-step progression and procedural battle audio are suspended."}
               </span>
               <div className="overlay-actions">
-                <button onClick={() => runtimeRef.current?.resume()}>
+                <button
+                  data-overlay-autofocus
+                  onClick={() => runtimeRef.current?.resume()}
+                >
                   Resume operation
                 </button>
-                <button onClick={openSettings}>Settings</button>
+                <button
+                  onClick={(event) => openSettings(event.currentTarget)}
+                >
+                  Settings
+                </button>
                 <button onClick={restartMatch}>Restart</button>
                 <button
                   className="danger"
@@ -789,10 +938,19 @@ export default function SkirmishShell() {
             </div>
           )}
 
-        {screen === "playing" && simulation.status !== "active" && (
-          <div className="pause-curtain match-result">
+        {screen === "playing" &&
+          simulation.status !== "active" &&
+          viewportSupported && (
+          <div
+            ref={blockingOverlayRef}
+            className="pause-curtain match-result"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="match-result-title"
+            tabIndex={-1}
+          >
             <p>MATCH RESOLUTION // {simulation.status.toUpperCase()}</p>
-            <h2>
+            <h2 id="match-result-title">
               {simulation.status === "draw"
                 ? "Both Citadels destroyed"
                 : simulation.winner === 1
@@ -823,16 +981,30 @@ export default function SkirmishShell() {
               </div>
             </div>
             <div className="overlay-actions">
-              <button onClick={restartMatch}>Rematch</button>
+              <button data-overlay-autofocus onClick={restartMatch}>
+                Rematch
+              </button>
               <button onClick={returnToSetup}>Match setup</button>
             </div>
           </div>
         )}
 
-        {settingsOpen && (
-          <div className="pause-curtain settings-curtain" role="dialog">
+        {settingsOpen && viewportSupported && (
+          <div
+            ref={blockingOverlayRef}
+            className="pause-curtain settings-curtain"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="settings-title"
+            aria-describedby="settings-description"
+            tabIndex={-1}
+          >
             <p className="eyebrow">LOCAL COMMAND SETTINGS</p>
-            <h2>Audio and interface</h2>
+            <h2 id="settings-title">Audio and interface</h2>
+            <p id="settings-description" className="sr-only">
+              Configure local audio, interface scale, camera zoom, subtitles,
+              and motion preferences.
+            </p>
             <div className="settings-list">
               {(
                 [
@@ -844,6 +1016,7 @@ export default function SkirmishShell() {
                 <label key={key}>
                   <span>{label}</span>
                   <input
+                    data-overlay-autofocus={key === "masterVolume" || undefined}
                     type="range"
                     min="0"
                     max="1"
@@ -931,7 +1104,9 @@ export default function SkirmishShell() {
           settings.onboarding &&
           currentTutorial &&
           simulation.status === "active" &&
-          !snapshot.paused && (
+          !snapshot.paused &&
+          !activeContextPanel &&
+          viewportSupported && (
             <aside className="onboarding-card" aria-live="polite">
               <span>
                 GUIDANCE{" "}
