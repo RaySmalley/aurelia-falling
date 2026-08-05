@@ -4,6 +4,7 @@ import {
   type PathOptions,
   type PathSearchStatus,
 } from "./pathfinding";
+import { MAP_TERRAIN_REVISION } from "./map";
 import type { GridPoint } from "./types";
 
 export const PATH_REQUEST_PRIORITIES = [
@@ -14,6 +15,7 @@ export const PATH_REQUEST_PRIORITIES = [
   "background",
 ] as const;
 export const PATH_REQUESTS_PER_PRIORITY_AGING_STEP = 4;
+export const PATH_CACHE_CAPACITY = 128;
 
 export type PathRequestPriority =
   (typeof PATH_REQUEST_PRIORITIES)[number];
@@ -45,21 +47,55 @@ type QueuedRequest = {
   start: GridPoint;
   goal: GridPoint;
   options?: PathOptions;
+  cacheKey: string | null;
+  cachedPath: CachedPath | null;
+  cachedExpansionsRemaining: number;
+  expansions: number;
   search: IncrementalPathSearch | null;
   started: boolean;
 };
+
+type CachedPath = Readonly<{
+  path: readonly GridPoint[];
+  expansions: number;
+}>;
 
 const priorityRank = (priority: PathRequestPriority) =>
   PATH_REQUEST_PRIORITIES.indexOf(priority);
 const compareKeys = (left: string, right: string) =>
   left < right ? -1 : left > right ? 1 : 0;
+const orderedTileKeys = (tiles: PathOptions["occupied"]) =>
+  [...(tiles ?? [])].sort((left, right) => left - right);
+const pathCacheKey = (
+  start: GridPoint,
+  goal: GridPoint,
+  options?: PathOptions,
+) => {
+  if (options?.reserved || (options?.occupied && !options.occupied.revision)) {
+    return null;
+  }
+  const occupancyRevision = options?.occupied?.revision ?? "open";
+  return `${MAP_TERRAIN_REVISION}:${occupancyRevision}:${start.x},${start.y}:${goal.x},${goal.y}`;
+};
 
 export class DeterministicPathRequestQueue {
   private readonly requests = new Map<string, QueuedRequest>();
+  private readonly pathCache = new Map<string, CachedPath>();
   private nextSequence = 0;
+  private pathCacheHits = 0;
+  private pathCacheMisses = 0;
 
   get size() {
     return this.requests.size;
+  }
+
+  cacheDiagnostics() {
+    return Object.freeze({
+      capacity: PATH_CACHE_CAPACITY,
+      entries: this.pathCache.size,
+      hits: this.pathCacheHits,
+      misses: this.pathCacheMisses,
+    });
   }
 
   authoritativeState() {
@@ -77,22 +113,41 @@ export class DeterministicPathRequestQueue {
           sequence: request.sequence,
           started: request.started,
           search:
-            request.search?.authoritativeState() ?? {
-              start: request.start,
-              requestedGoal: request.goal,
-              occupied: [...(request.options?.occupied ?? [])].sort(
-                (left, right) => left - right,
-              ),
-              reserved: [...(request.options?.reserved ?? [])].sort(
-                (left, right) => left - right,
-              ),
-              status: "queued",
-            },
+            request.cachedPath && request.started
+              ? {
+                  start: request.start,
+                  goal: request.goal,
+                  occupied: orderedTileKeys(request.options?.occupied),
+                  reserved: orderedTileKeys(request.options?.reserved),
+                  totalExpansions:
+                    request.cachedPath.expansions -
+                    request.cachedExpansionsRemaining,
+                  status: "planning",
+                  path: null,
+                  cached: true,
+                }
+              : request.search?.authoritativeState() ?? {
+                  start: request.start,
+                  requestedGoal: request.goal,
+                  occupied: orderedTileKeys(request.options?.occupied),
+                  reserved: orderedTileKeys(request.options?.reserved),
+                  status: "queued",
+                },
         })),
     };
   }
 
   enqueue(request: PathRequest) {
+    const cacheKey = pathCacheKey(
+      request.start,
+      request.goal,
+      request.options,
+    );
+    const cachedPath = cacheKey
+      ? this.pathCache.get(cacheKey) ?? null
+      : null;
+    if (cachedPath) this.pathCacheHits += 1;
+    else this.pathCacheMisses += 1;
     this.requests.set(request.key, {
       key: request.key,
       priority: request.priority,
@@ -100,6 +155,10 @@ export class DeterministicPathRequestQueue {
       start: { ...request.start },
       goal: { ...request.goal },
       options: request.options,
+      cacheKey,
+      cachedPath,
+      cachedExpansionsRemaining: cachedPath?.expansions ?? 0,
+      expansions: 0,
       search: null,
       started: false,
     });
@@ -116,7 +175,10 @@ export class DeterministicPathRequestQueue {
 
   clear() {
     this.requests.clear();
+    this.pathCache.clear();
     this.nextSequence = 0;
+    this.pathCacheHits = 0;
+    this.pathCacheMisses = 0;
   }
 
   stateOf(key: string): "queued" | "planning" | null {
@@ -137,6 +199,27 @@ export class DeterministicPathRequestQueue {
       const remaining = expansionBudget - expansions;
       if (remaining === 0) break;
 
+      if (request.cachedPath) {
+        request.started = true;
+        const consumed = Math.min(
+          remaining,
+          request.cachedExpansionsRemaining,
+        );
+        request.cachedExpansionsRemaining -= consumed;
+        request.expansions += consumed;
+        expansions += consumed;
+        if (request.cachedExpansionsRemaining > 0) break;
+
+        this.requests.delete(request.key);
+        completed.push({
+          key: request.key,
+          priority: request.priority,
+          status: "resolved",
+          path: request.cachedPath.path,
+        });
+        continue;
+      }
+
       request.search ??= createPathSearch(
         request.start,
         request.goal,
@@ -144,10 +227,14 @@ export class DeterministicPathRequestQueue {
       );
       request.started = true;
       const result = request.search.advance(remaining);
+      request.expansions += result.expansions;
       expansions += result.expansions;
       if (result.status === "planning") break;
 
       this.requests.delete(request.key);
+      if (result.status === "resolved" && result.path) {
+        this.rememberPath(request, result.path);
+      }
       completed.push({
         key: request.key,
         priority: request.priority,
@@ -159,6 +246,23 @@ export class DeterministicPathRequestQueue {
     return Object.freeze({
       expansions,
       completed: Object.freeze(completed),
+    });
+  }
+
+  private rememberPath(
+    request: QueuedRequest,
+    path: readonly GridPoint[],
+  ) {
+    if (!request.cacheKey || this.pathCache.has(request.cacheKey)) return;
+    if (this.pathCache.size >= PATH_CACHE_CAPACITY) {
+      const oldest = this.pathCache.keys().next().value;
+      if (oldest !== undefined) this.pathCache.delete(oldest);
+    }
+    this.pathCache.set(request.cacheKey, {
+      path: Object.freeze(
+        path.map((point) => Object.freeze({ ...point })),
+      ),
+      expansions: request.expansions,
     });
   }
 

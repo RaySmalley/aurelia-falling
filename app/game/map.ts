@@ -48,8 +48,14 @@ export const BLOCKED_TILES: readonly GridPoint[] = Object.freeze(
     .sort((a, b) => a - b)
     .map((key) =>
       Object.freeze({ x: key % MAP_SIZE, y: Math.floor(key / MAP_SIZE) }),
-    ),
+  ),
 );
+
+// Exact and data-derived: any deterministic terrain edit automatically moves
+// path requests into a new cache namespace.
+export const MAP_TERRAIN_REVISION = [...blocked]
+  .sort((left, right) => left - right)
+  .join(",");
 
 export function isInsideMap(point: GridPoint) {
   return (

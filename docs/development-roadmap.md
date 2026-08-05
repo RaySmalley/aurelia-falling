@@ -310,12 +310,12 @@ ScaleManager, accessibility, and deterministic architecture already delivered.
 
 ### Current implementation slice
 
-The full-bleed stage and compact persistent HUD are complete. The current slice
-keeps selection identity, primary orders, camera controls, and Solar Spear
-access in the bottom overlay while moving construction, production, detailed
-asset data, telemetry, and help into a single bounded contextual panel. Panel
-visibility is presentation-only React state; opening, switching, and dismissing
-panels does not resize or recreate the Phaser runtime.
+All four full-bleed UI slices are complete. Active play keeps selection
+identity, primary orders, camera controls, and Solar Spear access in compact
+overlays while construction, production, detailed asset data, telemetry, and
+help use one bounded contextual panel. Overlay safe regions, blocking states,
+viewport and fullscreen transitions, reduced motion, keyboard traversal, focus
+restoration, and gameplay-input gating are covered by release tests.
 
 ### Work
 
@@ -449,6 +449,11 @@ Each request is capped at 16,384 node expansions. With the 4,096-expansion
 tick budget, a finite batch of `R` full-cost requests therefore completes or
 fails within at most `4R` planning ticks; shared formations normally consume
 one request rather than one request per unit.
+
+The final caching slice reuses successful routes only when the static terrain
+revision and exact occupied and reserved tile revisions match. Cache hits replay
+the original expansion cost through the same priority queue, so they reduce A*
+work without changing completion ticks, movement outcomes, or replay timing.
 
 ### Work
 

@@ -20,6 +20,7 @@ const simulationModule = await vite.ssrLoadModule(
 const { createPathSearch, findPath } = pathfinding;
 const {
   DeterministicPathRequestQueue,
+  PATH_CACHE_CAPACITY,
   PATH_REQUESTS_PER_PRIORITY_AGING_STEP,
 } = queueModule;
 const {
@@ -55,6 +56,9 @@ const displaceUnitAcrossTile = (simulation, unit) => {
   assert.notDeepEqual(displacedTile, originalTile);
   return displacedTile;
 };
+
+const revisedTiles = (values, revision) =>
+  Object.assign(new Set(values), { revision });
 
 test("incremental path searches preserve synchronous path outcomes", () => {
   const occupied = new Set([66, 67, 68, 69]);
@@ -206,6 +210,127 @@ test("path request queues replace and cancel requests deterministically", () => 
   assert.equal(queue.size, 0);
 });
 
+test("path request caches preserve deterministic expansion timing", () => {
+  const queue = new DeterministicPathRequestQueue();
+  const request = {
+    start: { x: 1, y: 1 },
+    goal: { x: 20, y: 20 },
+    priority: "direct",
+    options: {
+      occupied: revisedTiles([66, 67, 68, 69], "occupied:v1"),
+    },
+  };
+  queue.enqueue({ key: "initial", ...request });
+  const initial = queue.advance(4_096);
+
+  assert.equal(initial.completed.length, 1);
+  assert.ok(initial.expansions > 1);
+  assert.deepEqual(queue.cacheDiagnostics(), {
+    capacity: PATH_CACHE_CAPACITY,
+    entries: 1,
+    hits: 0,
+    misses: 1,
+  });
+
+  queue.enqueue({ key: "cached", ...request });
+  const partial = queue.advance(initial.expansions - 1);
+  assert.equal(partial.expansions, initial.expansions - 1);
+  assert.deepEqual(partial.completed, []);
+  assert.equal(queue.stateOf("cached"), "planning");
+
+  const completed = queue.advance(1);
+  assert.equal(completed.expansions, 1);
+  assert.equal(completed.completed.length, 1);
+  assert.deepEqual(
+    completed.completed[0].path,
+    initial.completed[0].path,
+  );
+  assert.deepEqual(queue.cacheDiagnostics(), {
+    capacity: PATH_CACHE_CAPACITY,
+    entries: 1,
+    hits: 1,
+    misses: 1,
+  });
+});
+
+test("path request caches invalidate on occupancy and stay bounded", () => {
+  const queue = new DeterministicPathRequestQueue();
+  const enqueueResolved = (key, start, options) => {
+    queue.enqueue({
+      key,
+      start,
+      goal: start,
+      priority: "background",
+      options,
+    });
+    const result = queue.advance(1);
+    assert.equal(result.completed.length, 1);
+  };
+
+  enqueueResolved("base", { x: 1, y: 1 }, {
+    occupied: revisedTiles([66], "occupied:v1"),
+  });
+  queue.enqueue({
+    key: "same-occupancy",
+    start: { x: 1, y: 1 },
+    goal: { x: 1, y: 1 },
+    priority: "background",
+    options: { occupied: revisedTiles([66], "occupied:v1") },
+  });
+  assert.equal(queue.cacheDiagnostics().hits, 1);
+  assert.equal(queue.cancel("same-occupancy"), true);
+
+  enqueueResolved("changed-occupancy", { x: 1, y: 1 }, {
+    occupied: revisedTiles([66, 67], "occupied:v2"),
+  });
+  assert.equal(queue.cacheDiagnostics().misses, 2);
+
+  queue.clear();
+  for (let index = 0; index <= PATH_CACHE_CAPACITY; index += 1) {
+    enqueueResolved(
+      `bounded:${index}`,
+      { x: index % 64, y: Math.floor(index / 64) },
+    );
+  }
+  assert.equal(queue.cacheDiagnostics().entries, PATH_CACHE_CAPACITY);
+  queue.enqueue({
+    key: "evicted",
+    start: { x: 0, y: 0 },
+    goal: { x: 0, y: 0 },
+    priority: "background",
+  });
+  assert.equal(queue.cacheDiagnostics().hits, 0);
+  assert.equal(
+    queue.cacheDiagnostics().misses,
+    PATH_CACHE_CAPACITY + 2,
+  );
+});
+
+test("path request enqueue defers occupancy iteration to budgeted planning", () => {
+  const queue = new DeterministicPathRequestQueue();
+  let iterations = 0;
+  const occupied = {
+    revision: "occupied:lazy",
+    has: (key) => key === 66,
+    *[Symbol.iterator]() {
+      iterations += 1;
+      yield 66;
+    },
+  };
+
+  queue.enqueue({
+    key: "lazy",
+    start: { x: 1, y: 1 },
+    goal: { x: 5, y: 5 },
+    priority: "direct",
+    options: { occupied },
+  });
+
+  assert.equal(iterations, 0);
+  queue.advance(1);
+  assert.equal(iterations, 1);
+});
+
 test("live formation orders share one budgeted anchor request", () => {
   const simulation = new Simulation(11_001, "economy");
   const units = Array.from({ length: 200 }, (_, index) =>
@@ -324,6 +449,41 @@ test("live path planning never exceeds its per-tick expansion budget", () => {
       ["queued", "planning"].includes(unit.pathingState),
     ),
     true,
+  );
+});
+
+test("simulation replans reuse valid cached routes without changing budget timing", () => {
+  const simulation = new Simulation(11_016, "economy");
+  const unit = simulation.createUnitState(
+    1,
+    1,
+    "argusRifle",
+    { x: 2, y: 2 },
+  );
+  simulation.units = [unit];
+  simulation.structures = [];
+  simulation.fields = [];
+  simulation.rebuildEntityIndexes();
+
+  simulation.planPath(unit, { x: 20, y: 20 }, "background");
+  simulation.lastPathExpansions = 0;
+  simulation.processPathRequests(PATH_EXPANSIONS_PER_TICK);
+  const firstExpansions = simulation.pathfindingDiagnostics().expansions;
+  assert.ok(firstExpansions > 1);
+  assert.equal(simulation.pathfindingDiagnostics().cachedPaths, 1);
+
+  simulation.clearPath(unit);
+  simulation.planPath(unit, { x: 20, y: 20 }, "background");
+  assert.equal(simulation.pathfindingDiagnostics().pathCacheHits, 1);
+  simulation.lastPathExpansions = 0;
+  simulation.processPathRequests(firstExpansions - 1);
+  assert.equal(simulation.pathfindingDiagnostics().pendingRequests, 1);
+  simulation.processPathRequests(1);
+
+  assert.equal(simulation.pathfindingDiagnostics().pendingRequests, 0);
+  assert.equal(
+    simulation.pathfindingDiagnostics().expansions,
+    firstExpansions,
   );
 });
 
