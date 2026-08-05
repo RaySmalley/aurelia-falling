@@ -573,10 +573,14 @@ export class Simulation {
   }
 
   pathfindingDiagnostics() {
+    const cache = this.pathRequests.cacheDiagnostics();
     return Object.freeze({
       expansionBudget: this.lastPathExpansionBudget,
       expansions: this.lastPathExpansions,
       pendingRequests: this.pathRequests.size,
+      cachedPaths: cache.entries,
+      pathCacheHits: cache.hits,
+      pathCacheMisses: cache.misses,
     });
   }
 

@@ -66,6 +66,9 @@ Phase 11 has integrated a deterministic, budgeted live path-request queue across
 formation movement, combat chasing, AI movement, harvesting, and rally orders.
 Compatible formations share anchor routes, pending work participates in replay
 state, and large-army performance gates enforce the per-tick planning budget.
+Successful routes are cached against the terrain and exact occupancy revision;
+cache hits replay their original expansion cost so simulation timing remains
+unchanged.
 
 Phase 10 established deterministic entity indices and a uniform spatial
 grid integrated into the simulation. Unit and structure ID resolution is
