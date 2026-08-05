@@ -57,6 +57,9 @@ const displaceUnitAcrossTile = (simulation, unit) => {
   return displacedTile;
 };
 
+const revisedTiles = (values, revision) =>
+  Object.assign(new Set(values), { revision });
+
 test("incremental path searches preserve synchronous path outcomes", () => {
   const occupied = new Set([66, 67, 68, 69]);
   const expected = findPath(
@@ -213,7 +216,9 @@ test("path request caches preserve deterministic expansion timing", () => {
     start: { x: 1, y: 1 },
     goal: { x: 20, y: 20 },
     priority: "direct",
-    options: { occupied: new Set([66, 67, 68, 69]) },
+    options: {
+      occupied: revisedTiles([66, 67, 68, 69], "occupied:v1"),
+    },
   };
   queue.enqueue({ key: "initial", ...request });
   const initial = queue.advance(4_096);
@@ -263,20 +268,20 @@ test("path request caches invalidate on occupancy and stay bounded", () => {
   };
 
   enqueueResolved("base", { x: 1, y: 1 }, {
-    occupied: new Set([66]),
+    occupied: revisedTiles([66], "occupied:v1"),
   });
   queue.enqueue({
     key: "same-occupancy",
     start: { x: 1, y: 1 },
     goal: { x: 1, y: 1 },
     priority: "background",
-    options: { occupied: new Set([66]) },
+    options: { occupied: revisedTiles([66], "occupied:v1") },
   });
   assert.equal(queue.cacheDiagnostics().hits, 1);
   assert.equal(queue.cancel("same-occupancy"), true);
 
   enqueueResolved("changed-occupancy", { x: 1, y: 1 }, {
-    occupied: new Set([66, 67]),
+    occupied: revisedTiles([66, 67], "occupied:v2"),
   });
   assert.equal(queue.cacheDiagnostics().misses, 2);
 
@@ -299,6 +304,31 @@ test("path request caches invalidate on occupancy and stay bounded", () => {
     queue.cacheDiagnostics().misses,
     PATH_CACHE_CAPACITY + 2,
   );
+});
+
+test("path request enqueue defers occupancy iteration to budgeted planning", () => {
+  const queue = new DeterministicPathRequestQueue();
+  let iterations = 0;
+  const occupied = {
+    revision: "occupied:lazy",
+    has: (key) => key === 66,
+    *[Symbol.iterator]() {
+      iterations += 1;
+      yield 66;
+    },
+  };
+
+  queue.enqueue({
+    key: "lazy",
+    start: { x: 1, y: 1 },
+    goal: { x: 5, y: 5 },
+    priority: "direct",
+    options: { occupied },
+  });
+
+  assert.equal(iterations, 0);
+  queue.advance(1);
+  assert.equal(iterations, 1);
 });
 
 test("live formation orders share one budgeted anchor request", () => {

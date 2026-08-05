@@ -470,6 +470,7 @@ class OccupiedTileView implements PathTileSet {
   constructor(
     private readonly counts: ReadonlyMap<number, number>,
     private readonly excludedCounts: ReadonlyMap<number, number>,
+    readonly revision: string,
   ) {}
 
   has(key: number) {
@@ -549,6 +550,7 @@ export class Simulation {
   private readonly unitPathingOverrides = new Map<UnitId, PathingState>();
   private readonly pathOccupancyCounts =
     new Map<PlayerId | 0, ReadonlyMap<number, number>>();
+  private pathOccupancyRevision = 0;
   private nextPathRequestId = 1;
   private lastPathExpansions = 0;
   private lastPathExpansionBudget = PATH_EXPANSIONS_PER_TICK;
@@ -658,11 +660,11 @@ export class Simulation {
     const commandTick = this.tick;
     observer?.begin("commands", commandTick);
     for (const command of this.commands.splice(0)) {
-      this.pathOccupancyCounts.clear();
+      this.invalidatePathOccupancy();
       this.applyCommand(command);
     }
     for (const command of this.aiCommands.splice(0)) {
-      this.pathOccupancyCounts.clear();
+      this.invalidatePathOccupancy();
       this.applyAiCommand(command);
     }
     observer?.end("commands", commandTick);
@@ -701,7 +703,7 @@ export class Simulation {
       observer?.end("fields", observedTick);
     }
 
-    this.pathOccupancyCounts.clear();
+    this.invalidatePathOccupancy();
     observer?.begin("unitOrders", observedTick);
     for (const unit of this.sortedUnits()) {
       if (unit.cooldownTicks > 0) unit.cooldownTicks -= 1;
@@ -1115,6 +1117,7 @@ export class Simulation {
     this.pendingPathRequests.clear();
     this.unitPendingPathRequests.clear();
     this.unitPathingOverrides.clear();
+    this.pathOccupancyRevision = 0;
     this.pathOccupancyCounts.clear();
     this.nextPathRequestId = 1;
     this.lastPathExpansions = 0;
@@ -1959,7 +1962,7 @@ export class Simulation {
   }
 
   private rebuildEntityIndexes() {
-    this.pathOccupancyCounts.clear();
+    this.invalidatePathOccupancy();
     this.unitsById.clear();
     this.structuresById.clear();
     this.unitSpatialIndex.clear();
@@ -2089,7 +2092,20 @@ export class Simulation {
       const key = tileKeyOf(toTile(unit.position));
       excludedCounts.set(key, (excludedCounts.get(key) ?? 0) + 1);
     }
-    return new OccupiedTileView(counts, excludedCounts);
+    const exclusionRevision = [...excludedCounts]
+      .sort(([left], [right]) => left - right)
+      .map(([key, count]) => `${key}:${count}`)
+      .join(",");
+    return new OccupiedTileView(
+      counts,
+      excludedCounts,
+      `${this.pathOccupancyRevision}:${cacheKey}:${exclusionRevision}`,
+    );
+  }
+
+  private invalidatePathOccupancy() {
+    this.pathOccupancyRevision += 1;
+    this.pathOccupancyCounts.clear();
   }
 
   private issueFormationMoveFor(

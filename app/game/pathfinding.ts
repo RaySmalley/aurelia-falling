@@ -17,6 +17,7 @@ const heuristic = (a: GridPoint, b: GridPoint) =>
   Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 
 export type PathTileSet = Readonly<{
+  revision?: string;
   has(value: number): boolean;
   [Symbol.iterator](): Iterator<number>;
 }>;
