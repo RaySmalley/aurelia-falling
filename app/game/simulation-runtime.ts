@@ -129,11 +129,14 @@ export class InProcessSimulationRuntime {
   private lastTick = 0;
   private snapshotCadenceTicks = DEFAULT_SNAPSHOT_CADENCE_TICKS;
   private readonly pauseReasons = new Set<SimulationRuntimePauseReason>();
+  private initializing = false;
   private terminated = false;
   private readonly scheduledCommands =
     new Map<number, ScheduledRuntimeMessage[]>();
   private readonly receivedSequences = new Set<number>();
   private readonly listeners = new Set<SimulationRuntimeEventListener>();
+  private readonly pendingEvents: SimulationRuntimeEvent[] = [];
+  private emitting = false;
 
   subscribe(listener: SimulationRuntimeEventListener) {
     this.listeners.add(listener);
@@ -253,7 +256,7 @@ export class InProcessSimulationRuntime {
     if (!isNonNegativeInteger(ticks)) {
       throw new Error("ticks must be a non-negative integer");
     }
-    if (this.terminated) return 0;
+    if (this.initializing || this.terminated) return 0;
     if (!this.requireSimulation() || this.pauseReasons.size > 0) return 0;
 
     let advanced = 0;
@@ -328,11 +331,16 @@ export class InProcessSimulationRuntime {
     );
     const snapshot = this.simulation.snapshot();
     this.lastTick = snapshot.tick;
-    this.emit({
-      protocolVersion: SIMULATION_RUNTIME_PROTOCOL_VERSION,
-      type: "ready",
-      tick: this.lastTick,
-    });
+    this.initializing = true;
+    try {
+      this.emit({
+        protocolVersion: SIMULATION_RUNTIME_PROTOCOL_VERSION,
+        type: "ready",
+        tick: this.lastTick,
+      });
+    } finally {
+      this.initializing = false;
+    }
     if (!this.terminated) this.emitSnapshot(snapshot);
   }
 
@@ -431,6 +439,17 @@ export class InProcessSimulationRuntime {
   }
 
   private emit(event: SimulationRuntimeEvent) {
-    this.listeners.forEach((listener) => listener(event));
+    this.pendingEvents.push(event);
+    if (this.emitting) return;
+
+    this.emitting = true;
+    try {
+      while (this.pendingEvents.length > 0) {
+        const next = this.pendingEvents.shift()!;
+        for (const listener of [...this.listeners]) listener(next);
+      }
+    } finally {
+      this.emitting = false;
+    }
   }
 }

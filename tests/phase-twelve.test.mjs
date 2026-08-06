@@ -227,6 +227,23 @@ test("termination reentered from ready suppresses the initial snapshot", () => {
   assert.equal(runtime.advance(), 0);
 });
 
+test("ready listeners cannot advance ahead of the initial snapshot", () => {
+  const runtime = new InProcessSimulationRuntime();
+  const events = [];
+  const advances = [];
+  runtime.subscribe((event) => {
+    events.push(event);
+    if (event.type === "ready") advances.push(runtime.advance());
+  });
+
+  runtime.dispatch(initialize({ snapshotCadenceTicks: 1 }));
+  assert.deepEqual(advances, [0]);
+  assert.deepEqual(events.map((event) => event.type), ["ready", "snapshot"]);
+  assert.equal(events.at(-1).tick, 0);
+  assert.equal(events.at(-1).snapshot.tick, 0);
+  assert.equal(runtime.tick(), 0);
+});
+
 test("a reentrant pause stops the current multi-tick batch", () => {
   const runtime = new InProcessSimulationRuntime();
   runtime.dispatch(initialize({ snapshotCadenceTicks: 1 }));
@@ -242,6 +259,24 @@ test("a reentrant pause stops the current multi-tick batch", () => {
 
   assert.equal(runtime.advance(10), 1);
   assert.equal(runtime.tick(), 1);
+});
+
+test("nested runtime events reach every listener in FIFO order", () => {
+  const runtime = new InProcessSimulationRuntime();
+  runtime.dispatch(initialize({ snapshotCadenceTicks: 1 }));
+  const firstEvents = [];
+  const secondEvents = [];
+  runtime.subscribe((event) => {
+    firstEvents.push(event.type);
+    if (event.type === "snapshot") {
+      runtime.dispatch({ protocolVersion: version, type: "terminate" });
+    }
+  });
+  runtime.subscribe((event) => secondEvents.push(event.type));
+
+  runtime.advance();
+  assert.deepEqual(firstEvents, ["snapshot", "terminated"]);
+  assert.deepEqual(secondEvents, ["snapshot", "terminated"]);
 });
 
 test("serialized initialization discriminants fail closed", () => {
