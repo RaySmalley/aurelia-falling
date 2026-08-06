@@ -292,6 +292,24 @@ test("snapshot listeners cannot reenter active advancement", () => {
   assert.equal(runtime.tick(), 2);
 });
 
+test("listener failures cannot interrupt fan-out or tick accounting", () => {
+  const errors = [];
+  const runtime = new InProcessSimulationRuntime((error) => errors.push(error));
+  runtime.dispatch(initialize({ snapshotCadenceTicks: 1 }));
+  const observedTicks = [];
+  runtime.subscribe((event) => {
+    if (event.type === "snapshot") throw new Error(`failed:${event.tick}`);
+  });
+  runtime.subscribe((event) => {
+    if (event.type === "snapshot") observedTicks.push(event.tick);
+  });
+
+  assert.equal(runtime.advance(2), 2);
+  assert.equal(runtime.tick(), 2);
+  assert.deepEqual(observedTicks, [1, 2]);
+  assert.deepEqual(errors.map((error) => error.message), ["failed:1", "failed:2"]);
+});
+
 test("serialized initialization discriminants fail closed", () => {
   for (const invalid of [
     { scenario: "sandbox" },

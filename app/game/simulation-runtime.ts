@@ -139,6 +139,10 @@ export class InProcessSimulationRuntime {
   private readonly pendingEvents: SimulationRuntimeEvent[] = [];
   private emitting = false;
 
+  constructor(
+    private readonly reportListenerError: (error: unknown) => void = () => {},
+  ) {}
+
   subscribe(listener: SimulationRuntimeEventListener) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -452,7 +456,17 @@ export class InProcessSimulationRuntime {
     try {
       while (this.pendingEvents.length > 0) {
         const next = this.pendingEvents.shift()!;
-        for (const listener of [...this.listeners]) listener(next);
+        for (const listener of [...this.listeners]) {
+          try {
+            listener(next);
+          } catch (error) {
+            try {
+              this.reportListenerError(error);
+            } catch {
+              // Error reporting is presentation-only and cannot affect the runtime.
+            }
+          }
+        }
       }
     } finally {
       this.emitting = false;
