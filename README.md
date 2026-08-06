@@ -70,6 +70,12 @@ Successful routes are cached against the terrain and exact occupancy revision;
 cache hits replay their original expansion cost so simulation timing remains
 unchanged.
 
+Phase 12 has begun with a versioned, framework-independent simulation runtime
+protocol and a Node-compatible in-process adapter. Commands now have a defined
+intended-tick and same-tick sequence contract for worker transport, with fixed
+snapshot cadence and explicit pause, resume, termination, and error events. The
+existing Phaser-owned clock remains active until worker parity is proven.
+
 Phase 10 established deterministic entity indices and a uniform spatial
 grid integrated into the simulation. Unit and structure ID resolution is
 constant-time; target acquisition uses bounded radius queries while preserving
