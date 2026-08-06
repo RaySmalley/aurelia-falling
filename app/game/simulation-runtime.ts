@@ -129,6 +129,7 @@ export class InProcessSimulationRuntime {
   private lastTick = 0;
   private snapshotCadenceTicks = DEFAULT_SNAPSHOT_CADENCE_TICKS;
   private readonly pauseReasons = new Set<SimulationRuntimePauseReason>();
+  private advancing = false;
   private initializing = false;
   private terminated = false;
   private readonly scheduledCommands =
@@ -256,38 +257,43 @@ export class InProcessSimulationRuntime {
     if (!isNonNegativeInteger(ticks)) {
       throw new Error("ticks must be a non-negative integer");
     }
-    if (this.initializing || this.terminated) return 0;
+    if (this.advancing || this.initializing || this.terminated) return 0;
     if (!this.requireSimulation() || this.pauseReasons.size > 0) return 0;
 
     let advanced = 0;
-    for (
-      let count = 0;
-      count < ticks && !this.terminated && this.pauseReasons.size === 0;
-      count += 1
-    ) {
-      const commands = this.scheduledCommands.get(this.lastTick) ?? [];
-      this.scheduledCommands.delete(this.lastTick);
-      for (const message of commands.sort(
-        (left, right) => left.sequence - right.sequence,
-      )) {
-        if (message.type === "restart") {
-          this.simulation = new Simulation(
-            message.seed,
-            message.scenario,
-            message.difficulty,
-          );
-          this.scheduledCommands.clear();
-        } else {
-          this.simulation!.enqueue(message.command);
+    this.advancing = true;
+    try {
+      for (
+        let count = 0;
+        count < ticks && !this.terminated && this.pauseReasons.size === 0;
+        count += 1
+      ) {
+        const commands = this.scheduledCommands.get(this.lastTick) ?? [];
+        this.scheduledCommands.delete(this.lastTick);
+        for (const message of commands.sort(
+          (left, right) => left.sequence - right.sequence,
+        )) {
+          if (message.type === "restart") {
+            this.simulation = new Simulation(
+              message.seed,
+              message.scenario,
+              message.difficulty,
+            );
+            this.scheduledCommands.clear();
+          } else {
+            this.simulation!.enqueue(message.command);
+          }
+        }
+        const simulation = this.simulation!;
+        simulation.step();
+        this.lastTick += 1;
+        advanced += 1;
+        if (this.lastTick % this.snapshotCadenceTicks === 0) {
+          this.emitSnapshot(simulation.snapshot());
         }
       }
-      const simulation = this.simulation!;
-      simulation.step();
-      this.lastTick += 1;
-      advanced += 1;
-      if (this.lastTick % this.snapshotCadenceTicks === 0) {
-        this.emitSnapshot(simulation.snapshot());
-      }
+    } finally {
+      this.advancing = false;
     }
     return advanced;
   }

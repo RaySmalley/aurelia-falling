@@ -279,6 +279,19 @@ test("nested runtime events reach every listener in FIFO order", () => {
   assert.deepEqual(secondEvents, ["snapshot", "terminated"]);
 });
 
+test("snapshot listeners cannot reenter active advancement", () => {
+  const runtime = new InProcessSimulationRuntime();
+  runtime.dispatch(initialize({ snapshotCadenceTicks: 1 }));
+  const nestedAdvances = [];
+  runtime.subscribe((event) => {
+    if (event.type === "snapshot") nestedAdvances.push(runtime.advance());
+  });
+
+  assert.equal(runtime.advance(2), 2);
+  assert.deepEqual(nestedAdvances, [0, 0]);
+  assert.equal(runtime.tick(), 2);
+});
+
 test("serialized initialization discriminants fail closed", () => {
   for (const invalid of [
     { scenario: "sandbox" },
