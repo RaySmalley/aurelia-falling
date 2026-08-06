@@ -70,6 +70,23 @@ test("runtime protocol initializes and publishes snapshots at a fixed cadence", 
   assert.equal(runtime.tick(), 5);
 });
 
+test("runtime constructs full snapshots only on publication ticks", () => {
+  const runtime = new InProcessSimulationRuntime();
+  runtime.dispatch(initialize({ snapshotCadenceTicks: 3 }));
+  const simulation = runtime.simulation;
+  const snapshot = simulation.snapshot.bind(simulation);
+  let snapshotCalls = 0;
+  simulation.snapshot = () => {
+    snapshotCalls += 1;
+    return snapshot();
+  };
+
+  runtime.advance(2);
+  assert.equal(snapshotCalls, 0);
+  runtime.advance();
+  assert.equal(snapshotCalls, 1);
+});
+
 test("same-tick commands apply in sequence order rather than arrival order", () => {
   const runtime = new InProcessSimulationRuntime();
   runtime.dispatch(initialize());
@@ -160,6 +177,23 @@ test("termination is final even when requested during a multi-tick advance", () 
   assert.equal(runtime.tick(), 1);
 });
 
+test("a reentrant pause stops the current multi-tick batch", () => {
+  const runtime = new InProcessSimulationRuntime();
+  runtime.dispatch(initialize({ snapshotCadenceTicks: 1 }));
+  runtime.subscribe((event) => {
+    if (event.type === "snapshot" && event.tick === 1) {
+      runtime.dispatch({
+        protocolVersion: version,
+        type: "pause",
+        reason: "manual",
+      });
+    }
+  });
+
+  assert.equal(runtime.advance(10), 1);
+  assert.equal(runtime.tick(), 1);
+});
+
 test("serialized initialization discriminants fail closed", () => {
   for (const invalid of [
     { scenario: "sandbox" },
@@ -182,6 +216,7 @@ test("queued messages are cloned at the transport boundary", () => {
   const message = command(1, 1, {
     kind: "selectUnits",
     unitIds: [1],
+    additive: false,
   });
   runtime.dispatch(message);
   message.command.unitIds.push(2);
@@ -192,13 +227,39 @@ test("queued messages are cloned at the transport boundary", () => {
     .map((unit) => unit.id), [1]);
 });
 
+test("malformed serialized command payloads report structured errors", () => {
+  for (const malformed of [
+    undefined,
+    null,
+    { kind: "selectUnits" },
+    { kind: "move", target: { x: Number.NaN, y: 4 }, mode: "move" },
+    { kind: "restartSkirmish", seed: 1 },
+    { kind: "unknown" },
+  ]) {
+    const runtime = new InProcessSimulationRuntime();
+    const events = [];
+    runtime.subscribe((event) => events.push(event));
+    runtime.dispatch(initialize());
+    runtime.dispatch({
+      protocolVersion: version,
+      type: "command",
+      sequence: 1,
+      intendedTick: 0,
+      command: malformed,
+    });
+    assert.equal(events.at(-1).type, "error");
+    assert.equal(events.at(-1).code, "invalid_message");
+    assert.equal(runtime.advance(), 1);
+  }
+});
+
 test("adapter matches direct simulation state for the same scheduled commands", () => {
   const direct = new Simulation(4_115, "skirmish", "normal");
   const runtime = new InProcessSimulationRuntime();
   runtime.dispatch(initialize({ snapshotCadenceTicks: 1 }));
   const scheduled = new Map([
-    [0, [{ kind: "selectUnits", unitIds: [1, 2] }]],
-    [1, [{ kind: "move", target: { x: 18, y: 18 } }]],
+    [0, [{ kind: "selectUnits", unitIds: [1, 2], additive: false }]],
+    [1, [{ kind: "move", target: { x: 18, y: 18 }, mode: "move" }]],
     [4, [{ kind: "stop" }]],
   ]);
   let sequence = 0;

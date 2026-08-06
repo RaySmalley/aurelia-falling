@@ -21,11 +21,93 @@ type ScheduledRuntimeMessage =
 
 const SIMULATION_SCENARIOS = new Set(["combat", "economy", "skirmish"]);
 const AI_DIFFICULTIES = new Set(["easy", "normal", "hard"]);
-const RESTART_COMMAND_KINDS = new Set([
-  "restartCombat",
-  "restartEconomy",
-  "restartSkirmish",
+const UNIT_KINDS = new Set([
+  "midasHarvester",
+  "argusRifle",
+  "cyclopsRocket",
+  "hermesScout",
+  "atlasTank",
+  "gorgonWalker",
 ]);
+const BUILDING_KINDS = new Set([
+  "citadel",
+  "reactor",
+  "refinery",
+  "barracks",
+  "foundry",
+  "operationsCenter",
+  "turret",
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isFinitePoint(value: unknown) {
+  return (
+    isRecord(value) &&
+    typeof value.x === "number" &&
+    Number.isFinite(value.x) &&
+    typeof value.y === "number" &&
+    Number.isFinite(value.y)
+  );
+}
+
+function isId(value: unknown) {
+  return typeof value === "number" && isNonNegativeInteger(value);
+}
+
+function isIdArray(value: unknown) {
+  return Array.isArray(value) && value.every(isId);
+}
+
+function isSimulationCommand(
+  value: unknown,
+): value is QueueSimulationCommandMessage["command"] {
+  if (!isRecord(value) || typeof value.kind !== "string") return false;
+  switch (value.kind) {
+    case "selectUnits":
+      return isIdArray(value.unitIds) && typeof value.additive === "boolean";
+    case "selectStructures":
+      return (
+        isIdArray(value.structureIds) && typeof value.additive === "boolean"
+      );
+    case "move":
+      return (
+        isFinitePoint(value.target) &&
+        (value.mode === "move" || value.mode === "attackMove")
+      );
+    case "stop":
+    case "hold":
+    case "surrender":
+      return true;
+    case "assignControlGroup":
+    case "recallControlGroup":
+      return isId(value.group);
+    case "setRally":
+    case "launchSolarSpear":
+      return isFinitePoint(value.target);
+    case "attackUnit":
+      return isId(value.targetUnitId);
+    case "attackStructure":
+      return isId(value.targetStructureId);
+    case "placeBuilding":
+      return BUILDING_KINDS.has(value.buildingKind as string) &&
+        isFinitePoint(value.tile);
+    case "queueUnit":
+      return isId(value.structureId) && UNIT_KINDS.has(value.unitKind as string);
+    case "cancelProduction":
+      return isId(value.structureId) && isId(value.queueIndex);
+    case "sellStructure":
+      return isId(value.structureId);
+    case "setRepair":
+      return isId(value.structureId) && typeof value.enabled === "boolean";
+    case "switchPlayer":
+      return value.playerId === 1 || value.playerId === 2;
+    default:
+      return false;
+  }
+}
 
 function isNonNegativeInteger(value: number) {
   return Number.isInteger(value) && value >= 0;
@@ -68,10 +150,10 @@ export class InProcessSimulationRuntime {
         this.initialize(message);
         break;
       case "command":
-        if (RESTART_COMMAND_KINDS.has(message.command.kind)) {
+        if (!isSimulationCommand(message.command)) {
           this.emitError(
             "invalid_message",
-            "Restart transitions must use an explicit restart message.",
+            "Command payload is malformed or unsupported.",
             false,
           );
           return;
@@ -125,7 +207,7 @@ export class InProcessSimulationRuntime {
     let advanced = 0;
     for (
       let count = 0;
-      count < ticks && !this.terminated;
+      count < ticks && !this.terminated && this.pauseReason === null;
       count += 1
     ) {
       const commands = this.scheduledCommands.get(this.lastTick) ?? [];
@@ -146,11 +228,10 @@ export class InProcessSimulationRuntime {
       }
       const simulation = this.simulation!;
       simulation.step();
-      const snapshot = simulation.snapshot();
       this.lastTick += 1;
       advanced += 1;
       if (this.lastTick % this.snapshotCadenceTicks === 0) {
-        this.emitSnapshot(snapshot);
+        this.emitSnapshot(simulation.snapshot());
       }
     }
     return advanced;
