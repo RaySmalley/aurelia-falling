@@ -42,6 +42,17 @@ const command = (sequence, intendedTick, value) => ({
   command: value,
 });
 
+const restart = (sequence, intendedTick, overrides = {}) => ({
+  protocolVersion: version,
+  type: "restart",
+  sequence,
+  intendedTick,
+  seed: 4_115,
+  scenario: "skirmish",
+  difficulty: "normal",
+  ...overrides,
+});
+
 test("runtime protocol initializes and publishes snapshots at a fixed cadence", () => {
   const runtime = new InProcessSimulationRuntime();
   const events = [];
@@ -63,15 +74,13 @@ test("same-tick commands apply in sequence order rather than arrival order", () 
   const runtime = new InProcessSimulationRuntime();
   runtime.dispatch(initialize());
   runtime.dispatch(
-    command(2, 0, {
-      kind: "restartSkirmish",
+    restart(2, 0, {
       seed: 222,
       difficulty: "hard",
     }),
   );
   runtime.dispatch(
-    command(1, 0, {
-      kind: "restartSkirmish",
+    restart(1, 0, {
       seed: 111,
       difficulty: "easy",
     }),
@@ -115,6 +124,72 @@ test("pause and resume are explicit and never accumulate catch-up work", () => {
   runtime.dispatch({ protocolVersion: version, type: "resume" });
   assert.equal(runtime.advance(), 1);
   assert.equal(runtime.tick(), 1);
+});
+
+test("restart keeps the protocol clock monotonic and clears old future work", () => {
+  const runtime = new InProcessSimulationRuntime();
+  const snapshots = [];
+  runtime.subscribe((event) => {
+    if (event.type === "snapshot") snapshots.push(event);
+  });
+  runtime.dispatch(initialize({ snapshotCadenceTicks: 1 }));
+  runtime.advance(3);
+  runtime.dispatch(restart(1, 3, { seed: 9_001 }));
+  runtime.dispatch(command(2, 5, { kind: "surrender" }));
+
+  runtime.advance(4);
+  assert.equal(runtime.tick(), 7);
+  assert.equal(snapshots.at(-1).tick, 7);
+  assert.equal(snapshots.at(-1).snapshot.tick, 4);
+  assert.equal(runtime.authoritativeState().seed, 9_001);
+  assert.equal(runtime.authoritativeState().status, "active");
+});
+
+test("termination is final even when requested during a multi-tick advance", () => {
+  const runtime = new InProcessSimulationRuntime();
+  runtime.dispatch(initialize({ snapshotCadenceTicks: 1 }));
+  runtime.subscribe((event) => {
+    if (event.type === "snapshot" && event.tick === 1) {
+      runtime.dispatch({ protocolVersion: version, type: "terminate" });
+    }
+  });
+
+  assert.equal(runtime.advance(10), 1);
+  assert.equal(runtime.tick(), 1);
+  assert.equal(runtime.advance(10), 0);
+  assert.equal(runtime.tick(), 1);
+});
+
+test("serialized initialization discriminants fail closed", () => {
+  for (const invalid of [
+    { scenario: "sandbox" },
+    { difficulty: "impossible" },
+    { seed: 0x1_0000_0000 },
+  ]) {
+    const runtime = new InProcessSimulationRuntime();
+    const events = [];
+    runtime.subscribe((event) => events.push(event));
+    runtime.dispatch(initialize(invalid));
+    assert.equal(events.at(-1).type, "error");
+    assert.equal(events.at(-1).code, "invalid_initialization");
+    assert.equal(runtime.tick(), null);
+  }
+});
+
+test("queued messages are cloned at the transport boundary", () => {
+  const runtime = new InProcessSimulationRuntime();
+  runtime.dispatch(initialize());
+  const message = command(1, 1, {
+    kind: "selectUnits",
+    unitIds: [1],
+  });
+  runtime.dispatch(message);
+  message.command.unitIds.push(2);
+
+  runtime.advance(2);
+  assert.deepEqual(runtime.authoritativeState().units
+    .filter((unit) => unit.selected)
+    .map((unit) => unit.id), [1]);
 });
 
 test("adapter matches direct simulation state for the same scheduled commands", () => {

@@ -30,7 +30,22 @@ export type QueueSimulationCommandMessage = VersionedRuntimeMessage &
     type: "command";
     sequence: number;
     intendedTick: number;
-    command: SimCommand;
+    command: Exclude<
+      SimCommand,
+      {
+        kind: "restartCombat" | "restartEconomy" | "restartSkirmish";
+      }
+    >;
+  }>;
+
+export type RestartSimulationRuntimeMessage = VersionedRuntimeMessage &
+  Readonly<{
+    type: "restart";
+    sequence: number;
+    intendedTick: number;
+    seed: number;
+    scenario: SimulationScenario;
+    difficulty: AiDifficulty;
   }>;
 
 export type PauseSimulationRuntimeMessage = VersionedRuntimeMessage &
@@ -52,6 +67,7 @@ export type TerminateSimulationRuntimeMessage = VersionedRuntimeMessage &
 export type SimulationRuntimeRequest =
   | InitializeSimulationRuntimeMessage
   | QueueSimulationCommandMessage
+  | RestartSimulationRuntimeMessage
   | PauseSimulationRuntimeMessage
   | ResumeSimulationRuntimeMessage
   | TerminateSimulationRuntimeMessage;
@@ -74,6 +90,7 @@ export type SimulationRuntimeReadyEvent = VersionedRuntimeMessage &
 export type SimulationRuntimeSnapshotEvent = VersionedRuntimeMessage &
   Readonly<{
     type: "snapshot";
+    /** Monotonic runtime tick. The nested simulation tick resets on restart. */
     tick: number;
     snapshot: SimulationSnapshot;
   }>;
