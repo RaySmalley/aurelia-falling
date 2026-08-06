@@ -246,6 +246,11 @@ export class InProcessSimulationRuntime {
         this.terminated = true;
         this.scheduledCommands.clear();
         this.receivedSequences.clear();
+        for (let index = this.pendingEvents.length - 1; index >= 0; index -= 1) {
+          if (this.pendingEvents[index].type === "snapshot") {
+            this.pendingEvents.splice(index, 1);
+          }
+        }
         this.emit({
           protocolVersion: SIMULATION_RUNTIME_PROTOCOL_VERSION,
           type: "terminated",

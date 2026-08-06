@@ -244,6 +244,22 @@ test("ready listeners cannot advance ahead of the initial snapshot", () => {
   assert.equal(runtime.tick(), 0);
 });
 
+test("reentrant initialization cannot leak a queued snapshot after termination", () => {
+  const runtime = new InProcessSimulationRuntime();
+  const events = [];
+  runtime.subscribe((event) => {
+    events.push(event.type);
+    if (event.type === "error") runtime.dispatch(initialize());
+    if (event.type === "ready") {
+      runtime.dispatch({ protocolVersion: version, type: "terminate" });
+    }
+  });
+
+  runtime.dispatch(null);
+  assert.deepEqual(events, ["error", "ready", "terminated"]);
+  assert.equal(runtime.advance(), 0);
+});
+
 test("a reentrant pause stops the current multi-tick batch", () => {
   const runtime = new InProcessSimulationRuntime();
   runtime.dispatch(initialize({ snapshotCadenceTicks: 1 }));
