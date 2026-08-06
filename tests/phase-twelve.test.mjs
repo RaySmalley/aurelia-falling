@@ -177,6 +177,21 @@ test("termination is final even when requested during a multi-tick advance", () 
   assert.equal(runtime.tick(), 1);
 });
 
+test("termination reentered from ready suppresses the initial snapshot", () => {
+  const runtime = new InProcessSimulationRuntime();
+  const events = [];
+  runtime.subscribe((event) => {
+    events.push(event);
+    if (event.type === "ready") {
+      runtime.dispatch({ protocolVersion: version, type: "terminate" });
+    }
+  });
+
+  runtime.dispatch(initialize());
+  assert.deepEqual(events.map((event) => event.type), ["ready", "terminated"]);
+  assert.equal(runtime.advance(), 0);
+});
+
 test("a reentrant pause stops the current multi-tick batch", () => {
   const runtime = new InProcessSimulationRuntime();
   runtime.dispatch(initialize({ snapshotCadenceTicks: 1 }));
@@ -233,6 +248,11 @@ test("malformed serialized command payloads report structured errors", () => {
     null,
     { kind: "selectUnits" },
     { kind: "move", target: { x: Number.NaN, y: 4 }, mode: "move" },
+    {
+      kind: "placeBuilding",
+      buildingKind: "reactor",
+      tile: { x: 10.5, y: 10.5 },
+    },
     { kind: "restartSkirmish", seed: 1 },
     { kind: "unknown" },
   ]) {
@@ -250,6 +270,17 @@ test("malformed serialized command payloads report structured errors", () => {
     assert.equal(events.at(-1).type, "error");
     assert.equal(events.at(-1).code, "invalid_message");
     assert.equal(runtime.advance(), 1);
+  }
+});
+
+test("non-record serialized requests report structured errors", () => {
+  for (const malformed of [undefined, null, false, 7, "initialize"]) {
+    const runtime = new InProcessSimulationRuntime();
+    const events = [];
+    runtime.subscribe((event) => events.push(event));
+    assert.doesNotThrow(() => runtime.dispatch(malformed));
+    assert.equal(events.at(-1).type, "error");
+    assert.equal(events.at(-1).code, "invalid_message");
   }
 });
 

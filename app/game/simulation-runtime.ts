@@ -43,13 +43,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function isFinitePoint(value: unknown) {
+function isFinitePoint(
+  value: unknown,
+): value is Readonly<{ x: number; y: number }> {
   return (
     isRecord(value) &&
     typeof value.x === "number" &&
     Number.isFinite(value.x) &&
     typeof value.y === "number" &&
     Number.isFinite(value.y)
+  );
+}
+
+function isIntegerPoint(value: unknown) {
+  return (
+    isFinitePoint(value) &&
+    Number.isInteger(value.x) &&
+    Number.isInteger(value.y)
   );
 }
 
@@ -93,7 +103,7 @@ function isSimulationCommand(
       return isId(value.targetStructureId);
     case "placeBuilding":
       return BUILDING_KINDS.has(value.buildingKind as string) &&
-        isFinitePoint(value.tile);
+        isIntegerPoint(value.tile);
     case "queueUnit":
       return isId(value.structureId) && UNIT_KINDS.has(value.unitKind as string);
     case "cancelProduction":
@@ -129,7 +139,23 @@ export class InProcessSimulationRuntime {
     return () => this.listeners.delete(listener);
   }
 
-  dispatch(message: SimulationRuntimeRequest) {
+  dispatch(message: unknown) {
+    if (!isRecord(message)) {
+      this.emitError(
+        "invalid_message",
+        "Runtime request must be a message object.",
+        false,
+      );
+      return;
+    }
+    if (typeof message.protocolVersion !== "number") {
+      this.emitError(
+        "invalid_message",
+        "Runtime request must declare a numeric protocol version.",
+        false,
+      );
+      return;
+    }
     if (
       message.protocolVersion !== SIMULATION_RUNTIME_PROTOCOL_VERSION
     ) {
@@ -140,17 +166,26 @@ export class InProcessSimulationRuntime {
       );
       return;
     }
+    if (typeof message.type !== "string") {
+      this.emitError(
+        "invalid_message",
+        "Runtime request must declare a message type.",
+        false,
+      );
+      return;
+    }
     if (this.terminated) {
       this.emitError("runtime_terminated", "Runtime is terminated.", false);
       return;
     }
 
-    switch (message.type) {
+    const request = message as unknown as SimulationRuntimeRequest;
+    switch (request.type) {
       case "initialize":
-        this.initialize(message);
+        this.initialize(request);
         break;
       case "command":
-        if (!isSimulationCommand(message.command)) {
+        if (!isSimulationCommand(request.command)) {
           this.emitError(
             "invalid_message",
             "Command payload is malformed or unsupported.",
@@ -158,10 +193,10 @@ export class InProcessSimulationRuntime {
           );
           return;
         }
-        this.queueScheduledMessage(message);
+        this.queueScheduledMessage(request);
         break;
       case "restart":
-        if (!this.validInitialization(message)) {
+        if (!this.validInitialization(request)) {
           this.emitError(
             "invalid_initialization",
             "Restart seed, scenario, and difficulty must be valid.",
@@ -169,11 +204,19 @@ export class InProcessSimulationRuntime {
           );
           return;
         }
-        this.queueScheduledMessage(message);
+        this.queueScheduledMessage(request);
         break;
       case "pause":
         if (!this.requireSimulation()) return;
-        this.pauseReason = message.reason;
+        if (request.reason !== "hidden" && request.reason !== "manual") {
+          this.emitError(
+            "invalid_message",
+            "Pause reason must be hidden or manual.",
+            false,
+          );
+          return;
+        }
+        this.pauseReason = request.reason;
         this.emitPauseChanged();
         break;
       case "resume":
@@ -281,7 +324,7 @@ export class InProcessSimulationRuntime {
       type: "ready",
       tick: this.lastTick,
     });
-    this.emitSnapshot(snapshot);
+    if (!this.terminated) this.emitSnapshot(snapshot);
   }
 
   private queueScheduledMessage(message: ScheduledRuntimeMessage) {
