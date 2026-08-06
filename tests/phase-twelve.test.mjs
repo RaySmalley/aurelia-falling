@@ -138,9 +138,44 @@ test("pause and resume are explicit and never accumulate catch-up work", () => {
 
   assert.equal(runtime.advance(20), 0);
   assert.equal(runtime.tick(), 0);
-  runtime.dispatch({ protocolVersion: version, type: "resume" });
+  runtime.dispatch({
+    protocolVersion: version,
+    type: "resume",
+    reason: "hidden",
+  });
   assert.equal(runtime.advance(), 1);
   assert.equal(runtime.tick(), 1);
+});
+
+test("visibility resumes preserve an independent manual pause", () => {
+  const runtime = new InProcessSimulationRuntime();
+  const events = [];
+  runtime.subscribe((event) => events.push(event));
+  runtime.dispatch(initialize());
+  runtime.dispatch({
+    protocolVersion: version,
+    type: "pause",
+    reason: "manual",
+  });
+  runtime.dispatch({
+    protocolVersion: version,
+    type: "pause",
+    reason: "hidden",
+  });
+  runtime.dispatch({
+    protocolVersion: version,
+    type: "resume",
+    reason: "hidden",
+  });
+
+  assert.equal(runtime.advance(), 0);
+  assert.deepEqual(events.at(-1).reasons, ["manual"]);
+  runtime.dispatch({
+    protocolVersion: version,
+    type: "resume",
+    reason: "manual",
+  });
+  assert.equal(runtime.advance(), 1);
 });
 
 test("restart keeps the protocol clock monotonic and clears old future work", () => {

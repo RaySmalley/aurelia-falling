@@ -21,6 +21,7 @@ type ScheduledRuntimeMessage =
 
 const SIMULATION_SCENARIOS = new Set(["combat", "economy", "skirmish"]);
 const AI_DIFFICULTIES = new Set(["easy", "normal", "hard"]);
+const PAUSE_REASONS = ["hidden", "manual"] as const;
 const UNIT_KINDS = new Set([
   "midasHarvester",
   "argusRifle",
@@ -127,7 +128,7 @@ export class InProcessSimulationRuntime {
   private simulation: Simulation | null = null;
   private lastTick = 0;
   private snapshotCadenceTicks = DEFAULT_SNAPSHOT_CADENCE_TICKS;
-  private pauseReason: SimulationRuntimePauseReason | null = null;
+  private readonly pauseReasons = new Set<SimulationRuntimePauseReason>();
   private terminated = false;
   private readonly scheduledCommands =
     new Map<number, ScheduledRuntimeMessage[]>();
@@ -216,12 +217,20 @@ export class InProcessSimulationRuntime {
           );
           return;
         }
-        this.pauseReason = request.reason;
+        this.pauseReasons.add(request.reason);
         this.emitPauseChanged();
         break;
       case "resume":
         if (!this.requireSimulation()) return;
-        this.pauseReason = null;
+        if (request.reason !== "hidden" && request.reason !== "manual") {
+          this.emitError(
+            "invalid_message",
+            "Resume reason must be hidden or manual.",
+            false,
+          );
+          return;
+        }
+        this.pauseReasons.delete(request.reason);
         this.emitPauseChanged();
         break;
       case "terminate":
@@ -245,12 +254,12 @@ export class InProcessSimulationRuntime {
       throw new Error("ticks must be a non-negative integer");
     }
     if (this.terminated) return 0;
-    if (!this.requireSimulation() || this.pauseReason !== null) return 0;
+    if (!this.requireSimulation() || this.pauseReasons.size > 0) return 0;
 
     let advanced = 0;
     for (
       let count = 0;
-      count < ticks && !this.terminated && this.pauseReason === null;
+      count < ticks && !this.terminated && this.pauseReasons.size === 0;
       count += 1
     ) {
       const commands = this.scheduledCommands.get(this.lastTick) ?? [];
@@ -398,8 +407,10 @@ export class InProcessSimulationRuntime {
     this.emit({
       protocolVersion: SIMULATION_RUNTIME_PROTOCOL_VERSION,
       type: "pauseChanged",
-      paused: this.pauseReason !== null,
-      reason: this.pauseReason,
+      paused: this.pauseReasons.size > 0,
+      reasons: Object.freeze(
+        PAUSE_REASONS.filter((reason) => this.pauseReasons.has(reason)),
+      ),
       tick: this.lastTick,
     });
   }

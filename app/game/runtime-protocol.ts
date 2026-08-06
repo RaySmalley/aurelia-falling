@@ -57,6 +57,7 @@ export type PauseSimulationRuntimeMessage = VersionedRuntimeMessage &
 export type ResumeSimulationRuntimeMessage = VersionedRuntimeMessage &
   Readonly<{
     type: "resume";
+    reason: SimulationRuntimePauseReason;
   }>;
 
 export type TerminateSimulationRuntimeMessage = VersionedRuntimeMessage &
@@ -99,7 +100,7 @@ export type SimulationRuntimePauseEvent = VersionedRuntimeMessage &
   Readonly<{
     type: "pauseChanged";
     paused: boolean;
-    reason: SimulationRuntimePauseReason | null;
+    reasons: readonly SimulationRuntimePauseReason[];
     tick: number;
   }>;
 
