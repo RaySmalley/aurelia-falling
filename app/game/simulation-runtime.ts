@@ -1,0 +1,480 @@
+import { Simulation } from "./simulation";
+import {
+  DEFAULT_SNAPSHOT_CADENCE_TICKS,
+  SIMULATION_RUNTIME_PROTOCOL_VERSION,
+  type InitializeSimulationRuntimeMessage,
+  type QueueSimulationCommandMessage,
+  type RestartSimulationRuntimeMessage,
+  type SimulationRuntimeErrorCode,
+  type SimulationRuntimeEvent,
+  type SimulationRuntimePauseReason,
+  type SimulationRuntimeRequest,
+} from "./runtime-protocol";
+
+export type SimulationRuntimeEventListener = (
+  event: SimulationRuntimeEvent,
+) => void;
+
+type ScheduledRuntimeMessage =
+  | QueueSimulationCommandMessage
+  | RestartSimulationRuntimeMessage;
+
+const SIMULATION_SCENARIOS = new Set(["combat", "economy", "skirmish"]);
+const AI_DIFFICULTIES = new Set(["easy", "normal", "hard"]);
+const PAUSE_REASONS = ["hidden", "manual"] as const;
+const UNIT_KINDS = new Set([
+  "midasHarvester",
+  "argusRifle",
+  "cyclopsRocket",
+  "hermesScout",
+  "atlasTank",
+  "gorgonWalker",
+]);
+const BUILDING_KINDS = new Set([
+  "citadel",
+  "reactor",
+  "refinery",
+  "barracks",
+  "foundry",
+  "operationsCenter",
+  "turret",
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isFinitePoint(
+  value: unknown,
+): value is Readonly<{ x: number; y: number }> {
+  return (
+    isRecord(value) &&
+    typeof value.x === "number" &&
+    Number.isFinite(value.x) &&
+    typeof value.y === "number" &&
+    Number.isFinite(value.y)
+  );
+}
+
+function isIntegerPoint(value: unknown) {
+  return (
+    isFinitePoint(value) &&
+    Number.isInteger(value.x) &&
+    Number.isInteger(value.y)
+  );
+}
+
+function isId(value: unknown) {
+  return typeof value === "number" && isNonNegativeInteger(value);
+}
+
+function isIdArray(value: unknown) {
+  return Array.isArray(value) && value.every(isId);
+}
+
+function isSimulationCommand(
+  value: unknown,
+): value is QueueSimulationCommandMessage["command"] {
+  if (!isRecord(value) || typeof value.kind !== "string") return false;
+  switch (value.kind) {
+    case "selectUnits":
+      return isIdArray(value.unitIds) && typeof value.additive === "boolean";
+    case "selectStructures":
+      return (
+        isIdArray(value.structureIds) && typeof value.additive === "boolean"
+      );
+    case "move":
+      return (
+        isFinitePoint(value.target) &&
+        (value.mode === "move" || value.mode === "attackMove")
+      );
+    case "stop":
+    case "hold":
+    case "surrender":
+      return true;
+    case "assignControlGroup":
+    case "recallControlGroup":
+      return isId(value.group);
+    case "setRally":
+    case "launchSolarSpear":
+      return isFinitePoint(value.target);
+    case "attackUnit":
+      return isId(value.targetUnitId);
+    case "attackStructure":
+      return isId(value.targetStructureId);
+    case "placeBuilding":
+      return BUILDING_KINDS.has(value.buildingKind as string) &&
+        isIntegerPoint(value.tile);
+    case "queueUnit":
+      return isId(value.structureId) && UNIT_KINDS.has(value.unitKind as string);
+    case "cancelProduction":
+      return isId(value.structureId) && isId(value.queueIndex);
+    case "sellStructure":
+      return isId(value.structureId);
+    case "setRepair":
+      return isId(value.structureId) && typeof value.enabled === "boolean";
+    case "switchPlayer":
+      return value.playerId === 1 || value.playerId === 2;
+    default:
+      return false;
+  }
+}
+
+function isNonNegativeInteger(value: number) {
+  return Number.isInteger(value) && value >= 0;
+}
+
+export class InProcessSimulationRuntime {
+  private simulation: Simulation | null = null;
+  private lastTick = 0;
+  private snapshotCadenceTicks = DEFAULT_SNAPSHOT_CADENCE_TICKS;
+  private readonly pauseReasons = new Set<SimulationRuntimePauseReason>();
+  private advancing = false;
+  private initializing = false;
+  private terminated = false;
+  private readonly scheduledCommands =
+    new Map<number, ScheduledRuntimeMessage[]>();
+  private readonly receivedSequences = new Set<number>();
+  private readonly listeners = new Set<SimulationRuntimeEventListener>();
+  private readonly pendingEvents: SimulationRuntimeEvent[] = [];
+  private emitting = false;
+
+  constructor(
+    private readonly reportListenerError: (error: unknown) => void = () => {},
+  ) {}
+
+  subscribe(listener: SimulationRuntimeEventListener) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  dispatch(message: unknown) {
+    if (!isRecord(message)) {
+      this.emitError(
+        "invalid_message",
+        "Runtime request must be a message object.",
+        false,
+      );
+      return;
+    }
+    if (typeof message.protocolVersion !== "number") {
+      this.emitError(
+        "invalid_message",
+        "Runtime request must declare a numeric protocol version.",
+        false,
+      );
+      return;
+    }
+    if (
+      message.protocolVersion !== SIMULATION_RUNTIME_PROTOCOL_VERSION
+    ) {
+      this.emitError(
+        "protocol_version_mismatch",
+        `Expected protocol version ${SIMULATION_RUNTIME_PROTOCOL_VERSION}.`,
+        false,
+      );
+      return;
+    }
+    if (typeof message.type !== "string") {
+      this.emitError(
+        "invalid_message",
+        "Runtime request must declare a message type.",
+        false,
+      );
+      return;
+    }
+    if (this.terminated) {
+      this.emitError("runtime_terminated", "Runtime is terminated.", false);
+      return;
+    }
+
+    const request = message as unknown as SimulationRuntimeRequest;
+    switch (request.type) {
+      case "initialize":
+        this.initialize(request);
+        break;
+      case "command":
+        if (!isSimulationCommand(request.command)) {
+          this.emitError(
+            "invalid_message",
+            "Command payload is malformed or unsupported.",
+            false,
+          );
+          return;
+        }
+        this.queueScheduledMessage(request);
+        break;
+      case "restart":
+        if (!this.validInitialization(request)) {
+          this.emitError(
+            "invalid_initialization",
+            "Restart seed, scenario, and difficulty must be valid.",
+            false,
+          );
+          return;
+        }
+        this.queueScheduledMessage(request);
+        break;
+      case "pause":
+        if (!this.requireSimulation()) return;
+        if (request.reason !== "hidden" && request.reason !== "manual") {
+          this.emitError(
+            "invalid_message",
+            "Pause reason must be hidden or manual.",
+            false,
+          );
+          return;
+        }
+        this.pauseReasons.add(request.reason);
+        this.emitPauseChanged();
+        break;
+      case "resume":
+        if (!this.requireSimulation()) return;
+        if (request.reason !== "hidden" && request.reason !== "manual") {
+          this.emitError(
+            "invalid_message",
+            "Resume reason must be hidden or manual.",
+            false,
+          );
+          return;
+        }
+        this.pauseReasons.delete(request.reason);
+        this.emitPauseChanged();
+        break;
+      case "terminate":
+        if (!this.requireSimulation()) return;
+        this.terminated = true;
+        this.scheduledCommands.clear();
+        this.receivedSequences.clear();
+        for (let index = this.pendingEvents.length - 1; index >= 0; index -= 1) {
+          if (this.pendingEvents[index].type === "snapshot") {
+            this.pendingEvents.splice(index, 1);
+          }
+        }
+        this.emit({
+          protocolVersion: SIMULATION_RUNTIME_PROTOCOL_VERSION,
+          type: "terminated",
+          tick: this.lastTick,
+        });
+        break;
+      default:
+        this.emitError("invalid_message", "Unknown runtime message.", false);
+    }
+  }
+
+  advance(ticks = 1) {
+    if (!isNonNegativeInteger(ticks)) {
+      throw new Error("ticks must be a non-negative integer");
+    }
+    if (this.advancing || this.initializing || this.terminated) return 0;
+    if (!this.requireSimulation() || this.pauseReasons.size > 0) return 0;
+
+    let advanced = 0;
+    this.advancing = true;
+    try {
+      for (
+        let count = 0;
+        count < ticks && !this.terminated && this.pauseReasons.size === 0;
+        count += 1
+      ) {
+        const commands = this.scheduledCommands.get(this.lastTick) ?? [];
+        this.scheduledCommands.delete(this.lastTick);
+        for (const message of commands.sort(
+          (left, right) => left.sequence - right.sequence,
+        )) {
+          if (message.type === "restart") {
+            this.simulation = new Simulation(
+              message.seed,
+              message.scenario,
+              message.difficulty,
+            );
+            this.scheduledCommands.clear();
+          } else {
+            this.simulation!.enqueue(message.command);
+          }
+        }
+        const simulation = this.simulation!;
+        simulation.step();
+        this.lastTick += 1;
+        advanced += 1;
+        if (this.lastTick % this.snapshotCadenceTicks === 0) {
+          this.emitSnapshot(simulation.snapshot());
+        }
+      }
+    } finally {
+      this.advancing = false;
+    }
+    return advanced;
+  }
+
+  tick() {
+    return this.simulation ? this.lastTick : null;
+  }
+
+  authoritativeState() {
+    return this.simulation?.authoritativeState() ?? null;
+  }
+
+  private initialize(message: InitializeSimulationRuntimeMessage) {
+    if (this.simulation) {
+      this.emitError(
+        "invalid_initialization",
+        "Runtime has already been initialized.",
+        false,
+      );
+      return;
+    }
+    const cadence =
+      message.snapshotCadenceTicks ?? DEFAULT_SNAPSHOT_CADENCE_TICKS;
+    if (
+      !this.validInitialization(message) ||
+      cadence < 1 ||
+      !Number.isInteger(cadence)
+    ) {
+      this.emitError(
+        "invalid_initialization",
+        "Seed, scenario, difficulty, and snapshot cadence must be valid.",
+        false,
+      );
+      return;
+    }
+    this.snapshotCadenceTicks = cadence;
+    this.simulation = new Simulation(
+      message.seed,
+      message.scenario,
+      message.difficulty,
+    );
+    const snapshot = this.simulation.snapshot();
+    this.lastTick = snapshot.tick;
+    this.initializing = true;
+    try {
+      this.emit({
+        protocolVersion: SIMULATION_RUNTIME_PROTOCOL_VERSION,
+        type: "ready",
+        tick: this.lastTick,
+      });
+    } finally {
+      this.initializing = false;
+    }
+    if (!this.terminated) this.emitSnapshot(snapshot);
+  }
+
+  private queueScheduledMessage(message: ScheduledRuntimeMessage) {
+    if (!this.requireSimulation()) return;
+    if (
+      !isNonNegativeInteger(message.sequence) ||
+      !isNonNegativeInteger(message.intendedTick)
+    ) {
+      this.emitError(
+        "invalid_message",
+        "Command sequence and intended tick must be non-negative integers.",
+        false,
+      );
+      return;
+    }
+    if (this.receivedSequences.has(message.sequence)) {
+      this.emitError(
+        "duplicate_sequence",
+        `Command sequence ${message.sequence} was already received.`,
+        true,
+      );
+      return;
+    }
+    if (message.intendedTick < this.lastTick) {
+      this.emitError(
+        "late_command",
+        `Command intended for tick ${message.intendedTick} arrived at tick ${this.lastTick}.`,
+        true,
+      );
+      return;
+    }
+    this.receivedSequences.add(message.sequence);
+    const commands = this.scheduledCommands.get(message.intendedTick) ?? [];
+    commands.push(structuredClone(message));
+    this.scheduledCommands.set(message.intendedTick, commands);
+  }
+
+  private validInitialization(
+    message:
+      | InitializeSimulationRuntimeMessage
+      | RestartSimulationRuntimeMessage,
+  ) {
+    return (
+      isNonNegativeInteger(message.seed) &&
+      message.seed <= 0xffff_ffff &&
+      SIMULATION_SCENARIOS.has(message.scenario) &&
+      AI_DIFFICULTIES.has(message.difficulty)
+    );
+  }
+
+  private requireSimulation() {
+    if (this.simulation) return true;
+    this.emitError(
+      "not_initialized",
+      "Runtime must be initialized before use.",
+      true,
+    );
+    return false;
+  }
+
+  private emitSnapshot(snapshot: ReturnType<Simulation["snapshot"]>) {
+    this.emit({
+      protocolVersion: SIMULATION_RUNTIME_PROTOCOL_VERSION,
+      type: "snapshot",
+      tick: this.lastTick,
+      snapshot,
+    });
+  }
+
+  private emitPauseChanged() {
+    this.emit({
+      protocolVersion: SIMULATION_RUNTIME_PROTOCOL_VERSION,
+      type: "pauseChanged",
+      paused: this.pauseReasons.size > 0,
+      reasons: Object.freeze(
+        PAUSE_REASONS.filter((reason) => this.pauseReasons.has(reason)),
+      ),
+      tick: this.lastTick,
+    });
+  }
+
+  private emitError(
+    code: SimulationRuntimeErrorCode,
+    message: string,
+    recoverable: boolean,
+  ) {
+    this.emit({
+      protocolVersion: SIMULATION_RUNTIME_PROTOCOL_VERSION,
+      type: "error",
+      code,
+      message,
+      recoverable,
+      tick: this.simulation ? this.lastTick : null,
+    });
+  }
+
+  private emit(event: SimulationRuntimeEvent) {
+    this.pendingEvents.push(Object.freeze(event));
+    if (this.emitting) return;
+
+    this.emitting = true;
+    try {
+      while (this.pendingEvents.length > 0) {
+        const next = this.pendingEvents.shift()!;
+        for (const listener of [...this.listeners]) {
+          try {
+            listener(next);
+          } catch (error) {
+            try {
+              this.reportListenerError(error);
+            } catch {
+              // Error reporting is presentation-only and cannot affect the runtime.
+            }
+          }
+        }
+      }
+    } finally {
+      this.emitting = false;
+    }
+  }
+}

@@ -10,7 +10,7 @@
     "build": "vinext build",
     "start": "vinext start --port 4000",
     "test": "npm run build && npm run test:unit",
-    "test:unit": "node --test --test-concurrency=1 tests/phase-zero.test.mjs tests/phase-one.test.mjs tests/phase-two.test.mjs tests/phase-three.test.mjs tests/phase-four.test.mjs tests/phase-five.test.mjs tests/phase-six.test.mjs tests/phase-nine.test.mjs tests/phase-ten.test.mjs tests/phase-eleven.test.mjs",
+    "test:unit": "node --test --test-concurrency=1 tests/phase-zero.test.mjs tests/phase-one.test.mjs tests/phase-two.test.mjs tests/phase-three.test.mjs tests/phase-four.test.mjs tests/phase-five.test.mjs tests/phase-six.test.mjs tests/phase-nine.test.mjs tests/phase-ten.test.mjs tests/phase-eleven.test.mjs tests/phase-twelve.test.mjs",
     "test:viewport": "node scripts/run-viewport-tests.mjs",
     "benchmark:simulation": "node scripts/run-simulation-benchmarks.mjs",
     "benchmark:pathfinding": "node scripts/run-simulation-benchmarks.mjs --scenarios formation-move,direct-attack --targeted-count 200 --max-targeted-worst-ms 25",

@@ -492,6 +492,16 @@ See Phase 2 of the
 Move mutable simulation ownership off the main thread without weakening the
 command queue or deterministic runtime contract.
 
+### Current implementation slice
+
+The first slice defines protocol version 1 as framework-independent request and
+event types. Commands carry an intended simulation tick and a unique sequence;
+the Node-compatible in-process adapter applies same-tick commands by sequence,
+publishes full snapshots at a fixed tick cadence, rejects late or duplicate
+commands, and models pause, resume, termination, and recoverable protocol
+errors explicitly. This adapter remains the comparison oracle for the upcoming
+dedicated worker transport and does not yet replace the Phaser-owned clock.
+
 ### Work
 
 - Define a versioned, framework-independent worker protocol.
