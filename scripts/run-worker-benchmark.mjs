@@ -18,7 +18,7 @@ const ACCEPTANCE_PARAMETERS = Object.freeze({
   unitCount: 600,
   warmupTicks: 20,
 });
-const ACCEPTANCE_NODE_VERSION = "v24.19.0";
+export const ACCEPTANCE_NODE_VERSION = "v24.19.0";
 const ACCEPTANCE_PROFILE = Object.freeze({
   ...ACCEPTANCE_PARAMETERS,
   nodeVersion: ACCEPTANCE_NODE_VERSION,

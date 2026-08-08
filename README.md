@@ -6,7 +6,9 @@ A browser real-time strategy game built with React, vinext, and Phaser 4.
 
 Use Node.js `24.19.0`, the pinned Node 24 LTS build for this project. The
 `.nvmrc`, `.node-version`, `package.json`, and npm engine check all declare the
-same version.
+same version. `npm run runtime:verify` also checks the running Node.js binary,
+lockfile, and worker-benchmark acceptance contract; CI runs this guard after
+setting up Node from `.node-version`.
 
 ## Local development
 

@@ -78,8 +78,10 @@ The checked-in [baseline](./baseline.json) records the pre-index implementation.
 The [spatial-index result](./spatial-index.json) records the same benchmark
 after constant-time entity lookup and nearby-cell separation were introduced.
 Both are evidence from their recorded hardware profile, not universal CI
-thresholds. The release gate remains the roadmap's minimum-hardware profile
-once that profile is defined.
+thresholds. Their `v24.18.0` runtime metadata is retained as historical
+provenance rather than rewritten to the current Node.js 24.19.0 requirement.
+The release gate remains the roadmap's minimum-hardware profile once that
+profile is defined.
 
 | Units | Tick p95 before | Tick p95 after | Change | Separation p95 before | Separation p95 after | Change |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
