@@ -10,6 +10,13 @@ const workerEntry = new URL(
   "./fixtures/simulation-worker-benchmark-thread.mjs",
   import.meta.url,
 );
+const ACCEPTANCE_PROFILE = Object.freeze({
+  maxTickMs: 50,
+  measuredTicks: 100,
+  snapshotCadenceTicks: 2,
+  unitCount: 600,
+  warmupTicks: 20,
+});
 
 const parseInteger = (value, option, allowZero = false) => {
   const normalized = String(value).trim();
@@ -37,13 +44,13 @@ const parsePositiveNumber = (value, option) => {
 
 export const parseArguments = (argv) => {
   const options = {
-    maxTickMs: 50,
-    measuredTicks: 100,
+    maxTickMs: ACCEPTANCE_PROFILE.maxTickMs,
+    measuredTicks: ACCEPTANCE_PROFILE.measuredTicks,
     output: null,
     seed: 12_600,
-    snapshotCadenceTicks: 2,
-    unitCount: 600,
-    warmupTicks: 20,
+    snapshotCadenceTicks: ACCEPTANCE_PROFILE.snapshotCadenceTicks,
+    unitCount: ACCEPTANCE_PROFILE.unitCount,
+    warmupTicks: ACCEPTANCE_PROFILE.warmupTicks,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -70,6 +77,38 @@ export const parseArguments = (argv) => {
   }
 
   return options;
+};
+
+export const evaluateAcceptanceGate = (options, result, tickTiming) => {
+  const acceptanceRun = Object.entries(ACCEPTANCE_PROFILE).every(
+    ([key, value]) => options[key] === value,
+  );
+  if (!acceptanceRun) {
+    return {
+      mode: "diagnostic",
+      acceptanceProfile: ACCEPTANCE_PROFILE,
+      checks: null,
+      passed: null,
+    };
+  }
+
+  const checks = {
+    unitCount: result.unitCount === ACCEPTANCE_PROFILE.unitCount,
+    completedTicks:
+      result.completedTicks === ACCEPTANCE_PROFILE.measuredTicks,
+    snapshotCadence:
+      result.snapshotCount ===
+      ACCEPTANCE_PROFILE.measuredTicks /
+        ACCEPTANCE_PROFILE.snapshotCadenceTicks,
+    tickBudget: tickTiming.worstMs <= ACCEPTANCE_PROFILE.maxTickMs,
+    fixedCadence: result.missedDeadlines === 0,
+  };
+  return {
+    mode: "acceptance",
+    acceptanceProfile: ACCEPTANCE_PROFILE,
+    checks,
+    passed: Object.values(checks).every(Boolean),
+  };
 };
 
 const percentile = (sorted, value) =>
@@ -149,12 +188,7 @@ const main = async () => {
   const result = await runWorker(options);
   const tickTiming = summarize(result.tickSamples);
   const scheduleLateness = summarize(result.scheduleLatenessSamples);
-  const checks = {
-    unitCount: result.unitCount === options.unitCount,
-    completedTicks: result.completedTicks === options.measuredTicks,
-    tickBudget: tickTiming.worstMs <= options.maxTickMs,
-    fixedCadence: result.missedDeadlines === 0,
-  };
+  const gate = evaluateAcceptanceGate(options, result, tickTiming);
   const cpu = cpus()[0];
   const report = {
     schemaVersion: 1,
@@ -189,10 +223,7 @@ const main = async () => {
       tickTiming,
       scheduleLateness,
     },
-    gate: {
-      checks,
-      passed: Object.values(checks).every(Boolean),
-    },
+    gate,
   };
   const serialized = `${JSON.stringify(report, null, 2)}\n`;
 
@@ -201,7 +232,7 @@ const main = async () => {
     await writeFile(options.output, serialized, "utf8");
   }
   process.stdout.write(serialized);
-  if (!report.gate.passed) {
+  if (report.gate.mode === "acceptance" && !report.gate.passed) {
     process.stderr.write("Phase 12 worker benchmark gate failed.\n");
     process.exitCode = 1;
   }

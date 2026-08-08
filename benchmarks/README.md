@@ -33,7 +33,10 @@ machine-readable gate fails if the workload is not exactly 600 units, does not
 complete every tick, takes more than the 50 ms tick interval, or misses the
 following fixed-step deadline. Scheduling lateness is reported separately so
 machine contention remains visible even when the simulation retains sufficient
-deadline headroom.
+deadline headroom. The acceptance result also requires exactly 100 measured
+ticks, 20 warmup ticks, and all 50 expected two-tick-cadence snapshots. Any CLI
+override makes the run explicitly diagnostic: it still reports timings but
+does not claim an acceptance pass or failure.
 
 To replace the checked-in machine baseline intentionally:
 

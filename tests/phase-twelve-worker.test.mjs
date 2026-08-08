@@ -5,7 +5,10 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
 import { createServer } from "vite";
-import { parseArguments as parseWorkerBenchmarkArguments } from "../scripts/run-worker-benchmark.mjs";
+import {
+  evaluateAcceptanceGate,
+  parseArguments as parseWorkerBenchmarkArguments,
+} from "../scripts/run-worker-benchmark.mjs";
 
 const execFileAsync = promisify(execFile);
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -444,7 +447,7 @@ test("worker benchmark arguments preserve the Phase 12 acceptance workload", () 
   );
 });
 
-test("dedicated worker benchmark emits and enforces its cadence gate", async () => {
+test("overridden worker benchmark runs are explicitly diagnostic", async () => {
   const { stdout } = await execFileAsync(
     process.execPath,
     [
@@ -472,38 +475,43 @@ test("dedicated worker benchmark emits and enforces its cadence gate", async () 
   assert.equal(report.result.snapshotCount, 1);
   assert.equal(report.result.tickTiming.sampleCount, 3);
   assert.equal(report.result.scheduleLateness.sampleCount, 3);
-  assert.deepEqual(report.gate.checks, {
+  assert.equal(report.gate.mode, "diagnostic");
+  assert.equal(report.gate.checks, null);
+  assert.equal(report.gate.passed, null);
+  assert.deepEqual(report.gate.acceptanceProfile, {
+    maxTickMs: 50,
+    measuredTicks: 100,
+    snapshotCadenceTicks: 2,
+    unitCount: 600,
+    warmupTicks: 20,
+  });
+});
+
+test("worker acceptance gate verifies the fixed workload and snapshot cadence", () => {
+  const options = parseWorkerBenchmarkArguments([]);
+  const result = {
+    completedTicks: 100,
+    missedDeadlines: 0,
+    snapshotCount: 50,
+    unitCount: 600,
+  };
+  const passing = evaluateAcceptanceGate(options, result, { worstMs: 49 });
+
+  assert.equal(passing.mode, "acceptance");
+  assert.deepEqual(passing.checks, {
     unitCount: true,
     completedTicks: true,
+    snapshotCadence: true,
     tickBudget: true,
     fixedCadence: true,
   });
-  assert.equal(report.gate.passed, true);
-});
+  assert.equal(passing.passed, true);
 
-test("worker benchmark fails closed when measured work exceeds its tick budget", async () => {
-  await assert.rejects(
-    execFileAsync(
-      process.execPath,
-      [
-        "scripts/run-worker-benchmark.mjs",
-        "--units",
-        "20",
-        "--warmup",
-        "0",
-        "--ticks",
-        "1",
-        "--max-tick-ms",
-        "0.000001",
-      ],
-      { cwd: root, maxBuffer: 4 * 1024 * 1024 },
-    ),
-    (error) => {
-      const report = JSON.parse(error.stdout);
-      assert.equal(report.gate.checks.tickBudget, false);
-      assert.equal(report.gate.passed, false);
-      assert.match(error.stderr, /worker benchmark gate failed/i);
-      return true;
-    },
+  const missingSnapshot = evaluateAcceptanceGate(
+    options,
+    { ...result, snapshotCount: 49 },
+    { worstMs: 49 },
   );
+  assert.equal(missingSnapshot.checks.snapshotCadence, false);
+  assert.equal(missingSnapshot.passed, false);
 });
