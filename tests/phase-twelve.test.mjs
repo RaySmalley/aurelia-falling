@@ -326,6 +326,27 @@ test("listener failures cannot interrupt fan-out or tick accounting", () => {
   assert.deepEqual(errors.map((error) => error.message), ["failed:1", "failed:2"]);
 });
 
+test("event envelopes are immutable across subscribers", () => {
+  const errors = [];
+  const runtime = new InProcessSimulationRuntime((error) => errors.push(error));
+  runtime.dispatch(initialize({ snapshotCadenceTicks: 1 }));
+  const observedTicks = [];
+  runtime.subscribe((event) => {
+    if (event.type === "snapshot") event.tick = 999;
+  });
+  runtime.subscribe((event) => {
+    if (event.type === "snapshot") {
+      assert.equal(Object.isFrozen(event), true);
+      observedTicks.push(event.tick);
+    }
+  });
+
+  runtime.advance();
+  assert.deepEqual(observedTicks, [1]);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0].message, /read only|assign/i);
+});
+
 test("serialized initialization discriminants fail closed", () => {
   for (const invalid of [
     { scenario: "sandbox" },

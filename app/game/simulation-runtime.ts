@@ -454,7 +454,7 @@ export class InProcessSimulationRuntime {
   }
 
   private emit(event: SimulationRuntimeEvent) {
-    this.pendingEvents.push(event);
+    this.pendingEvents.push(Object.freeze(event));
     if (this.emitting) return;
 
     this.emitting = true;
