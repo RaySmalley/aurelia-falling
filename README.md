@@ -66,8 +66,11 @@ versioned, framework-independent simulation runtime protocol, an in-process
 comparison oracle, and a dedicated Web Worker transport with a worker-owned
 20 Hz clock. Actual Node worker-thread tests prove fixed-checkpoint parity,
 main-thread-stall independence, and recoverable worker-failure reporting. The
-existing Phaser-owned live clock remains active until the worker client is
-integrated into the gameplay shell and the remaining performance gates pass.
+third slice makes that worker authoritative in live play. Phaser now consumes
+fixed-cadence snapshots and sends tick-stamped commands with a two-tick input
+lead; worker publication timestamps keep that delay bounded after main-thread
+stalls. The remaining Phase 12 work is the dedicated 600-unit worker benchmark
+and final performance-gate audit.
 
 Phase 9A now presents active play as a full-bleed battlefield with compact
 persistent status and command overlays. Construction, production, detailed

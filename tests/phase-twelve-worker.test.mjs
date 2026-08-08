@@ -21,9 +21,16 @@ const runtimeModule = await vite.ssrLoadModule(
 const workerClientModule = await vite.ssrLoadModule(
   "/app/game/simulation-worker-client.ts",
 );
+const workerSessionModule = await vite.ssrLoadModule(
+  "/app/game/simulation-worker-session.ts",
+);
 const { SIMULATION_RUNTIME_PROTOCOL_VERSION: version } = protocolModule;
 const { InProcessSimulationRuntime } = runtimeModule;
 const { WorkerSimulationRuntime } = workerClientModule;
+const {
+  LIVE_COMMAND_INPUT_DELAY_TICKS,
+  SimulationWorkerSession,
+} = workerSessionModule;
 
 test.after(() => vite.close());
 
@@ -119,6 +126,192 @@ function waitForEvent(runtime, predicate, timeoutMs = 5_000) {
     });
   });
 }
+
+function initialSnapshot() {
+  const runtime = new InProcessSimulationRuntime();
+  let snapshot;
+  runtime.subscribe((event) => {
+    if (event.type === "snapshot") snapshot = event.snapshot;
+  });
+  runtime.dispatch(initialize());
+  return snapshot;
+}
+
+test("live session initialization uses the versioned worker protocol", async () => {
+  const controlled = createControlledTransport();
+  const runtime = new WorkerSimulationRuntime(controlled.transport);
+  const session = new SimulationWorkerSession(runtime, {
+    seed: 8_808,
+    scenario: "skirmish",
+    difficulty: "hard",
+  });
+  const initialized = session.initialize();
+
+  assert.deepEqual(controlled.posted, [
+    {
+      protocolVersion: version,
+      type: "initialize",
+      seed: 8_808,
+      scenario: "skirmish",
+      difficulty: "hard",
+      snapshotCadenceTicks: 2,
+    },
+  ]);
+  const snapshot = initialSnapshot();
+  controlled.emit({
+    protocolVersion: version,
+    type: "snapshot",
+    tick: 0,
+    snapshot,
+  });
+  assert.equal(await initialized, snapshot);
+  session.terminate();
+});
+
+test("live command scheduling stays ahead of a worker after a main-thread stall", async () => {
+  let now = 0;
+  const controlled = createControlledTransport();
+  const runtime = new WorkerSimulationRuntime(controlled.transport);
+  const session = new SimulationWorkerSession(runtime, {
+    seed: 4_115,
+    scenario: "skirmish",
+    difficulty: "normal",
+    now: () => now,
+  });
+  const initialized = session.initialize();
+  const snapshot = initialSnapshot();
+  controlled.emit({
+    protocolVersion: version,
+    type: "snapshot",
+    tick: 10,
+    snapshot,
+  });
+  await initialized;
+
+  now = 260;
+  session.enqueue({ kind: "stop" });
+  const posted = controlled.posted.at(-1);
+  assert.equal(posted.type, "command");
+  assert.equal(posted.intendedTick, 15 + LIVE_COMMAND_INPUT_DELAY_TICKS);
+  session.terminate();
+});
+
+test("delayed snapshot delivery preserves the worker publication clock", async () => {
+  let now = 0;
+  const controlled = createControlledTransport();
+  const runtime = new WorkerSimulationRuntime(controlled.transport);
+  const session = new SimulationWorkerSession(runtime, {
+    seed: 4_115,
+    scenario: "skirmish",
+    difficulty: "normal",
+    now: () => now,
+  });
+  const initialized = session.initialize();
+  const snapshot = initialSnapshot();
+  now = 260;
+  controlled.emit({
+    protocolVersion: version,
+    type: "snapshot",
+    tick: 2,
+    publishedAtMs: 100,
+    snapshot,
+  });
+  await initialized;
+
+  session.enqueue({ kind: "stop" });
+  assert.equal(
+    controlled.posted.at(-1).intendedTick,
+    5 + LIVE_COMMAND_INPUT_DELAY_TICKS,
+  );
+  session.terminate();
+});
+
+test("paused live-session restarts target the frozen tick and resume explicitly", async () => {
+  const controlled = createControlledTransport();
+  const runtime = new WorkerSimulationRuntime(controlled.transport);
+  const session = new SimulationWorkerSession(runtime, {
+    seed: 4_115,
+    scenario: "skirmish",
+    difficulty: "normal",
+    now: () => 0,
+  });
+  const initialized = session.initialize();
+  const snapshot = initialSnapshot();
+  controlled.emit({
+    protocolVersion: version,
+    type: "snapshot",
+    tick: 12,
+    snapshot,
+  });
+  await initialized;
+  session.pause("manual");
+  controlled.emit({
+    protocolVersion: version,
+    type: "pauseChanged",
+    paused: true,
+    reasons: ["manual"],
+    tick: 12,
+  });
+
+  session.enqueue({
+    kind: "restartSkirmish",
+    seed: 9_900,
+    difficulty: "hard",
+  });
+  assert.deepEqual(controlled.posted.at(-1), {
+    protocolVersion: version,
+    type: "restart",
+    sequence: 0,
+    intendedTick: 12,
+    seed: 9_900,
+    scenario: "skirmish",
+    difficulty: "hard",
+  });
+  session.resume();
+  assert.deepEqual(controlled.posted.at(-1), {
+    protocolVersion: version,
+    type: "resume",
+    reason: "manual",
+  });
+  session.terminate();
+});
+
+test("resuming rebases command scheduling after a long pause", async () => {
+  let now = 0;
+  const controlled = createControlledTransport();
+  const runtime = new WorkerSimulationRuntime(controlled.transport);
+  const session = new SimulationWorkerSession(runtime, {
+    seed: 4_115,
+    scenario: "skirmish",
+    difficulty: "normal",
+    now: () => now,
+  });
+  const initialized = session.initialize();
+  const snapshot = initialSnapshot();
+  controlled.emit({
+    protocolVersion: version,
+    type: "snapshot",
+    tick: 12,
+    snapshot,
+  });
+  await initialized;
+  session.pause("manual");
+  controlled.emit({
+    protocolVersion: version,
+    type: "pauseChanged",
+    paused: true,
+    reasons: ["manual"],
+    tick: 12,
+  });
+
+  now = 120_000;
+  session.resume();
+  const intendedTick = session.enqueue({ kind: "surrender" });
+
+  assert.equal(intendedTick, 12 + LIVE_COMMAND_INPUT_DELAY_TICKS);
+  assert.equal(controlled.posted.at(-1).intendedTick, intendedTick);
+  session.terminate();
+});
 
 test("worker thread and in-process runtime publish identical checkpoints", async () => {
   const oracle = new InProcessSimulationRuntime();

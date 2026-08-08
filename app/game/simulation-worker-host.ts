@@ -69,7 +69,11 @@ export function startSimulationWorkerHost(
   };
 
   unsubscribeRuntime = runtime.subscribe((event) => {
-    port.postMessage(event);
+    port.postMessage(
+      event.type === "snapshot"
+        ? Object.freeze({ ...event, publishedAtMs: Date.now() })
+        : event,
+    );
     if (event.type === "ready" && !started) {
       started = true;
       clock.start(() => {

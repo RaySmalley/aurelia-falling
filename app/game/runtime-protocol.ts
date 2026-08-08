@@ -94,6 +94,8 @@ export type SimulationRuntimeSnapshotEvent = VersionedRuntimeMessage &
     type: "snapshot";
     /** Monotonic runtime tick. The nested simulation tick resets on restart. */
     tick: number;
+    /** Transport-only wall-clock sample used to bound live command latency. */
+    publishedAtMs?: number;
     snapshot: SimulationSnapshot;
   }>;
 

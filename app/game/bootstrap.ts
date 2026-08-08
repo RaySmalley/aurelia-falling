@@ -1,10 +1,15 @@
 import { BLOCKED_TILES, MAP_SIZE, TILE_MILLI } from "./map";
 import { gameData } from "./data";
-import { SIM_STEP_MS, Simulation } from "./simulation";
 import {
   isContinuousAudioTransition,
   ProceduralAudio,
 } from "./audio";
+import { createBrowserSimulationWorkerRuntime } from "./browser-simulation-worker-runtime";
+import {
+  SIMULATION_TICK_INTERVAL_MS,
+  SimulationWorkerSession,
+} from "./simulation-worker-session";
+import { DEFAULT_SNAPSHOT_CADENCE_TICKS } from "./runtime-protocol";
 import type {
   AudioCueSnapshot,
   AudioSettings,
@@ -183,8 +188,25 @@ function worldToGrid(point: Vec2): Vec2 {
 export async function createGameRuntime(
   host: HTMLDivElement,
 ): Promise<GameRuntime> {
-  const Phaser = await import("phaser");
-  const simulation = new Simulation(undefined, "skirmish");
+  const workerSession = new SimulationWorkerSession(
+    createBrowserSimulationWorkerRuntime(),
+    {
+      seed: 4_115,
+      scenario: "skirmish",
+      difficulty: "normal",
+    },
+  );
+  let Phaser: typeof import("phaser");
+  let initialSimulationSnapshot: SimulationSnapshot;
+  try {
+    [Phaser, initialSimulationSnapshot] = await Promise.all([
+      import("phaser"),
+      workerSession.initialize(),
+    ]);
+  } catch (error) {
+    workerSession.terminate();
+    throw error;
+  }
   const listeners = new Set<RuntimeListener>();
   let paused = false;
   let pauseReason: RuntimeSnapshot["pauseReason"] = null;
@@ -197,14 +219,15 @@ export async function createGameRuntime(
   let audioCue: AudioCueSnapshot | null = null;
   let nextAudioCueId = 1;
   let renderer = "initializing";
-  let accumulator = 0;
-  let lastSnapshot = simulation.snapshot();
+  let runtimeError: string | null = null;
+  let lastSnapshot = initialSimulationSnapshot;
   let previousSnapshot = lastSnapshot;
-  let lastEmittedTick = -1;
+  let lastSnapshotReceivedAt = performance.now();
   let detachKeyboardCaptureGuard = () => {};
   let refreshKeyboardInput = () => {};
   let gameplayInputEnabled = false;
-  let pendingFogMemoryReset = false;
+  let pendingFogMemoryResetAtTick: number | null = null;
+  let fogMemoryResetReady = false;
 
   const emit = () => {
     const snapshot: RuntimeSnapshot = {
@@ -218,6 +241,7 @@ export async function createGameRuntime(
       audioCue,
       renderer,
       cameraZoom,
+      runtimeError,
     };
     listeners.forEach((listener) => listener(snapshot));
   };
@@ -240,6 +264,51 @@ export async function createGameRuntime(
     audioCue = Object.freeze({ id: nextAudioCueId, text });
     nextAudioCueId += 1;
     emit();
+  });
+  const unsubscribeWorkerSession = workerSession.subscribe((event) => {
+    if (event.type === "snapshot") {
+      const nextSnapshot = event.snapshot;
+      if (
+        pendingFogMemoryResetAtTick !== null &&
+        event.tick >= pendingFogMemoryResetAtTick
+      ) {
+        previousSnapshot = nextSnapshot;
+        pendingFogMemoryResetAtTick = null;
+        fogMemoryResetReady = true;
+      } else if (
+        isContinuousAudioTransition(
+          lastSnapshot,
+          nextSnapshot,
+          DEFAULT_SNAPSHOT_CADENCE_TICKS,
+        )
+      ) {
+        previousSnapshot = lastSnapshot;
+        proceduralAudio.observe(lastSnapshot, nextSnapshot);
+      } else {
+        previousSnapshot = nextSnapshot;
+      }
+      lastSnapshot = nextSnapshot;
+      lastSnapshotReceivedAt = performance.now();
+      emit();
+      return;
+    }
+    if (event.type === "pauseChanged") {
+      paused = event.paused;
+      pauseReason = event.reasons.includes("hidden")
+        ? "hidden"
+        : event.reasons.includes("manual")
+          ? "manual"
+          : null;
+      proceduralAudio.setPaused(paused);
+      emit();
+      return;
+    }
+    if (event.type === "error") {
+      paused = true;
+      runtimeError = event.message;
+      proceduralAudio.setPaused(true);
+      emit();
+    }
   });
 
   class OperationsScene extends Phaser.Scene {
@@ -396,17 +465,17 @@ export async function createGameRuntime(
       });
       this.input.keyboard!.on("keydown-X", () => {
         if (!gameplayInputEnabled) return;
-        simulation.enqueue({ kind: "stop" });
+        workerSession.enqueue({ kind: "stop" });
       });
       this.input.keyboard!.on("keydown-H", () => {
         if (!gameplayInputEnabled) return;
-        simulation.enqueue({ kind: "hold" });
+        workerSession.enqueue({ kind: "hold" });
       });
       for (let group = 1; group <= 3; group += 1) {
         const key = this.input.keyboard!.addKey(String(group));
         key.on("down", () => {
           if (!gameplayInputEnabled) return;
-          simulation.enqueue(
+          workerSession.enqueue(
             this.ctrlKey.isDown
               ? { kind: "assignControlGroup", group }
               : { kind: "recallControlGroup", group },
@@ -421,7 +490,7 @@ export async function createGameRuntime(
         ) as Phaser.Math.Vector2;
         if (solarTargeting) {
           const targetGrid = worldToGrid(world);
-          simulation.enqueue({
+          workerSession.enqueue({
             kind: "launchSolarSpear",
             target: {
               x: Math.round(targetGrid.x),
@@ -438,7 +507,7 @@ export async function createGameRuntime(
             y: Math.round(targetGrid.y),
           };
           if (pendingBuilding) {
-            simulation.enqueue({
+            workerSession.enqueue({
               kind: "placeBuilding",
               buildingKind: pendingBuilding,
               tile: target,
@@ -453,7 +522,7 @@ export async function createGameRuntime(
             enemyPlayer,
           );
           if (targetedEnemy && this.pendingOrder !== "rally") {
-            simulation.enqueue({
+            workerSession.enqueue({
               kind: "attackUnit",
               targetUnitId: targetedEnemy.id,
             });
@@ -462,7 +531,7 @@ export async function createGameRuntime(
               .setStrokeStyle(2, 0xf06d5c, 0.95)
               .setVisible(true);
           } else if (targetedStructure && this.pendingOrder !== "rally") {
-            simulation.enqueue({
+            workerSession.enqueue({
               kind: "attackStructure",
               targetStructureId: targetedStructure.id,
             });
@@ -471,9 +540,9 @@ export async function createGameRuntime(
               .setStrokeStyle(2, 0xf06d5c, 0.95)
               .setVisible(true);
           } else if (this.pendingOrder === "rally") {
-            simulation.enqueue({ kind: "setRally", target });
+            workerSession.enqueue({ kind: "setRally", target });
           } else {
-            simulation.enqueue({
+            workerSession.enqueue({
               kind: "move",
               target,
               mode: this.pendingOrder,
@@ -525,23 +594,9 @@ export async function createGameRuntime(
     }
 
     update(_: number, delta: number) {
-      if (!paused) {
-        accumulator = Math.min(accumulator + delta, SIM_STEP_MS * 4);
-        while (accumulator >= SIM_STEP_MS) {
-          previousSnapshot = lastSnapshot;
-          if (pendingFogMemoryReset) {
-            this.clearStaleFogMemory();
-            pendingFogMemoryReset = false;
-          }
-          simulation.step();
-          lastSnapshot = simulation.snapshot();
-          if (isContinuousAudioTransition(previousSnapshot, lastSnapshot)) {
-            proceduralAudio.observe(previousSnapshot, lastSnapshot);
-          } else {
-            previousSnapshot = lastSnapshot;
-          }
-          accumulator -= SIM_STEP_MS;
-        }
+      if (fogMemoryResetReady) {
+        this.clearStaleFogMemory();
+        fogMemoryResetReady = false;
       }
 
       this.updateCamera(delta);
@@ -552,21 +607,20 @@ export async function createGameRuntime(
       this.renderUnits(
         previousSnapshot,
         lastSnapshot,
-        paused ? 1 : accumulator / SIM_STEP_MS,
+        paused
+          ? 1
+          : Math.min(
+              1,
+              (performance.now() - lastSnapshotReceivedAt) /
+                (DEFAULT_SNAPSHOT_CADENCE_TICKS *
+                  SIMULATION_TICK_INTERVAL_MS),
+            ),
       );
       this.drawRoutes(lastSnapshot);
       this.drawProjectiles(lastSnapshot);
       this.drawBuildRadii(lastSnapshot);
       this.drawFog(lastSnapshot);
       this.drawSolarSpear(lastSnapshot);
-
-      if (
-        lastSnapshot.tick !== lastEmittedTick &&
-        lastSnapshot.tick % 2 === 0
-      ) {
-        lastEmittedTick = lastSnapshot.tick;
-        emit();
-      }
     }
 
     private updateCamera(delta: number) {
@@ -1380,7 +1434,7 @@ export async function createGameRuntime(
             end,
             lastSnapshot.controlledPlayer,
           );
-          simulation.enqueue({
+          workerSession.enqueue({
             kind: "selectStructures",
             structureIds: structure ? [structure.id] : [],
             additive: this.shiftKey.isDown,
@@ -1401,7 +1455,7 @@ export async function createGameRuntime(
           })
           .map((unit) => unit.id);
       }
-      simulation.enqueue({
+      workerSession.enqueue({
         kind: "selectUnits",
         unitIds,
         additive: this.shiftKey.isDown,
@@ -1479,16 +1533,17 @@ export async function createGameRuntime(
       return () => listeners.delete(listener);
     },
     enqueue(command: SimCommand) {
+      const intendedTick = workerSession.enqueue(command);
       if (
         command.kind === "restartCombat" ||
         command.kind === "restartEconomy" ||
         command.kind === "restartSkirmish"
       ) {
         cameraMoved = false;
-        pendingFogMemoryReset = true;
+        pendingFogMemoryResetAtTick = intendedTick;
+        fogMemoryResetReady = false;
         resetTargetingModes();
       }
-      simulation.enqueue(command);
     },
     beginPlacement(buildingKind) {
       setTargetingModes(buildingKind, buildingKind ? false : solarTargeting);
@@ -1502,15 +1557,16 @@ export async function createGameRuntime(
     pause(reason) {
       paused = true;
       pauseReason = reason;
-      accumulator = 0;
+      workerSession.pause(reason);
       proceduralAudio.setPaused(true);
       emit();
     },
     resume() {
       paused = false;
       pauseReason = null;
-      accumulator = 0;
       previousSnapshot = lastSnapshot;
+      lastSnapshotReceivedAt = performance.now();
+      workerSession.resume();
       proceduralAudio.setPaused(false);
       emit();
     },
@@ -1541,6 +1597,8 @@ export async function createGameRuntime(
     },
     destroy() {
       listeners.clear();
+      unsubscribeWorkerSession();
+      workerSession.terminate();
       resizeObserver.disconnect();
       detachKeyboardCaptureGuard();
       proceduralAudio.destroy();

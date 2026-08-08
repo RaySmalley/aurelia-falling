@@ -99,6 +99,7 @@ const INITIAL_SNAPSHOT: RuntimeSnapshot = {
   audioCue: null,
   renderer: "initializing",
   cameraZoom: 1,
+  runtimeError: null,
 };
 
 const BUILD_ORDER: readonly BuildingKind[] = [
@@ -344,7 +345,12 @@ export default function SkirmishShell() {
         runtime.setReducedScreenShake(settingsRef.current.reducedMotion);
         runtime.setGameplayInputEnabled(gameplayInputEnabledRef.current);
         runtime.pause("manual");
-        unsubscribe = runtime.subscribe(setSnapshot);
+        unsubscribe = runtime.subscribe((nextSnapshot) => {
+          setSnapshot(nextSnapshot);
+          if (nextSnapshot.runtimeError) {
+            setLoadError(nextSnapshot.runtimeError);
+          }
+        });
       } catch (error) {
         setLoadError(error instanceof Error ? error.message : "Unknown error");
       }

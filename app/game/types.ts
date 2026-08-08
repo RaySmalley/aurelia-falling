@@ -282,6 +282,7 @@ export type RuntimeSnapshot = Readonly<{
   audioCue: AudioCueSnapshot | null;
   renderer: string;
   cameraZoom: number;
+  runtimeError: string | null;
 }>;
 
 export type RuntimeListener = (snapshot: RuntimeSnapshot) => void;

@@ -517,8 +517,12 @@ errors explicitly. The second slice adds a dedicated worker host, browser-only
 factory and entry point, worker-owned 20 Hz clock, and transport-independent
 client. Actual Node worker-thread tests prove fixed-checkpoint parity,
 main-thread-stall independence, and recoverable worker-failure events. The
-in-process adapter remains the comparison oracle, and the worker does not yet
-replace the Phaser-owned live clock.
+third slice integrates that worker into the live gameplay shell: Phaser now
+consumes published snapshots for presentation and input only, commands use a
+documented two-tick input lead corrected by the worker publication timestamp,
+and runtime failures enter the existing recoverable retry flow. The in-process
+adapter remains the comparison oracle. The dedicated 600-unit worker benchmark
+is still required before Phase 12 closes.
 
 ### Work
 
