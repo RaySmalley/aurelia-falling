@@ -556,6 +556,18 @@ See Phase 3 of the
 Prevent full snapshots and per-object presentation work from becoming the next
 scale limit.
 
+### Current implementation slice
+
+The first slice defines render-delta protocol version 1 and a transport-neutral
+encoder/store pair. Unit position and combat values and structure health and
+construction progress use packed typed arrays; cold metadata changes use
+explicit records. Creation, visibility hide/reveal, and authoritative
+destruction are distinct lifecycle operations. The render channel excludes
+complete unit paths and structure production queues, validates sequence
+continuity, and emits empty entity payloads when nothing changed. Worker
+transport integration, the slower UI/economy channel, and Phaser rendering
+changes remain follow-up slices.
+
 ### Work
 
 - Replace full object-graph render snapshots with a versioned delta protocol.
