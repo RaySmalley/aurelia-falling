@@ -1,12 +1,13 @@
 "use client";
 
 import { WorkerSimulationRuntime } from "./simulation-worker-client";
+import simulationWorkerUrl from "./simulation-worker-entry.ts?worker&url";
 
 export function createBrowserSimulationWorkerRuntime(
   reportListenerError?: (error: unknown) => void,
 ) {
   const worker = new Worker(
-    new URL("./simulation-worker-entry.ts", import.meta.url),
+    new URL(simulationWorkerUrl, window.location.origin),
     { type: "module", name: "aurelia-simulation" },
   );
 

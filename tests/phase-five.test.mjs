@@ -274,7 +274,7 @@ test("Phase 5 shell persists settings and synthesizes audio without simulation r
   assert.match(bootstrap, /isContinuousAudioTransition/);
   assert.match(
     bootstrap,
-    /else \{\s*previousSnapshot = lastSnapshot;\s*\}/,
+    /else \{\s*previousSnapshot = nextSnapshot;\s*\}/,
   );
   assert.match(bootstrap, /beginSolarTargeting/);
   assert.match(bootstrap, /proceduralAudio\.observe/);
