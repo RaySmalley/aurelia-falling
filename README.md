@@ -61,13 +61,13 @@ is dynamically imported behind the client-only React boundary in
 
 ## Current milestone
 
-Phase 12 is the active architecture phase. Its first slice defines a versioned,
-framework-independent simulation runtime protocol and a Node-compatible
-in-process adapter. Commands have an intended-tick and same-tick sequence
-contract for worker transport, with fixed snapshot cadence and explicit pause,
-resume, termination, validation, and error events. The existing Phaser-owned
-clock remains active until the dedicated worker transport and parity gates are
-complete.
+Phase 12 is the active architecture phase. Its first two slices define a
+versioned, framework-independent simulation runtime protocol, an in-process
+comparison oracle, and a dedicated Web Worker transport with a worker-owned
+20 Hz clock. Actual Node worker-thread tests prove fixed-checkpoint parity,
+main-thread-stall independence, and recoverable worker-failure reporting. The
+existing Phaser-owned live clock remains active until the worker client is
+integrated into the gameplay shell and the remaining performance gates pass.
 
 Phase 9A now presents active play as a full-bleed battlefield with compact
 persistent status and command overlays. Construction, production, detailed

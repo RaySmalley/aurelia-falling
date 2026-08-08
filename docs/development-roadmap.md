@@ -3,9 +3,10 @@
 ## Status
 
 Current canonical roadmap following completion of Phases 7-11 and all Phase 9A
-presentation slices. Phase 12 is active: its versioned runtime protocol and
-in-process comparison adapter are implemented, while dedicated worker ownership
-and parity validation remain.
+presentation slices. Phase 12 is active: its versioned runtime protocol,
+in-process comparison adapter, dedicated worker transport, and checkpoint
+parity tests are implemented, while live-client ownership and the remaining
+performance gates remain.
 
 This document defines the order of the remaining phases. Detailed technical
 design remains in the supporting plans:
@@ -23,7 +24,7 @@ acceptance criteria inside its assigned phase.
 
 ## Current baseline
 
-The implemented release through Phase 11, plus the first Phase 12 slice,
+The implemented release through Phase 11, plus the first two Phase 12 slices,
 provides:
 
 - A deterministic 20 Hz two-player simulation on the 64 x 64 Golden Scar map.
@@ -49,12 +50,15 @@ provides:
 - Runtime protocol version 1 and a Node-compatible in-process adapter with
   intended-tick command ordering, fixed snapshot cadence, pause/resume,
   termination, validation, and structured errors.
+- A dedicated worker host and browser transport with a worker-owned 20 Hz
+  clock, plus actual Node worker-thread parity, stall, and failure tests.
 - A production build and deployment path through Sites.
 
 The next work begins from the remaining scale limits:
 
-- The Phaser-owned clock still owns the live simulation. Phase 12 must add the
-  dedicated Web Worker transport and prove parity with the in-process adapter.
+- The Phaser-owned clock still owns the live simulation. Phase 12 must integrate
+  the proven worker transport into the gameplay shell and close its performance
+  and recovery gates.
 - The runtime still publishes full object-graph snapshots. Phase 13 introduces
   versioned deltas and scalable presentation channels.
 - The simulation remains a two-player world model despite its larger-army
@@ -509,8 +513,12 @@ event types. Commands carry an intended simulation tick and a unique sequence;
 the Node-compatible in-process adapter applies same-tick commands by sequence,
 publishes full snapshots at a fixed tick cadence, rejects late or duplicate
 commands, and models pause, resume, termination, and recoverable protocol
-errors explicitly. This adapter remains the comparison oracle for the upcoming
-dedicated worker transport and does not yet replace the Phaser-owned clock.
+errors explicitly. The second slice adds a dedicated worker host, browser-only
+factory and entry point, worker-owned 20 Hz clock, and transport-independent
+client. Actual Node worker-thread tests prove fixed-checkpoint parity,
+main-thread-stall independence, and recoverable worker-failure events. The
+in-process adapter remains the comparison oracle, and the worker does not yet
+replace the Phaser-owned live clock.
 
 ### Work
 
@@ -810,10 +818,10 @@ current proposal and exit condition.
 The critical execution path is the remaining Phase 12 work -> Phase 13 -> Phase
 13A -> Phase 14 -> Phase 15 -> Phase 16.
 
-1. Add the dedicated Phase 12 worker transport, integrate it behind the runtime
-   protocol, and prove in-process/worker replay and checkpoint parity.
-2. Move live mutable simulation ownership off the main thread, exercise stall
-   and failure recovery, and close the remaining Phase 12 acceptance gates.
+1. Integrate the proven Phase 12 worker transport into the gameplay shell and
+   move live mutable simulation ownership off the main thread.
+2. Exercise live pause, visibility, restart, termination, stall, failure
+   recovery, and the 600-unit performance gate to close Phase 12.
 3. Deliver the Phase 13 delta protocol, slow UI/economy channel, and scalable
    renderer before restructuring React presentation consumers.
 4. Execute Phase 13A in the pull-request slices defined by the player UI

@@ -6,8 +6,9 @@ Approved implementation plan for scaling Aurelia Falling from its current
 two-player world model to stable one-to-four-player matches. The indexed-entity
 and spatial-query phase and budgeted-pathfinding phase are implemented. The
 simulation-worker phase is active: protocol version 1 and its in-process
-comparison adapter are complete, while dedicated worker transport and parity
-remain. Later phases are planned.
+comparison adapter, dedicated worker transport, and Node worker-thread parity
+tests are complete, while live-client ownership and performance gates remain.
+Later phases are planned.
 
 Its work is sequenced as Phases 10-16 of the
 [current development roadmap](./development-roadmap.md).
@@ -363,13 +364,11 @@ The scale contract, entity indices, spatial queries, and budgeted pathfinding
 are established. Continue from the active worker boundary before changing the
 delta, world-model, or network architecture:
 
-1. Add the dedicated worker transport behind runtime protocol version 1.
-2. Prove worker/in-process checkpoint and final-state parity under identical
-   ordered commands.
-3. Integrate worker ownership with the live client, including pause, visibility,
-   restart, termination, stall, and recoverable failure behavior.
-4. Close the Phase 3 performance and server-boundary gates.
-5. Begin delta snapshots only after the worker protocol is stable.
+1. Integrate the proven worker ownership boundary with the live client,
+   including pause, visibility, restart, termination, stall, and recoverable
+   failure behavior.
+2. Close the Phase 3 performance and server-boundary gates.
+3. Begin delta snapshots only after the worker protocol is stable.
 
 This sequence keeps worker ownership reviewable without coupling it to the
 Phase 4 delta format or later multiplayer behavior.

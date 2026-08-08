@@ -49,7 +49,6 @@ final evidence; plans describe sequencing and acceptance intent.
 ## Audit record
 
 The documentation set was reconciled with `main` on August 8, 2026 after the
-first Phase 12 runtime-protocol slice. The audit verified local Markdown links,
-runtime and package versions, npm scripts, CI workflows, implemented Phase 9A
-UI slices, Phase 10 spatial indexing, Phase 11 pathfinding, and the current
-Phase 12 in-process runtime boundary.
+first Phase 12 runtime-protocol slice. The Phase 12 worker-transport slice then
+added the dedicated worker host, browser transport, and actual Node
+worker-thread parity coverage while retaining the in-process comparison oracle.
