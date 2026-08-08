@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import test from "node:test";
+import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
 import { createServer } from "vite";
+import { parseArguments as parseWorkerBenchmarkArguments } from "../scripts/run-worker-benchmark.mjs";
 
+const execFileAsync = promisify(execFile);
 const root = fileURLToPath(new URL("..", import.meta.url));
 const workerEntry = new URL("./fixtures/simulation-worker-thread.mjs", import.meta.url);
 const vite = await createServer({
@@ -418,4 +422,88 @@ test("terminating before readiness closes the transport directly", () => {
 
   assert.equal(controlled.terminations(), 1);
   assert.deepEqual(controlled.posted, []);
+});
+
+test("worker benchmark arguments preserve the Phase 12 acceptance workload", () => {
+  assert.deepEqual(parseWorkerBenchmarkArguments([]), {
+    maxTickMs: 50,
+    measuredTicks: 100,
+    output: null,
+    seed: 12_600,
+    snapshotCadenceTicks: 2,
+    unitCount: 600,
+    warmupTicks: 20,
+  });
+  assert.throws(
+    () => parseWorkerBenchmarkArguments(["--units", "600units"]),
+    /must be a positive integer/,
+  );
+  assert.throws(
+    () => parseWorkerBenchmarkArguments(["--max-tick-ms", "0"]),
+    /must be a positive number/,
+  );
+});
+
+test("dedicated worker benchmark emits and enforces its cadence gate", async () => {
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    [
+      "scripts/run-worker-benchmark.mjs",
+      "--units",
+      "20",
+      "--warmup",
+      "1",
+      "--ticks",
+      "3",
+      "--seed",
+      "12601",
+      "--max-tick-ms",
+      "1000",
+    ],
+    { cwd: root, maxBuffer: 4 * 1024 * 1024 },
+  );
+  const report = JSON.parse(stdout);
+
+  assert.equal(report.schemaVersion, 1);
+  assert.equal(report.benchmark.simulationRateHz, 20);
+  assert.equal(report.benchmark.tickIntervalMs, 50);
+  assert.equal(report.result.unitCount, 20);
+  assert.equal(report.result.completedTicks, 3);
+  assert.equal(report.result.snapshotCount, 1);
+  assert.equal(report.result.tickTiming.sampleCount, 3);
+  assert.equal(report.result.scheduleLateness.sampleCount, 3);
+  assert.deepEqual(report.gate.checks, {
+    unitCount: true,
+    completedTicks: true,
+    tickBudget: true,
+    fixedCadence: true,
+  });
+  assert.equal(report.gate.passed, true);
+});
+
+test("worker benchmark fails closed when measured work exceeds its tick budget", async () => {
+  await assert.rejects(
+    execFileAsync(
+      process.execPath,
+      [
+        "scripts/run-worker-benchmark.mjs",
+        "--units",
+        "20",
+        "--warmup",
+        "0",
+        "--ticks",
+        "1",
+        "--max-tick-ms",
+        "0.000001",
+      ],
+      { cwd: root, maxBuffer: 4 * 1024 * 1024 },
+    ),
+    (error) => {
+      const report = JSON.parse(error.stdout);
+      assert.equal(report.gate.checks.tickBudget, false);
+      assert.equal(report.gate.passed, false);
+      assert.match(error.stderr, /worker benchmark gate failed/i);
+      return true;
+    },
+  );
 });

@@ -61,7 +61,7 @@ is dynamically imported behind the client-only React boundary in
 
 ## Current milestone
 
-Phase 12 is the active architecture phase. Its first two slices define a
+Phase 12 is complete. Its first two slices define a
 versioned, framework-independent simulation runtime protocol, an in-process
 comparison oracle, and a dedicated Web Worker transport with a worker-owned
 20 Hz clock. Actual Node worker-thread tests prove fixed-checkpoint parity,
@@ -69,8 +69,10 @@ main-thread-stall independence, and recoverable worker-failure reporting. The
 third slice makes that worker authoritative in live play. Phaser now consumes
 fixed-cadence snapshots and sends tick-stamped commands with a two-tick input
 lead; worker publication timestamps keep that delay bounded after main-thread
-stalls. The remaining Phase 12 work is the dedicated 600-unit worker benchmark
-and final performance-gate audit.
+stalls. A dedicated 600-unit Normal worker benchmark now exercises the 20 Hz
+clock and fixed-cadence snapshot cloning, failing on missed deadlines or work
+that exceeds the 50 ms tick budget. Phase 13's delta snapshot and scalable
+rendering contract is the next architecture milestone.
 
 Phase 9A now presents active play as a full-bleed battlefield with compact
 persistent status and command overlays. Construction, production, detailed

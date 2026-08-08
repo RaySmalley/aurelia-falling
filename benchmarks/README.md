@@ -20,6 +20,21 @@ To run only the targeted pathfinding workloads with the 25 ms worst-tick gate:
 npm run benchmark:pathfinding
 ```
 
+To run the Phase 12 worker acceptance gate with a 600-unit Normal workload:
+
+```powershell
+npm run benchmark:worker
+```
+
+The worker benchmark owns its simulation and 20 Hz clock on a Node worker
+thread. It runs 100 measured ticks, publishes a full snapshot every two ticks,
+and includes structured-clone submission in the measured work. Its
+machine-readable gate fails if the workload is not exactly 600 units, does not
+complete every tick, takes more than the 50 ms tick interval, or misses the
+following fixed-step deadline. Scheduling lateness is reported separately so
+machine contention remains visible even when the simulation retains sufficient
+deadline headroom.
+
 To replace the checked-in machine baseline intentionally:
 
 ```powershell

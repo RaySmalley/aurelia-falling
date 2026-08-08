@@ -2,11 +2,10 @@
 
 ## Status
 
-Current canonical roadmap following completion of Phases 7-11 and all Phase 9A
-presentation slices. Phase 12 is active: its versioned runtime protocol,
-in-process comparison adapter, dedicated worker transport, and checkpoint
-parity tests are implemented, while live-client ownership and the remaining
-performance gates remain.
+Current canonical roadmap following completion of Phases 7-12 and all Phase 9A
+presentation slices. Phase 13 is next: replace full render snapshots with a
+versioned delta protocol and scalable presentation pipeline before beginning
+the final player UI upgrade in Phase 13A.
 
 This document defines the order of the remaining phases. Detailed technical
 design remains in the supporting plans:
@@ -24,8 +23,7 @@ acceptance criteria inside its assigned phase.
 
 ## Current baseline
 
-The implemented release through Phase 11, plus the first two Phase 12 slices,
-provides:
+The implemented release through Phase 12 provides:
 
 - A deterministic 20 Hz two-player simulation on the 64 x 64 Golden Scar map.
 - Six units, seven structures, economy, power, production, repairs, selling,
@@ -51,14 +49,12 @@ provides:
   intended-tick command ordering, fixed snapshot cadence, pause/resume,
   termination, validation, and structured errors.
 - A dedicated worker host and browser transport with a worker-owned 20 Hz
-  clock, plus actual Node worker-thread parity, stall, and failure tests.
+  clock, plus actual Node worker-thread parity, stall, failure, and 600-unit
+  fixed-cadence performance gates.
 - A production build and deployment path through Sites.
 
 The next work begins from the remaining scale limits:
 
-- The Phaser-owned clock still owns the live simulation. Phase 12 must integrate
-  the proven worker transport into the gameplay shell and close its performance
-  and recovery gates.
 - The runtime still publishes full object-graph snapshots. Phase 13 introduces
   versioned deltas and scalable presentation channels.
 - The simulation remains a two-player world model despite its larger-army
@@ -521,8 +517,9 @@ third slice integrates that worker into the live gameplay shell: Phaser now
 consumes published snapshots for presentation and input only, commands use a
 documented two-tick input lead corrected by the worker publication timestamp,
 and runtime failures enter the existing recoverable retry flow. The in-process
-adapter remains the comparison oracle. The dedicated 600-unit worker benchmark
-is still required before Phase 12 closes.
+adapter remains the comparison oracle. A dedicated Node worker benchmark now
+proves the 600-unit Normal workload completes every fixed-cadence tick, emits
+snapshots at the live two-tick cadence, and stays within its 50 ms deadline.
 
 ### Work
 

@@ -776,9 +776,9 @@ export default function SkirmishShell() {
             </button>
           )}
           <div className="phase-badge">
-            <span>{screen === "playing" ? "SKIRMISH" : "PHASE 9A"}</span>
+            <span>{screen === "playing" ? "SKIRMISH" : "MISSION SETUP"}</span>
             <strong>
-              {screen === "playing" ? "GOLD COMMAND" : "FULL-BLEED STAGE"}
+              {screen === "playing" ? "GOLD COMMAND" : "GOLDEN SCAR"}
             </strong>
           </div>
         </div>
