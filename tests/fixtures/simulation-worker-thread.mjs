@@ -12,6 +12,7 @@ const vite = await createServer({
 const { startSimulationWorkerHost } = await vite.ssrLoadModule(
   "/app/game/simulation-worker-host.ts",
 );
+const heartbeat = new Int32Array(workerData.heartbeat);
 
 let closing = false;
 const close = async () => {
@@ -23,6 +24,7 @@ const close = async () => {
 
 startSimulationWorkerHost({
   postMessage(event) {
+    if (event.type === "snapshot") Atomics.store(heartbeat, 0, event.tick);
     parentPort.postMessage(event);
     if (event.type === "terminated") queueMicrotask(close);
   },

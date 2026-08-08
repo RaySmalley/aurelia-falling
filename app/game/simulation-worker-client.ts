@@ -18,6 +18,7 @@ export class WorkerSimulationRuntime {
   private unsubscribeFailure: () => void = () => {};
   private cleanedUp = false;
   private failed = false;
+  private ready = false;
   private terminated = false;
 
   constructor(
@@ -26,9 +27,18 @@ export class WorkerSimulationRuntime {
   ) {
     this.unsubscribeEvent = transport.subscribe((event) => {
       if (!this.isRuntimeEvent(event) || this.failed) return;
+      if (event.type === "ready") this.ready = true;
+      if (event.type === "error" && event.code === "worker_failure") {
+        this.failed = true;
+      }
       if (event.type === "terminated") this.terminated = true;
       this.emit(event);
-      if (event.type === "terminated") this.cleanupTransport();
+      if (
+        event.type === "terminated" ||
+        (event.type === "error" && event.code === "worker_failure")
+      ) {
+        this.cleanupTransport();
+      }
     });
     this.unsubscribeFailure = transport.subscribeFailure((error) =>
       this.fail(error),
@@ -51,6 +61,11 @@ export class WorkerSimulationRuntime {
 
   terminate() {
     if (this.failed || this.terminated) return;
+    if (!this.ready) {
+      this.terminated = true;
+      this.cleanupTransport();
+      return;
+    }
     this.dispatch({
       protocolVersion: SIMULATION_RUNTIME_PROTOCOL_VERSION,
       type: "terminate",

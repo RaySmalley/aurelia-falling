@@ -46,7 +46,10 @@ const command = (sequence, intendedTick, value) => ({
 });
 
 function createNodeWorkerRuntime() {
-  const worker = new Worker(workerEntry, { workerData: { root } });
+  const heartbeat = new Int32Array(new SharedArrayBuffer(4));
+  const worker = new Worker(workerEntry, {
+    workerData: { root, heartbeat: heartbeat.buffer },
+  });
   const runtime = new WorkerSimulationRuntime({
     postMessage: (message) => worker.postMessage(message),
     subscribe(listener) {
@@ -67,7 +70,39 @@ function createNodeWorkerRuntime() {
     },
     terminate: () => worker.terminate(),
   });
-  return { runtime, worker };
+  return { runtime, worker, heartbeat };
+}
+
+function createControlledTransport() {
+  let eventListener = () => {};
+  let failureListener = () => {};
+  const posted = [];
+  let terminations = 0;
+  const transport = {
+    postMessage: (message) => posted.push(message),
+    subscribe(listener) {
+      eventListener = listener;
+      return () => {
+        eventListener = () => {};
+      };
+    },
+    subscribeFailure(listener) {
+      failureListener = listener;
+      return () => {
+        failureListener = () => {};
+      };
+    },
+    terminate() {
+      terminations += 1;
+    },
+  };
+  return {
+    transport,
+    emit: (event) => eventListener(event),
+    fail: (error) => failureListener(error),
+    posted,
+    terminations: () => terminations,
+  };
 }
 
 function waitForEvent(runtime, predicate, timeoutMs = 5_000) {
@@ -124,7 +159,7 @@ test("worker thread and in-process runtime publish identical checkpoints", async
 });
 
 test("a blocked main thread does not stop the worker-owned fixed-step clock", async () => {
-  const { runtime, worker } = createNodeWorkerRuntime();
+  const { runtime, worker, heartbeat } = createNodeWorkerRuntime();
   const ready = waitForEvent(runtime, (event) => event.type === "ready");
   runtime.dispatch(initialize({ snapshotCadenceTicks: 2 }));
   await ready;
@@ -137,6 +172,7 @@ test("a blocked main thread does not stop the worker-owned fixed-step clock", as
   while (performance.now() < blockedUntil) {
     // Deliberately occupy the parent event loop; the simulation owns another thread.
   }
+  assert.ok(Atomics.load(heartbeat, 0) >= 4);
   const event = await advanced;
   assert.ok(event.tick >= 4);
 
@@ -158,4 +194,35 @@ test("worker termination surfaces a recoverable structured failure", async () =>
   const event = await failure;
   assert.equal(event.recoverable, true);
   assert.equal(event.tick, null);
+});
+
+test("host-reported worker failures close the transport and reject later work", () => {
+  const controlled = createControlledTransport();
+  const runtime = new WorkerSimulationRuntime(controlled.transport);
+  const events = [];
+  runtime.subscribe((event) => events.push(event));
+
+  controlled.emit({
+    protocolVersion: version,
+    type: "error",
+    code: "worker_failure",
+    message: "worker host failed",
+    recoverable: true,
+    tick: 3,
+  });
+  runtime.dispatch(initialize());
+
+  assert.equal(events.at(-1).code, "worker_failure");
+  assert.equal(controlled.terminations(), 1);
+  assert.deepEqual(controlled.posted, []);
+});
+
+test("terminating before readiness closes the transport directly", () => {
+  const controlled = createControlledTransport();
+  const runtime = new WorkerSimulationRuntime(controlled.transport);
+
+  runtime.terminate();
+
+  assert.equal(controlled.terminations(), 1);
+  assert.deepEqual(controlled.posted, []);
 });
