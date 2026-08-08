@@ -2,8 +2,13 @@
 
 ## Status
 
-Proposed implementation roadmap for scaling Aurelia Falling from its current
-two-player, small-skirmish architecture to stable one-to-four-player matches.
+Approved implementation plan for scaling Aurelia Falling from its current
+two-player world model to stable one-to-four-player matches. The indexed-entity
+and spatial-query phase and budgeted-pathfinding phase are implemented. The
+simulation-worker phase is active: protocol version 1 and its in-process
+comparison adapter are complete, while dedicated worker transport and parity
+remain. Later phases are planned.
+
 Its work is sequenced as Phases 10-16 of the
 [current development roadmap](./development-roadmap.md).
 
@@ -352,22 +357,22 @@ Turn successful scale demonstrations into a maintained performance contract.
 - Performance and determinism checks are part of the merge gate for future
   simulation changes.
 
-## Recommended first implementation slice
+## Remaining implementation sequence
 
-The first pull request should be deliberately smaller than Phase 1:
+The scale contract, entity indices, spatial queries, and budgeted pathfinding
+are established. Continue from the active worker boundary before changing the
+delta, world-model, or network architecture:
 
-1. Add the benchmark runner and deterministic replay hash utility.
-2. Add constant-time unit and structure ID indices.
-3. Add a deterministic spatial grid with insert, move, remove, and radius-query
-   operations.
-4. Convert target acquisition to the spatial grid while preserving
-   distance-then-ID selection.
-5. Convert local separation to nearby-cell queries.
-6. Record before-and-after results for 100, 300, and 600 units.
+1. Add the dedicated worker transport behind runtime protocol version 1.
+2. Prove worker/in-process checkpoint and final-state parity under identical
+   ordered commands.
+3. Integrate worker ownership with the live client, including pause, visibility,
+   restart, termination, stall, and recoverable failure behavior.
+4. Close the Phase 3 performance and server-boundary gates.
+5. Begin delta snapshots only after the worker protocol is stable.
 
-This slice attacks the clearest scaling limit without changing rendering,
-pathfinding semantics, worker ownership, or multiplayer behavior at the same
-time.
+This sequence keeps worker ownership reviewable without coupling it to the
+Phase 4 delta format or later multiplayer behavior.
 
 ## Key risks
 

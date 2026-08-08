@@ -2,9 +2,10 @@
 
 ## Status
 
-Current canonical roadmap following completion of Phases 7-9. Phase 9A records
-the approved full-bleed battlefield direction; performance and pathfinding work
-continues through Phases 10-11.
+Current canonical roadmap following completion of Phases 7-11 and all Phase 9A
+presentation slices. Phase 12 is active: its versioned runtime protocol and
+in-process comparison adapter are implemented, while dedicated worker ownership
+and parity validation remain.
 
 This document defines the order of the remaining phases. Detailed technical
 design remains in the supporting plans:
@@ -22,7 +23,8 @@ acceptance criteria inside its assigned phase.
 
 ## Current baseline
 
-The implemented release through Phase 9 provides:
+The implemented release through Phase 11, plus the first Phase 12 slice,
+provides:
 
 - A deterministic 20 Hz two-player simulation on the 64 x 64 Golden Scar map.
 - Six units, seven structures, economy, power, production, repairs, selling,
@@ -32,23 +34,31 @@ The implemented release through Phase 9 provides:
 - A React command interface around a client-only Phaser 4.2.1 renderer.
 - A fixed-height browser shell, contained Phaser canvas, bounded command dock,
   internal overflow regions, and supported 90-110% UI scaling.
+- A full-bleed active battlefield with compact persistent overlays, one bounded
+  contextual panel, tested safe regions, and blocking-state input isolation.
 - Validated unit, structure, terrain, decal, and Aurelite atlases with
   procedural missing-asset fallbacks.
 - Atlas-derived structure portraits, construction/damage treatment, stale fog
   silhouettes, and friendly Harvester cargo meters.
 - Setup key art, synthesized audio, settings, and onboarding.
+- Deterministic entity indices, bounded spatial queries, maintained stable
+  iteration views, and checked-in headless performance evidence.
+- A budgeted live path-request queue across formation movement, combat chasing,
+  AI movement, harvesting, and rally orders, including deterministic caching
+  and replay state.
+- Runtime protocol version 1 and a Node-compatible in-process adapter with
+  intended-tick command ordering, fixed snapshot cadence, pause/resume,
+  termination, validation, and structured errors.
 - A production build and deployment path through Sites.
 
 The next work begins from the remaining scale limits:
 
-- The fixed-height presentation still reads as three separate page regions.
-  Phase 9A makes the battlefield full-bleed and layers the persistent and
-  contextual HUD over it.
-
-- The simulation is deterministic but still optimized for a two-player,
-  small-skirmish object count.
-- The simulation runs on the main thread and publishes full object-graph
-  snapshots.
+- The Phaser-owned clock still owns the live simulation. Phase 12 must add the
+  dedicated Web Worker transport and prove parity with the in-process adapter.
+- The runtime still publishes full object-graph snapshots. Phase 13 introduces
+  versioned deltas and scalable presentation channels.
+- The simulation remains a two-player world model despite its larger-army
+  performance foundations.
 - Player identity, visibility, victory, and setup flows assume two sides.
 - Multiplayer transport and desynchronization recovery do not exist.
 
@@ -797,12 +807,13 @@ current proposal and exit condition.
 
 ## Recommended next pull requests
 
-The critical execution path is Phase 11 -> Phase 12 -> Phase 13 -> Phase 13A ->
-Phase 14 -> Phase 15 -> Phase 16.
+The critical execution path is the remaining Phase 12 work -> Phase 13 -> Phase
+13A -> Phase 14 -> Phase 15 -> Phase 16.
 
-1. Complete and merge Phase 11 budgeted pathfinding without coupling simulation
-   work to presentation state.
-2. Establish the Phase 12 simulation-worker boundary and parity tests.
+1. Add the dedicated Phase 12 worker transport, integrate it behind the runtime
+   protocol, and prove in-process/worker replay and checkpoint parity.
+2. Move live mutable simulation ownership off the main thread, exercise stall
+   and failure recovery, and close the remaining Phase 12 acceptance gates.
 3. Deliver the Phase 13 delta protocol, slow UI/economy channel, and scalable
    renderer before restructuring React presentation consumers.
 4. Execute Phase 13A in the pull-request slices defined by the player UI
@@ -812,9 +823,9 @@ Phase 14 -> Phase 15 -> Phase 16.
    Phase 13A acceptance gates pass.
 
 UI-plan Phase 0 inventory and Phase 1 token/component-foundation work may run as
-isolated parallel pull requests during Phases 11-13. They must not change the
-runtime snapshot contract, perform the contextual-panel migration, or delay the
-critical simulation sequence.
+isolated parallel pull requests during the remaining Phases 12-13. They must not
+change the runtime snapshot contract, perform the contextual-panel migration,
+or delay the critical simulation sequence.
 
 These are pull-request slices, not replacements for the phase acceptance gates.
 

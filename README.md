@@ -11,7 +11,7 @@ same version.
 ## Local development
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
@@ -28,10 +28,14 @@ different port explicitly only when a task requires it.
 
 ```bash
 npm run typecheck
-npm run build
-npm test
 npm run lint
+npm test
 ```
+
+`npm test` runs the production build followed by the complete deterministic unit
+suite. Additional release checks are available as `npm run test:viewport`,
+`npm run assets:validate`, `npm run replay:verify`,
+`npm run benchmark:simulation`, and `npm run benchmark:pathfinding`.
 
 ## Automated pull request review
 
@@ -57,12 +61,21 @@ is dynamically imported behind the client-only React boundary in
 
 ## Current milestone
 
+Phase 12 is the active architecture phase. Its first slice defines a versioned,
+framework-independent simulation runtime protocol and a Node-compatible
+in-process adapter. Commands have an intended-tick and same-tick sequence
+contract for worker transport, with fixed snapshot cadence and explicit pause,
+resume, termination, validation, and error events. The existing Phaser-owned
+clock remains active until the dedicated worker transport and parity gates are
+complete.
+
 Phase 9A now presents active play as a full-bleed battlefield with compact
 persistent status and command overlays. Construction, production, detailed
 asset data, telemetry, and help expand through bounded contextual panels without
 resizing the Phaser host or mutating simulation state.
 
-Phase 11 has integrated a deterministic, budgeted live path-request queue across
+Phase 10 established deterministic entity indices and a uniform spatial grid.
+Phase 11 then integrated a deterministic, budgeted live path-request queue across
 formation movement, combat chasing, AI movement, harvesting, and rally orders.
 Compatible formations share anchor routes, pending work participates in replay
 state, and large-army performance gates enforce the per-tick planning budget.
@@ -70,14 +83,7 @@ Successful routes are cached against the terrain and exact occupancy revision;
 cache hits replay their original expansion cost so simulation timing remains
 unchanged.
 
-Phase 12 has begun with a versioned, framework-independent simulation runtime
-protocol and a Node-compatible in-process adapter. Commands now have a defined
-intended-tick and same-tick sequence contract for worker transport, with fixed
-snapshot cadence and explicit pause, resume, termination, and error events. The
-existing Phaser-owned clock remains active until worker parity is proven.
-
-Phase 10 established deterministic entity indices and a uniform spatial
-grid integrated into the simulation. Unit and structure ID resolution is
+Unit and structure ID resolution is
 constant-time; target acquisition uses bounded radius queries while preserving
 distance-then-ID selection; and local separation examines nearby cells instead
 of every unit pair. Solar Spear area damage, turret targeting, placement
@@ -104,13 +110,11 @@ portraits; and a segmented Harvester cargo meter. Phaser retries match assets
 twice and retains procedural unit, structure, terrain, and resource renderers
 as missing-asset fallbacks.
 
-Phases 7 and 8 also established the fixed viewport-height contract, Phaser
-containment, bounded command dock, internal overflow regions, and 90–110% UI
-scaling across the supported 1024×640 minimum and 1366×650 laptop baselines.
-That bounded three-region layout is now the implementation baseline rather than
-the final presentation target. Planned Phase 9A makes the battlefield full-bleed
-and layers compact status, primary commands, and collapsible contextual panels
-over it.
+Phases 7 and 8 established the fixed viewport-height contract, Phaser
+containment, bounded overflow, and 90–110% UI scaling across the supported
+1024×640 minimum and 1366×650 laptop baselines. Phase 9A retained those
+contracts while replacing the interim three-region layout with the current
+full-bleed battlefield and overlay HUD.
 
 The browser audio layer synthesizes original radio tones, selection and
 construction alerts, weapon and explosion effects, warnings, and an industrial
@@ -129,11 +133,13 @@ atlas edge below 2048 pixels.
 
 ## Planning
 
+Start with the [documentation index](docs/README.md) for each document's scope,
+status, and authority.
+
 The initial Phase 0-6 baseline is recorded in the
 [initial v1 implementation plan](docs/initial-v1-implementation-plan.md).
-The completed Phase 7-9 presentation work, approved Phase 9A full-bleed
-battlefield direction, Phase 10 performance baseline, and remaining scaling
-phases are sequenced in the
+The completed Phase 7-11 work, active Phase 12 worker boundary, and remaining
+scaling phases are sequenced in the
 [development roadmap](docs/development-roadmap.md), with detailed supporting
 plans for the [overlay HUD](docs/full-bleed-battlefield-ui-plan.md), viewport
 fit, the [player UI upgrade](docs/ui-upgrade-plan.md), four-player scaling, and
