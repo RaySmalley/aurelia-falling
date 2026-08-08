@@ -226,7 +226,8 @@ export async function createGameRuntime(
   let detachKeyboardCaptureGuard = () => {};
   let refreshKeyboardInput = () => {};
   let gameplayInputEnabled = false;
-  let pendingFogMemoryReset = false;
+  let pendingFogMemoryResetAtTick: number | null = null;
+  let fogMemoryResetReady = false;
 
   const emit = () => {
     const snapshot: RuntimeSnapshot = {
@@ -267,9 +268,20 @@ export async function createGameRuntime(
   const unsubscribeWorkerSession = workerSession.subscribe((event) => {
     if (event.type === "snapshot") {
       const nextSnapshot = event.snapshot;
-      if (pendingFogMemoryReset) {
+      if (
+        pendingFogMemoryResetAtTick !== null &&
+        event.tick >= pendingFogMemoryResetAtTick
+      ) {
         previousSnapshot = nextSnapshot;
-      } else if (isContinuousAudioTransition(lastSnapshot, nextSnapshot)) {
+        pendingFogMemoryResetAtTick = null;
+        fogMemoryResetReady = true;
+      } else if (
+        isContinuousAudioTransition(
+          lastSnapshot,
+          nextSnapshot,
+          DEFAULT_SNAPSHOT_CADENCE_TICKS,
+        )
+      ) {
         previousSnapshot = lastSnapshot;
         proceduralAudio.observe(lastSnapshot, nextSnapshot);
       } else {
@@ -582,9 +594,9 @@ export async function createGameRuntime(
     }
 
     update(_: number, delta: number) {
-      if (pendingFogMemoryReset) {
+      if (fogMemoryResetReady) {
         this.clearStaleFogMemory();
-        pendingFogMemoryReset = false;
+        fogMemoryResetReady = false;
       }
 
       this.updateCamera(delta);
@@ -1521,16 +1533,17 @@ export async function createGameRuntime(
       return () => listeners.delete(listener);
     },
     enqueue(command: SimCommand) {
+      const intendedTick = workerSession.enqueue(command);
       if (
         command.kind === "restartCombat" ||
         command.kind === "restartEconomy" ||
         command.kind === "restartSkirmish"
       ) {
         cameraMoved = false;
-        pendingFogMemoryReset = true;
+        pendingFogMemoryResetAtTick = intendedTick;
+        fogMemoryResetReady = false;
         resetTargetingModes();
       }
-      workerSession.enqueue(command);
     },
     beginPlacement(buildingKind) {
       setTargetingModes(buildingKind, buildingKind ? false : solarTargeting);

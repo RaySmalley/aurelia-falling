@@ -157,11 +157,15 @@ test("Phase 6 presentation, keyboard focus, and retry hooks are integrated", asy
   assert.match(bootstrap, /staleStructureMemory/);
   assert.match(
     bootstrap,
-    /pendingFogMemoryReset = true;[\s\S]*resetTargetingModes\(\);/,
+    /pendingFogMemoryResetAtTick = intendedTick;[\s\S]*resetTargetingModes\(\);/,
   );
   assert.match(
     bootstrap,
-    /if \(pendingFogMemoryReset\) \{\s*this\.clearStaleFogMemory\(\);\s*pendingFogMemoryReset = false;/,
+    /event\.tick >= pendingFogMemoryResetAtTick[\s\S]*fogMemoryResetReady = true;/,
+  );
+  assert.match(
+    bootstrap,
+    /if \(fogMemoryResetReady\) \{\s*this\.clearStaleFogMemory\(\);\s*fogMemoryResetReady = false;/,
   );
   assert.match(
     bootstrap,

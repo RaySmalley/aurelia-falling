@@ -101,7 +101,7 @@ export class SimulationWorkerSession {
   }
 
   enqueue(command: SimCommand) {
-    if (this.terminated || !this.latestSnapshot) return;
+    if (this.terminated || !this.latestSnapshot) return null;
     const intendedTick = this.commandTick();
     const sequence = this.nextSequence;
     this.nextSequence += 1;
@@ -129,7 +129,7 @@ export class SimulationWorkerSession {
             ? command.difficulty ?? this.latestSnapshot.ai.profile
             : this.latestSnapshot.ai.profile,
       });
-      return;
+      return intendedTick;
     }
 
     this.runtime.dispatch({
@@ -139,6 +139,7 @@ export class SimulationWorkerSession {
       intendedTick,
       command,
     });
+    return intendedTick;
   }
 
   pause(reason: SimulationRuntimePauseReason) {
@@ -154,6 +155,7 @@ export class SimulationWorkerSession {
   resume() {
     if (this.terminated) return;
     const reasons = [...this.pauseReasons];
+    this.latestRuntimeTickAt = this.now();
     this.pauseReasons.clear();
     for (const reason of reasons) {
       this.runtime.dispatch({

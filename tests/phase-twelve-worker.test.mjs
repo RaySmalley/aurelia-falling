@@ -276,6 +276,43 @@ test("paused live-session restarts target the frozen tick and resume explicitly"
   session.terminate();
 });
 
+test("resuming rebases command scheduling after a long pause", async () => {
+  let now = 0;
+  const controlled = createControlledTransport();
+  const runtime = new WorkerSimulationRuntime(controlled.transport);
+  const session = new SimulationWorkerSession(runtime, {
+    seed: 4_115,
+    scenario: "skirmish",
+    difficulty: "normal",
+    now: () => now,
+  });
+  const initialized = session.initialize();
+  const snapshot = initialSnapshot();
+  controlled.emit({
+    protocolVersion: version,
+    type: "snapshot",
+    tick: 12,
+    snapshot,
+  });
+  await initialized;
+  session.pause("manual");
+  controlled.emit({
+    protocolVersion: version,
+    type: "pauseChanged",
+    paused: true,
+    reasons: ["manual"],
+    tick: 12,
+  });
+
+  now = 120_000;
+  session.resume();
+  const intendedTick = session.enqueue({ kind: "surrender" });
+
+  assert.equal(intendedTick, 12 + LIVE_COMMAND_INPUT_DELAY_TICKS);
+  assert.equal(controlled.posted.at(-1).intendedTick, intendedTick);
+  session.terminate();
+});
+
 test("worker thread and in-process runtime publish identical checkpoints", async () => {
   const oracle = new InProcessSimulationRuntime();
   const oracleSnapshots = new Map();

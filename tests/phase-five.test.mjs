@@ -208,7 +208,14 @@ test("audio observation skips snapshot discontinuities across restarts", () => {
   const continuous = simulation.snapshot();
   assert.equal(isContinuousAudioTransition(initial, continuous), true);
 
-  step(simulation, 4);
+  simulation.step();
+  const cadenceSnapshot = simulation.snapshot();
+  assert.equal(
+    isContinuousAudioTransition(initial, cadenceSnapshot, 2),
+    true,
+  );
+
+  step(simulation, 3);
   const previousMatch = simulation.snapshot();
   simulation.enqueue({ kind: "restartSkirmish", seed: 5_007 });
   simulation.step();
@@ -274,7 +281,11 @@ test("Phase 5 shell persists settings and synthesizes audio without simulation r
   assert.match(bootstrap, /isContinuousAudioTransition/);
   assert.match(
     bootstrap,
-    /else \{\s*previousSnapshot = nextSnapshot;\s*\}/,
+    /DEFAULT_SNAPSHOT_CADENCE_TICKS[\s\S]*proceduralAudio\.observe/,
+  );
+  assert.match(
+    bootstrap,
+    /event\.tick >= pendingFogMemoryResetAtTick[\s\S]*fogMemoryResetReady = true/,
   );
   assert.match(bootstrap, /beginSolarTargeting/);
   assert.match(bootstrap, /proceduralAudio\.observe/);

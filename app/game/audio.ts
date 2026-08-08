@@ -9,9 +9,11 @@ const clampVolume = (value: number) =>
 export const isContinuousAudioTransition = (
   previous: SimulationSnapshot,
   current: SimulationSnapshot,
+  maximumTickDelta = 1,
 ) =>
   current.seed === previous.seed &&
-  current.tick === previous.tick + 1;
+  current.tick > previous.tick &&
+  current.tick <= previous.tick + maximumTickDelta;
 
 export class ProceduralAudio {
   private context: AudioContext | null = null;
