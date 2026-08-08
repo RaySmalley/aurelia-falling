@@ -482,10 +482,13 @@ test("overridden worker benchmark runs are explicitly diagnostic", async () => {
   assert.equal(report.result.scheduleLateness.sampleCount, 3);
   assert.equal(report.gate.mode, "diagnostic");
   assert.equal(report.gate.checks, null);
+  assert.deepEqual(report.gate.diagnosticReasons, ["parameters"]);
   assert.equal(report.gate.passed, null);
   assert.deepEqual(report.gate.acceptanceProfile, {
     maxTickMs: 50,
     measuredTicks: 100,
+    nodeVersion: "v24.19.0",
+    seed: 12_600,
     snapshotCadenceTicks: 2,
     unitCount: 600,
     warmupTicks: 20,
@@ -504,9 +507,15 @@ test("worker acceptance gate verifies the fixed workload and snapshot cadence", 
     snapshotCount: 50,
     unitCount: 600,
   };
-  const passing = evaluateAcceptanceGate(options, result, { worstMs: 49 });
+  const passing = evaluateAcceptanceGate(
+    options,
+    result,
+    { worstMs: 49 },
+    "v24.19.0",
+  );
 
   assert.equal(passing.mode, "acceptance");
+  assert.deepEqual(passing.diagnosticReasons, []);
   assert.deepEqual(passing.checks, {
     productionHost: true,
     normalSkirmish: true,
@@ -522,6 +531,7 @@ test("worker acceptance gate verifies the fixed workload and snapshot cadence", 
     options,
     { ...result, snapshotCount: 49 },
     { worstMs: 49 },
+    "v24.19.0",
   );
   assert.equal(missingSnapshot.checks.snapshotCadence, false);
   assert.equal(missingSnapshot.passed, false);
@@ -530,7 +540,28 @@ test("worker acceptance gate verifies the fixed workload and snapshot cadence", 
     options,
     { ...result, host: "synthetic" },
     { worstMs: 49 },
+    "v24.19.0",
   );
   assert.equal(syntheticLoop.checks.productionHost, false);
   assert.equal(syntheticLoop.passed, false);
+
+  const alternateSeed = evaluateAcceptanceGate(
+    { ...options, seed: 0 },
+    result,
+    { worstMs: 49 },
+    "v24.19.0",
+  );
+  assert.equal(alternateSeed.mode, "diagnostic");
+  assert.deepEqual(alternateSeed.diagnosticReasons, ["parameters"]);
+  assert.equal(alternateSeed.passed, null);
+
+  const alternateRuntime = evaluateAcceptanceGate(
+    options,
+    result,
+    { worstMs: 49 },
+    "v24.18.0",
+  );
+  assert.equal(alternateRuntime.mode, "diagnostic");
+  assert.deepEqual(alternateRuntime.diagnosticReasons, ["runtime"]);
+  assert.equal(alternateRuntime.passed, null);
 });

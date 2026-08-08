@@ -68,7 +68,7 @@ This layout intentionally gives the packages different responsibilities:
    `typescript-eslint`, `eslint-config-next`, Vinext, and Next.js compatibility
    notes.
 3. Replace the single TypeScript dependency with the two-package alias layout.
-4. Regenerate `package-lock.json` with Node.js 24.18.0.
+4. Regenerate `package-lock.json` with Node.js 24.19.0.
 5. Confirm that `node_modules/.bin/tsc` resolves to TypeScript 7 and
    `node_modules/.bin/tsc6` resolves to the TypeScript 6 compatibility package.
 6. Confirm that importing the package named `typescript` exposes the TypeScript

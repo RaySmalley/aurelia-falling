@@ -4,7 +4,7 @@ A browser real-time strategy game built with React, vinext, and Phaser 4.
 
 ## Required runtime
 
-Use Node.js `24.18.0`, the pinned Node 24 LTS build for this project. The
+Use Node.js `24.19.0`, the pinned Node 24 LTS build for this project. The
 `.nvmrc`, `.node-version`, `package.json`, and npm engine check all declare the
 same version.
 
@@ -143,8 +143,7 @@ status, and authority.
 
 The initial Phase 0-6 baseline is recorded in the
 [initial v1 implementation plan](docs/initial-v1-implementation-plan.md).
-The completed Phase 7-11 work, active Phase 12 worker boundary, and remaining
-scaling phases are sequenced in the
+The completed Phase 7-12 work and remaining scaling phases are sequenced in the
 [development roadmap](docs/development-roadmap.md), with detailed supporting
 plans for the [overlay HUD](docs/full-bleed-battlefield-ui-plan.md), viewport
 fit, the [player UI upgrade](docs/ui-upgrade-plan.md), four-player scaling, and

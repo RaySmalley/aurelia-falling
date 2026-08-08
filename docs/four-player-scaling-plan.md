@@ -94,7 +94,7 @@ while making real battles worse.
 
 ### Deliverables
 
-- A benchmark runner usable from Node.js 24.18.0.
+- A benchmark runner usable from Node.js 24.19.0.
 - A browser performance scene available only in development builds.
 - Replay fixtures covering combat, economy, skirmish, fog, and Solar Spear use.
 

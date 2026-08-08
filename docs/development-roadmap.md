@@ -109,7 +109,7 @@ Every phase must preserve these rules:
   skills under `node_modules/phaser/skills/`.
 - Rendering and simulation types remain framework-independent where they cross
   runtime boundaries.
-- Node.js 24.18.0 remains the required development and verification runtime
+- Node.js 24.19.0 remains the required development and verification runtime
   until a separately reviewed toolchain plan changes it.
 
 ## Delivery rules
@@ -816,23 +816,19 @@ current proposal and exit condition.
 
 ## Recommended next pull requests
 
-The critical execution path is the remaining Phase 12 work -> Phase 13 -> Phase
-13A -> Phase 14 -> Phase 15 -> Phase 16.
+The critical execution path is Phase 13 -> Phase 13A -> Phase 14 -> Phase 15 ->
+Phase 16.
 
-1. Integrate the proven Phase 12 worker transport into the gameplay shell and
-   move live mutable simulation ownership off the main thread.
-2. Exercise live pause, visibility, restart, termination, stall, failure
-   recovery, and the 600-unit performance gate to close Phase 12.
-3. Deliver the Phase 13 delta protocol, slow UI/economy channel, and scalable
+1. Deliver the Phase 13 delta protocol, slow UI/economy channel, and scalable
    renderer before restructuring React presentation consumers.
-4. Execute Phase 13A in the pull-request slices defined by the player UI
+2. Execute Phase 13A in the pull-request slices defined by the player UI
    upgrade plan: status/safe regions, command-panel architecture, panel
    migrations, onboarding/feedback, responsive modes, and accessibility polish.
-5. Begin Phase 14 player-slot and match-experience integration only after the
+3. Begin Phase 14 player-slot and match-experience integration only after the
    Phase 13A acceptance gates pass.
 
 UI-plan Phase 0 inventory and Phase 1 token/component-foundation work may run as
-isolated parallel pull requests during the remaining Phases 12-13. They must not
+isolated parallel pull requests during Phase 13. They must not
 change the runtime snapshot contract, perform the contextual-panel migration,
 or delay the critical simulation sequence.
 

@@ -10,12 +10,18 @@ const workerEntry = new URL(
   "./fixtures/simulation-worker-benchmark-thread.mjs",
   import.meta.url,
 );
-const ACCEPTANCE_PROFILE = Object.freeze({
+const ACCEPTANCE_PARAMETERS = Object.freeze({
   maxTickMs: 50,
   measuredTicks: 100,
+  seed: 12_600,
   snapshotCadenceTicks: 2,
   unitCount: 600,
   warmupTicks: 20,
+});
+const ACCEPTANCE_NODE_VERSION = "v24.19.0";
+const ACCEPTANCE_PROFILE = Object.freeze({
+  ...ACCEPTANCE_PARAMETERS,
+  nodeVersion: ACCEPTANCE_NODE_VERSION,
 });
 
 const parseInteger = (value, option, allowZero = false) => {
@@ -47,7 +53,7 @@ export const parseArguments = (argv) => {
     maxTickMs: ACCEPTANCE_PROFILE.maxTickMs,
     measuredTicks: ACCEPTANCE_PROFILE.measuredTicks,
     output: null,
-    seed: 12_600,
+    seed: ACCEPTANCE_PARAMETERS.seed,
     snapshotCadenceTicks: ACCEPTANCE_PROFILE.snapshotCadenceTicks,
     unitCount: ACCEPTANCE_PROFILE.unitCount,
     warmupTicks: ACCEPTANCE_PROFILE.warmupTicks,
@@ -79,15 +85,25 @@ export const parseArguments = (argv) => {
   return options;
 };
 
-export const evaluateAcceptanceGate = (options, result, tickTiming) => {
-  const acceptanceRun = Object.entries(ACCEPTANCE_PROFILE).every(
+export const evaluateAcceptanceGate = (
+  options,
+  result,
+  tickTiming,
+  nodeVersion = process.version,
+) => {
+  const acceptanceParameters = Object.entries(ACCEPTANCE_PARAMETERS).every(
     ([key, value]) => options[key] === value,
   );
-  if (!acceptanceRun) {
+  const acceptanceRuntime = nodeVersion === ACCEPTANCE_NODE_VERSION;
+  if (!acceptanceParameters || !acceptanceRuntime) {
     return {
       mode: "diagnostic",
       acceptanceProfile: ACCEPTANCE_PROFILE,
       checks: null,
+      diagnosticReasons: [
+        ...(!acceptanceParameters ? ["parameters"] : []),
+        ...(!acceptanceRuntime ? ["runtime"] : []),
+      ],
       passed: null,
     };
   }
@@ -110,6 +126,7 @@ export const evaluateAcceptanceGate = (options, result, tickTiming) => {
     mode: "acceptance",
     acceptanceProfile: ACCEPTANCE_PROFILE,
     checks,
+    diagnosticReasons: [],
     passed: Object.values(checks).every(Boolean),
   };
 };
@@ -242,7 +259,7 @@ const main = async () => {
   }
   process.stdout.write(serialized);
   if (report.gate.mode === "acceptance" && !report.gate.passed) {
-    process.stderr.write("Phase 12 worker benchmark gate failed.\n");
+    process.stderr.write("Worker benchmark acceptance gate failed.\n");
     process.exitCode = 1;
   }
 };

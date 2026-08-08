@@ -8,7 +8,7 @@ workloads in separate processes prevents earlier high-count cases from
 contaminating the targeted worst-tick gate through heap and thermal state. Each
 workload warms the simulation and records 50 measured ticks.
 
-Run the benchmark with Node.js 24.18.0:
+Run the benchmark with Node.js 24.19.0:
 
 ```powershell
 npm run benchmark:simulation
@@ -37,10 +37,12 @@ machine-readable gate fails if the workload is not exactly 600 units, does not
 complete every tick, takes more than the 50 ms tick interval, or misses the
 following fixed-step deadline. Scheduling lateness is reported separately so
 machine contention remains visible even when the simulation retains sufficient
-deadline headroom. The acceptance result also requires exactly 100 measured
-ticks, 20 warmup ticks, and all 50 expected two-tick-cadence snapshots. Any CLI
-override makes the run explicitly diagnostic: it still reports timings but
-does not claim an acceptance pass or failure. Initial and final unit counts are
+deadline headroom. The acceptance result also requires the exact seed 12,600,
+exactly 100 measured ticks, 20 warmup ticks, all 50 expected two-tick-cadence
+snapshots, and the pinned Node.js 24.19.0 runtime. Any CLI override or runtime
+mismatch makes the run explicitly diagnostic: it still reports timings and the
+reason for the mismatch but does not claim an acceptance pass or failure.
+Initial and final unit counts are
 reported separately because the active skirmish workload permits real combat
 casualties. The production clock schedules against absolute deadlines to avoid
 accumulating timer-quantization drift; after a genuine overrun it resumes from

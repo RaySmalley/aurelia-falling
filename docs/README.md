@@ -39,7 +39,7 @@ final evidence; plans describe sequencing and acceptance intent.
 ## Verification sources
 
 - `package.json` is authoritative for runnable npm commands and pinned package
-  versions; Node.js `24.18.0` is also pinned by `.nvmrc` and `.node-version`.
+  versions; Node.js `24.19.0` is also pinned by `.nvmrc` and `.node-version`.
 - `.github/workflows/ci.yml` is authoritative for the hosted validation gate.
 - `.openai/hosting.json` identifies the Sites project; `vite.config.ts` defines
   local optional D1/R2 bindings.
