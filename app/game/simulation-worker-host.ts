@@ -17,19 +17,62 @@ export type SimulationWorkerClock = Readonly<{
   stop(): void;
 }>;
 
+export type SimulationWorkerTickMeasurement = Readonly<{
+  scheduledAtMs: number;
+  startedAtMs: number;
+  finishedAtMs: number;
+}>;
+
 export function createIntervalSimulationClock(
   intervalMs = SIMULATION_TICK_INTERVAL_MS,
+  onTickComplete: (
+    measurement: SimulationWorkerTickMeasurement,
+  ) => void = () => {},
+  now: () => number = () => performance.now(),
 ): SimulationWorkerClock {
-  let interval: ReturnType<typeof setInterval> | null = null;
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  let running = false;
+  let scheduledAtMs = 0;
+  let tickCallback = () => {};
+
+  const schedule = () => {
+    if (!running) return;
+    timeout = setTimeout(
+      run,
+      Math.max(0, scheduledAtMs - now()),
+    );
+  };
+
+  const run = () => {
+    if (!running) return;
+    timeout = null;
+    const startedAtMs = now();
+    try {
+      tickCallback();
+    } finally {
+      const finishedAtMs = now();
+      onTickComplete({ scheduledAtMs, startedAtMs, finishedAtMs });
+      scheduledAtMs = Math.max(
+        scheduledAtMs + intervalMs,
+        finishedAtMs,
+      );
+      schedule();
+    }
+  };
+
   return {
     start(tick) {
-      if (interval !== null) return;
-      interval = setInterval(tick, intervalMs);
+      if (running) return;
+      running = true;
+      tickCallback = tick;
+      scheduledAtMs = now() + intervalMs;
+      schedule();
     },
     stop() {
-      if (interval === null) return;
-      clearInterval(interval);
-      interval = null;
+      if (!running) return;
+      running = false;
+      if (timeout !== null) clearTimeout(timeout);
+      timeout = null;
     },
   };
 }
@@ -37,8 +80,8 @@ export function createIntervalSimulationClock(
 export function startSimulationWorkerHost(
   port: SimulationWorkerHostPort,
   clock: SimulationWorkerClock = createIntervalSimulationClock(),
+  runtime = new InProcessSimulationRuntime(),
 ) {
-  const runtime = new InProcessSimulationRuntime();
   let started = false;
   let stopped = false;
   let unsubscribeMessage = () => {};

@@ -53,6 +53,19 @@ const restart = (sequence, intendedTick, overrides = {}) => ({
   ...overrides,
 });
 
+test("runtime creation can inject a deterministic benchmark simulation", () => {
+  const created = [];
+  const runtime = new InProcessSimulationRuntime(undefined, (...args) => {
+    created.push(args);
+    return new Simulation(...args);
+  });
+
+  runtime.dispatch(initialize());
+
+  assert.deepEqual(created, [[4_115, "skirmish", "normal"]]);
+  assert.equal(runtime.authoritativeState().scenario, "skirmish");
+});
+
 test("runtime protocol initializes and publishes snapshots at a fixed cadence", () => {
   const runtime = new InProcessSimulationRuntime();
   const events = [];

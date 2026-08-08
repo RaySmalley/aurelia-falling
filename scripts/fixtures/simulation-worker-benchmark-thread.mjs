@@ -1,10 +1,15 @@
 import { parentPort, workerData } from "node:worker_threads";
-import { performance } from "node:perf_hooks";
 import { createServer } from "vite";
 
 if (!parentPort) throw new Error("Worker benchmark requires a parent port.");
 
-const createIdleArmy = (simulation, unitCount) => {
+const createNormalSkirmishWorkload = (
+  Simulation,
+  isTerrainBlocked,
+  seed,
+  unitCount,
+) => {
+  const simulation = new Simulation(seed, "skirmish", "normal");
   const kinds = [
     "midasHarvester",
     "argusRifle",
@@ -13,24 +18,45 @@ const createIdleArmy = (simulation, unitCount) => {
     "atlasTank",
     "gorgonWalker",
   ];
-  simulation.units = Array.from({ length: unitCount }, (_, index) => {
+  const occupied = new Set();
+  for (const unit of simulation.units) {
+    occupied.add(
+      `${Math.floor(unit.position.x / 1_000)},${Math.floor(unit.position.y / 1_000)}`,
+    );
+  }
+  for (const structure of simulation.structures) {
+    occupied.add(`${structure.tile.x},${structure.tile.y}`);
+  }
+  const availableTiles = [];
+  for (let y = 2; y < 62; y += 1) {
+    for (let x = 2; x < 62; x += 1) {
+      const key = `${x},${y}`;
+      if (!occupied.has(key) && !isTerrainBlocked({ x, y })) {
+        availableTiles.push({ x, y });
+      }
+    }
+  }
+  if (availableTiles.length < unitCount - simulation.units.length) {
+    throw new Error(`Golden Scar cannot place ${unitCount} benchmark units.`);
+  }
+
+  const initialCount = simulation.units.length;
+  for (let index = initialCount; index < unitCount; index += 1) {
     const id = index + 1;
     const unit = simulation.createUnitState(
       id,
       index % 2 === 0 ? 1 : 2,
       kinds[index % kinds.length],
-      {
-        x: 4 + (index % 56),
-        y: 4 + (Math.floor(index / 56) % 56),
-      },
+      availableTiles[index - initialCount],
       `Worker benchmark ${id}`,
     );
-    unit.order = "hold";
-    return unit;
-  });
+    simulation.units.push(unit);
+  }
   simulation.nextUnitId = unitCount + 1;
   simulation.rebuildEntityIndexes();
   simulation.updateVisibility(true);
+  simulation.updateAiMemory();
+  return simulation;
 };
 
 const run = async () => {
@@ -42,70 +68,120 @@ const run = async () => {
   });
 
   try {
-    const { Simulation } = await vite.ssrLoadModule("/app/game/simulation.ts");
-    const simulation = new Simulation(workerData.seed, "combat", "normal");
-    createIdleArmy(simulation, workerData.unitCount);
-
-    for (let tick = 0; tick < workerData.warmupTicks; tick += 1) {
-      simulation.step();
-      if ((tick + 1) % workerData.snapshotCadenceTicks === 0) {
-        structuredClone(simulation.snapshot());
-      }
-    }
-
+    const [{ Simulation }, { isTerrainBlocked }, hostModule, runtimeModule, protocolModule] =
+      await Promise.all([
+        vite.ssrLoadModule("/app/game/simulation.ts"),
+        vite.ssrLoadModule("/app/game/map.ts"),
+        vite.ssrLoadModule("/app/game/simulation-worker-host.ts"),
+        vite.ssrLoadModule("/app/game/simulation-runtime.ts"),
+        vite.ssrLoadModule("/app/game/runtime-protocol.ts"),
+      ]);
     const tickSamples = [];
     const scheduleLatenessSamples = [];
     let completedTicks = 0;
     let missedDeadlines = 0;
     let snapshotCount = 0;
-    const firstScheduledAt = performance.now() + 50;
-    let scheduledAt = firstScheduledAt;
+    let firstScheduledAt = null;
+    let lastFinishedAt = null;
+    let finishing = false;
+    let initialUnitCount = 0;
+    let requestListener = () => {};
+    let host;
+    const runtime = new runtimeModule.InProcessSimulationRuntime(
+      undefined,
+      (seed, scenario, difficulty) => {
+        if (scenario !== "skirmish" || difficulty !== "normal") {
+          throw new Error("Worker benchmark requires a Normal skirmish.");
+        }
+        const simulation = createNormalSkirmishWorkload(
+          Simulation,
+          isTerrainBlocked,
+          seed,
+          workerData.unitCount,
+        );
+        initialUnitCount = simulation.units.length;
+        return simulation;
+      },
+    );
 
     const finish = async () => {
-      const elapsedMs = performance.now() - firstScheduledAt;
+      if (finishing) return;
+      finishing = true;
+      host.stop();
+      const state = runtime.authoritativeState();
       parentPort.postMessage({
         type: "result",
         result: {
           completedTicks,
-          elapsedMs,
+          difficulty: state.aiDifficulty,
+          elapsedMs: lastFinishedAt - firstScheduledAt,
+          finalUnitCount: state.units.length,
+          host: "startSimulationWorkerHost",
           missedDeadlines,
+          scenario: state.scenario,
           scheduleLatenessSamples,
           snapshotCount,
           tickSamples,
-          unitCount: simulation.units.length,
+          unitCount: initialUnitCount,
         },
       });
       await vite.close();
       parentPort.close();
     };
 
-    const tick = () => {
-      const startedAt = performance.now();
-      scheduleLatenessSamples.push(Math.max(0, startedAt - scheduledAt));
-      simulation.step();
-      completedTicks += 1;
-      if (completedTicks % workerData.snapshotCadenceTicks === 0) {
-        parentPort.postMessage({
-          type: "snapshot",
-          tick: completedTicks,
-          snapshot: simulation.snapshot(),
-        });
-        snapshotCount += 1;
-      }
-      const finishedAt = performance.now();
-      tickSamples.push(finishedAt - startedAt);
-      const nextScheduledAt = scheduledAt + 50;
-      if (finishedAt > nextScheduledAt) missedDeadlines += 1;
-
-      if (completedTicks >= workerData.measuredTicks) {
-        void finish();
-        return;
-      }
-      scheduledAt = nextScheduledAt;
-      setTimeout(tick, Math.max(0, scheduledAt - performance.now()));
-    };
-
-    setTimeout(tick, Math.max(0, scheduledAt - performance.now()));
+    const clock = hostModule.createIntervalSimulationClock(
+      hostModule.SIMULATION_TICK_INTERVAL_MS,
+      ({ scheduledAtMs, startedAtMs, finishedAtMs }) => {
+        const runtimeTick = runtime.tick();
+        if (runtimeTick <= workerData.warmupTicks) return;
+        if (firstScheduledAt === null) firstScheduledAt = scheduledAtMs;
+        lastFinishedAt = finishedAtMs;
+        completedTicks += 1;
+        tickSamples.push(finishedAtMs - startedAtMs);
+        scheduleLatenessSamples.push(
+          Math.max(0, startedAtMs - scheduledAtMs),
+        );
+        if (finishedAtMs > scheduledAtMs + hostModule.SIMULATION_TICK_INTERVAL_MS) {
+          missedDeadlines += 1;
+        }
+        if (completedTicks >= workerData.measuredTicks) {
+          void finish();
+        }
+      },
+    );
+    host = hostModule.startSimulationWorkerHost(
+      {
+        postMessage(event) {
+          if (event.type === "error") {
+            parentPort.postMessage({ type: "failure", message: event.message });
+            return;
+          }
+          if (
+            event.type === "snapshot" &&
+            event.tick > workerData.warmupTicks
+          ) {
+            snapshotCount += 1;
+          }
+          parentPort.postMessage({ type: "runtimeEvent", event });
+        },
+        subscribe(listener) {
+          requestListener = listener;
+          return () => {
+            requestListener = () => {};
+          };
+        },
+      },
+      clock,
+      runtime,
+    );
+    requestListener({
+      protocolVersion: protocolModule.SIMULATION_RUNTIME_PROTOCOL_VERSION,
+      type: "initialize",
+      seed: workerData.seed,
+      scenario: "skirmish",
+      difficulty: "normal",
+      snapshotCadenceTicks: workerData.snapshotCadenceTicks,
+    });
   } catch (error) {
     await vite.close();
     throw error;

@@ -93,6 +93,9 @@ export const evaluateAcceptanceGate = (options, result, tickTiming) => {
   }
 
   const checks = {
+    productionHost: result.host === "startSimulationWorkerHost",
+    normalSkirmish:
+      result.scenario === "skirmish" && result.difficulty === "normal",
     unitCount: result.unitCount === ACCEPTANCE_PROFILE.unitCount,
     completedTicks:
       result.completedTicks === ACCEPTANCE_PROFILE.measuredTicks,
@@ -168,6 +171,7 @@ const runWorker = (options) =>
         resolveResult(message.result);
       } else if (message?.type === "failure") {
         clearTimeout(timeout);
+        void worker.terminate();
         reject(new Error(message.message));
       }
     });
@@ -191,7 +195,7 @@ const main = async () => {
   const gate = evaluateAcceptanceGate(options, result, tickTiming);
   const cpu = cpus()[0];
   const report = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     recordedAt: new Date().toISOString(),
     revision: revision(),
     workingTreeDirty: workingTreeDirty(),
@@ -205,6 +209,7 @@ const main = async () => {
       totalMemoryBytes: totalmem(),
     },
     benchmark: {
+      workload: "normal-skirmish",
       simulationRateHz: 20,
       tickIntervalMs: 50,
       unitCount: options.unitCount,
@@ -216,9 +221,13 @@ const main = async () => {
     },
     result: {
       completedTicks: result.completedTicks,
+      difficulty: result.difficulty,
+      finalUnitCount: result.finalUnitCount,
+      host: result.host,
       unitCount: result.unitCount,
       snapshotCount: result.snapshotCount,
       missedDeadlines: result.missedDeadlines,
+      scenario: result.scenario,
       elapsedMs: Number(result.elapsedMs.toFixed(6)),
       tickTiming,
       scheduleLateness,

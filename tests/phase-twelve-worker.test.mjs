@@ -455,7 +455,7 @@ test("overridden worker benchmark runs are explicitly diagnostic", async () => {
       "--units",
       "20",
       "--warmup",
-      "1",
+      "0",
       "--ticks",
       "3",
       "--seed",
@@ -467,10 +467,15 @@ test("overridden worker benchmark runs are explicitly diagnostic", async () => {
   );
   const report = JSON.parse(stdout);
 
-  assert.equal(report.schemaVersion, 1);
+  assert.equal(report.schemaVersion, 2);
   assert.equal(report.benchmark.simulationRateHz, 20);
   assert.equal(report.benchmark.tickIntervalMs, 50);
+  assert.equal(report.benchmark.workload, "normal-skirmish");
+  assert.equal(report.result.host, "startSimulationWorkerHost");
+  assert.equal(report.result.scenario, "skirmish");
+  assert.equal(report.result.difficulty, "normal");
   assert.equal(report.result.unitCount, 20);
+  assert.equal(typeof report.result.finalUnitCount, "number");
   assert.equal(report.result.completedTicks, 3);
   assert.equal(report.result.snapshotCount, 1);
   assert.equal(report.result.tickTiming.sampleCount, 3);
@@ -491,7 +496,11 @@ test("worker acceptance gate verifies the fixed workload and snapshot cadence", 
   const options = parseWorkerBenchmarkArguments([]);
   const result = {
     completedTicks: 100,
+    difficulty: "normal",
+    finalUnitCount: 411,
+    host: "startSimulationWorkerHost",
     missedDeadlines: 0,
+    scenario: "skirmish",
     snapshotCount: 50,
     unitCount: 600,
   };
@@ -499,6 +508,8 @@ test("worker acceptance gate verifies the fixed workload and snapshot cadence", 
 
   assert.equal(passing.mode, "acceptance");
   assert.deepEqual(passing.checks, {
+    productionHost: true,
+    normalSkirmish: true,
     unitCount: true,
     completedTicks: true,
     snapshotCadence: true,
@@ -514,4 +525,12 @@ test("worker acceptance gate verifies the fixed workload and snapshot cadence", 
   );
   assert.equal(missingSnapshot.checks.snapshotCadence, false);
   assert.equal(missingSnapshot.passed, false);
+
+  const syntheticLoop = evaluateAcceptanceGate(
+    options,
+    { ...result, host: "synthetic" },
+    { worstMs: 49 },
+  );
+  assert.equal(syntheticLoop.checks.productionHost, false);
+  assert.equal(syntheticLoop.passed, false);
 });
