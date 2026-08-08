@@ -2,11 +2,10 @@
 
 ## Status
 
-Current canonical roadmap following completion of Phases 7-11 and all Phase 9A
-presentation slices. Phase 12 is active: its versioned runtime protocol,
-in-process comparison adapter, dedicated worker transport, and checkpoint
-parity tests are implemented, while live-client ownership and the remaining
-performance gates remain.
+Current canonical roadmap following completion of Phases 7-12 and all Phase 9A
+presentation slices. Phase 13 is next: replace full render snapshots with a
+versioned delta protocol and scalable presentation pipeline before beginning
+the final player UI upgrade in Phase 13A.
 
 This document defines the order of the remaining phases. Detailed technical
 design remains in the supporting plans:
@@ -24,8 +23,7 @@ acceptance criteria inside its assigned phase.
 
 ## Current baseline
 
-The implemented release through Phase 11, plus the first two Phase 12 slices,
-provides:
+The implemented release through Phase 12 provides:
 
 - A deterministic 20 Hz two-player simulation on the 64 x 64 Golden Scar map.
 - Six units, seven structures, economy, power, production, repairs, selling,
@@ -51,14 +49,12 @@ provides:
   intended-tick command ordering, fixed snapshot cadence, pause/resume,
   termination, validation, and structured errors.
 - A dedicated worker host and browser transport with a worker-owned 20 Hz
-  clock, plus actual Node worker-thread parity, stall, and failure tests.
+  clock, plus actual Node worker-thread parity, stall, failure, and 600-unit
+  fixed-cadence performance gates.
 - A production build and deployment path through Sites.
 
 The next work begins from the remaining scale limits:
 
-- The Phaser-owned clock still owns the live simulation. Phase 12 must integrate
-  the proven worker transport into the gameplay shell and close its performance
-  and recovery gates.
 - The runtime still publishes full object-graph snapshots. Phase 13 introduces
   versioned deltas and scalable presentation channels.
 - The simulation remains a two-player world model despite its larger-army
@@ -113,7 +109,7 @@ Every phase must preserve these rules:
   skills under `node_modules/phaser/skills/`.
 - Rendering and simulation types remain framework-independent where they cross
   runtime boundaries.
-- Node.js 24.18.0 remains the required development and verification runtime
+- Node.js 24.19.0 remains the required development and verification runtime
   until a separately reviewed toolchain plan changes it.
 
 ## Delivery rules
@@ -521,8 +517,9 @@ third slice integrates that worker into the live gameplay shell: Phaser now
 consumes published snapshots for presentation and input only, commands use a
 documented two-tick input lead corrected by the worker publication timestamp,
 and runtime failures enter the existing recoverable retry flow. The in-process
-adapter remains the comparison oracle. The dedicated 600-unit worker benchmark
-is still required before Phase 12 closes.
+adapter remains the comparison oracle. A dedicated Node worker benchmark now
+proves the 600-unit Normal workload completes every fixed-cadence tick, emits
+snapshots at the live two-tick cadence, and stays within its 50 ms deadline.
 
 ### Work
 
@@ -819,23 +816,19 @@ current proposal and exit condition.
 
 ## Recommended next pull requests
 
-The critical execution path is the remaining Phase 12 work -> Phase 13 -> Phase
-13A -> Phase 14 -> Phase 15 -> Phase 16.
+The critical execution path is Phase 13 -> Phase 13A -> Phase 14 -> Phase 15 ->
+Phase 16.
 
-1. Integrate the proven Phase 12 worker transport into the gameplay shell and
-   move live mutable simulation ownership off the main thread.
-2. Exercise live pause, visibility, restart, termination, stall, failure
-   recovery, and the 600-unit performance gate to close Phase 12.
-3. Deliver the Phase 13 delta protocol, slow UI/economy channel, and scalable
+1. Deliver the Phase 13 delta protocol, slow UI/economy channel, and scalable
    renderer before restructuring React presentation consumers.
-4. Execute Phase 13A in the pull-request slices defined by the player UI
+2. Execute Phase 13A in the pull-request slices defined by the player UI
    upgrade plan: status/safe regions, command-panel architecture, panel
    migrations, onboarding/feedback, responsive modes, and accessibility polish.
-5. Begin Phase 14 player-slot and match-experience integration only after the
+3. Begin Phase 14 player-slot and match-experience integration only after the
    Phase 13A acceptance gates pass.
 
 UI-plan Phase 0 inventory and Phase 1 token/component-foundation work may run as
-isolated parallel pull requests during the remaining Phases 12-13. They must not
+isolated parallel pull requests during Phase 13. They must not
 change the runtime snapshot contract, perform the contextual-panel migration,
 or delay the critical simulation sequence.
 

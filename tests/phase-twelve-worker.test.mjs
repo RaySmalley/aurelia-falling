@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import test from "node:test";
+import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
 import { createServer } from "vite";
+import {
+  evaluateAcceptanceGate,
+  parseArguments as parseWorkerBenchmarkArguments,
+} from "../scripts/run-worker-benchmark.mjs";
 
+const execFileAsync = promisify(execFile);
 const root = fileURLToPath(new URL("..", import.meta.url));
 const workerEntry = new URL("./fixtures/simulation-worker-thread.mjs", import.meta.url);
 const vite = await createServer({
@@ -418,4 +425,143 @@ test("terminating before readiness closes the transport directly", () => {
 
   assert.equal(controlled.terminations(), 1);
   assert.deepEqual(controlled.posted, []);
+});
+
+test("worker benchmark arguments preserve the Phase 12 acceptance workload", () => {
+  assert.deepEqual(parseWorkerBenchmarkArguments([]), {
+    maxTickMs: 50,
+    measuredTicks: 100,
+    output: null,
+    seed: 12_600,
+    snapshotCadenceTicks: 2,
+    unitCount: 600,
+    warmupTicks: 20,
+  });
+  assert.throws(
+    () => parseWorkerBenchmarkArguments(["--units", "600units"]),
+    /must be a positive integer/,
+  );
+  assert.throws(
+    () => parseWorkerBenchmarkArguments(["--max-tick-ms", "0"]),
+    /must be a positive number/,
+  );
+});
+
+test("overridden worker benchmark runs are explicitly diagnostic", async () => {
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    [
+      "scripts/run-worker-benchmark.mjs",
+      "--units",
+      "20",
+      "--warmup",
+      "0",
+      "--ticks",
+      "3",
+      "--seed",
+      "12601",
+      "--max-tick-ms",
+      "1000",
+    ],
+    { cwd: root, maxBuffer: 4 * 1024 * 1024 },
+  );
+  const report = JSON.parse(stdout);
+
+  assert.equal(report.schemaVersion, 2);
+  assert.equal(report.benchmark.simulationRateHz, 20);
+  assert.equal(report.benchmark.tickIntervalMs, 50);
+  assert.equal(report.benchmark.workload, "normal-skirmish");
+  assert.equal(report.result.host, "startSimulationWorkerHost");
+  assert.equal(report.result.scenario, "skirmish");
+  assert.equal(report.result.difficulty, "normal");
+  assert.equal(report.result.unitCount, 20);
+  assert.equal(typeof report.result.finalUnitCount, "number");
+  assert.equal(report.result.completedTicks, 3);
+  assert.equal(report.result.snapshotCount, 1);
+  assert.equal(report.result.tickTiming.sampleCount, 3);
+  assert.equal(report.result.scheduleLateness.sampleCount, 3);
+  assert.equal(report.gate.mode, "diagnostic");
+  assert.equal(report.gate.checks, null);
+  assert.deepEqual(report.gate.diagnosticReasons, ["parameters"]);
+  assert.equal(report.gate.passed, null);
+  assert.deepEqual(report.gate.acceptanceProfile, {
+    maxTickMs: 50,
+    measuredTicks: 100,
+    nodeVersion: "v24.19.0",
+    seed: 12_600,
+    snapshotCadenceTicks: 2,
+    unitCount: 600,
+    warmupTicks: 20,
+  });
+});
+
+test("worker acceptance gate verifies the fixed workload and snapshot cadence", () => {
+  const options = parseWorkerBenchmarkArguments([]);
+  const result = {
+    completedTicks: 100,
+    difficulty: "normal",
+    finalUnitCount: 411,
+    host: "startSimulationWorkerHost",
+    missedDeadlines: 0,
+    scenario: "skirmish",
+    snapshotCount: 50,
+    unitCount: 600,
+  };
+  const passing = evaluateAcceptanceGate(
+    options,
+    result,
+    { worstMs: 49 },
+    "v24.19.0",
+  );
+
+  assert.equal(passing.mode, "acceptance");
+  assert.deepEqual(passing.diagnosticReasons, []);
+  assert.deepEqual(passing.checks, {
+    productionHost: true,
+    normalSkirmish: true,
+    unitCount: true,
+    completedTicks: true,
+    snapshotCadence: true,
+    tickBudget: true,
+    fixedCadence: true,
+  });
+  assert.equal(passing.passed, true);
+
+  const missingSnapshot = evaluateAcceptanceGate(
+    options,
+    { ...result, snapshotCount: 49 },
+    { worstMs: 49 },
+    "v24.19.0",
+  );
+  assert.equal(missingSnapshot.checks.snapshotCadence, false);
+  assert.equal(missingSnapshot.passed, false);
+
+  const syntheticLoop = evaluateAcceptanceGate(
+    options,
+    { ...result, host: "synthetic" },
+    { worstMs: 49 },
+    "v24.19.0",
+  );
+  assert.equal(syntheticLoop.checks.productionHost, false);
+  assert.equal(syntheticLoop.passed, false);
+
+  const alternateSeed = evaluateAcceptanceGate(
+    { ...options, seed: 0 },
+    result,
+    { worstMs: 49 },
+    "v24.19.0",
+  );
+  assert.equal(alternateSeed.mode, "diagnostic");
+  assert.deepEqual(alternateSeed.diagnosticReasons, ["parameters"]);
+  assert.equal(alternateSeed.passed, null);
+
+  const alternateRuntime = evaluateAcceptanceGate(
+    options,
+    result,
+    { worstMs: 49 },
+    "v24.18.0",
+  );
+  assert.equal(alternateRuntime.mode, "diagnostic");
+  assert.deepEqual(alternateRuntime.diagnosticReasons, ["runtime"]);
+  assert.equal(alternateRuntime.passed, null);
 });

@@ -191,7 +191,7 @@ layout.
 - The suite reliably reproduces the current overflow.
 - Failures report the viewport, UI scale, application state, and offending
   element rather than only a screenshot difference.
-- Tests use the production build on port 4000 and Node.js 24.18.0.
+- Tests use the production build on port 4000 and Node.js 24.19.0.
 
 ## Phase 1: Establish a fixed-height application shell
 
@@ -417,7 +417,7 @@ active dialog or overlay actions are visible and keyboard reachable
 
 ### Project verification
 
-Run with Node.js 24.18.0:
+Run with Node.js 24.19.0:
 
 ```text
 npm run test:unit

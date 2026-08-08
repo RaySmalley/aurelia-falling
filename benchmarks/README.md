@@ -8,7 +8,7 @@ workloads in separate processes prevents earlier high-count cases from
 contaminating the targeted worst-tick gate through heap and thermal state. Each
 workload warms the simulation and records 50 measured ticks.
 
-Run the benchmark with Node.js 24.18.0:
+Run the benchmark with Node.js 24.19.0:
 
 ```powershell
 npm run benchmark:simulation
@@ -19,6 +19,34 @@ To run only the targeted pathfinding workloads with the 25 ms worst-tick gate:
 ```powershell
 npm run benchmark:pathfinding
 ```
+
+To run the Phase 12 worker acceptance gate with a 600-unit Normal workload:
+
+```powershell
+npm run benchmark:worker
+```
+
+The worker benchmark runs the production worker host, runtime dispatch, 20 Hz
+clock, and snapshot-publication path on a Node worker thread. Its
+deterministic 600-unit fixture retains the Normal skirmish economy, AI, fog,
+connectivity, production, and combat systems rather than substituting the
+combat-only idle scenario. It runs 100 measured ticks, publishes a full
+snapshot every two ticks, and includes structured-clone submission in the
+measured work. Its
+machine-readable gate fails if the workload is not exactly 600 units, does not
+complete every tick, takes more than the 50 ms tick interval, or misses the
+following fixed-step deadline. Scheduling lateness is reported separately so
+machine contention remains visible even when the simulation retains sufficient
+deadline headroom. The acceptance result also requires the exact seed 12,600,
+exactly 100 measured ticks, 20 warmup ticks, all 50 expected two-tick-cadence
+snapshots, and the pinned Node.js 24.19.0 runtime. Any CLI override or runtime
+mismatch makes the run explicitly diagnostic: it still reports timings and the
+reason for the mismatch but does not claim an acceptance pass or failure.
+Initial and final unit counts are
+reported separately because the active skirmish workload permits real combat
+casualties. The production clock schedules against absolute deadlines to avoid
+accumulating timer-quantization drift; after a genuine overrun it resumes from
+completion rather than enqueueing an unbounded catch-up burst.
 
 To replace the checked-in machine baseline intentionally:
 
@@ -50,8 +78,10 @@ The checked-in [baseline](./baseline.json) records the pre-index implementation.
 The [spatial-index result](./spatial-index.json) records the same benchmark
 after constant-time entity lookup and nearby-cell separation were introduced.
 Both are evidence from their recorded hardware profile, not universal CI
-thresholds. The release gate remains the roadmap's minimum-hardware profile
-once that profile is defined.
+thresholds. Their `v24.18.0` runtime metadata is retained as historical
+provenance rather than rewritten to the current Node.js 24.19.0 requirement.
+The release gate remains the roadmap's minimum-hardware profile once that
+profile is defined.
 
 | Units | Tick p95 before | Tick p95 after | Change | Separation p95 before | Separation p95 after | Change |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |

@@ -6,7 +6,7 @@ Approved sequencing target for roadmap Phase 13A, after the Phase 13 delta
 snapshot and scalable-rendering contract and before the Phase 14 four-player
 world model and match experience.
 
-Phase 11 is complete and Phase 12 is active. Structural Phase 13A work remains
+Phase 12 is complete. Structural Phase 13A work remains
 blocked until the Phase 13 presentation contract is complete; only the safe
 prework defined below may proceed earlier.
 
@@ -19,11 +19,11 @@ responsive, input, accessibility, or deterministic architecture contracts.
 
 The upgrade is intentionally split so useful preparation can start without
 building the final React information architecture on a presentation contract
-that Phases 12-13 will replace.
+that Phase 13 will replace.
 
 ```text
 Phase 11: Budgeted pathfinding (complete)
-        -> Phase 12: Simulation worker (active)
+        -> Phase 12: Simulation worker (complete)
         -> Phase 13: Delta snapshots and stable UI/economy channel
         -> Phase 13A: Main player UI upgrade
         -> Phase 14: Four-player world model and match experience
@@ -31,7 +31,7 @@ Phase 11: Budgeted pathfinding (complete)
         -> Phase 16: Scale and release hardening
 ```
 
-### Safe prework during the remaining Phases 12-13
+### Safe prework during Phase 13
 
 - Run Phase 0 UX inventory and capture representative screenshot fixtures.
 - Define shared design tokens, component anatomy, copy conventions, and
@@ -488,7 +488,7 @@ Add targeted automated checks for:
 
 ## Recommended pull-request slices
 
-Safe prework during the remaining Phases 12-13:
+Safe prework during Phase 13:
 
 1. Add the UX state inventory and representative screenshot fixtures.
 2. Add shared design tokens, copy conventions, and primitive component anatomy

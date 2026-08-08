@@ -4,9 +4,11 @@ A browser real-time strategy game built with React, vinext, and Phaser 4.
 
 ## Required runtime
 
-Use Node.js `24.18.0`, the pinned Node 24 LTS build for this project. The
+Use Node.js `24.19.0`, the pinned Node 24 LTS build for this project. The
 `.nvmrc`, `.node-version`, `package.json`, and npm engine check all declare the
-same version.
+same version. `npm run runtime:verify` also checks the running Node.js binary,
+lockfile, and worker-benchmark acceptance contract; CI runs this guard after
+setting up Node from `.node-version`.
 
 ## Local development
 
@@ -61,7 +63,7 @@ is dynamically imported behind the client-only React boundary in
 
 ## Current milestone
 
-Phase 12 is the active architecture phase. Its first two slices define a
+Phase 12 is complete. Its first two slices define a
 versioned, framework-independent simulation runtime protocol, an in-process
 comparison oracle, and a dedicated Web Worker transport with a worker-owned
 20 Hz clock. Actual Node worker-thread tests prove fixed-checkpoint parity,
@@ -69,8 +71,10 @@ main-thread-stall independence, and recoverable worker-failure reporting. The
 third slice makes that worker authoritative in live play. Phaser now consumes
 fixed-cadence snapshots and sends tick-stamped commands with a two-tick input
 lead; worker publication timestamps keep that delay bounded after main-thread
-stalls. The remaining Phase 12 work is the dedicated 600-unit worker benchmark
-and final performance-gate audit.
+stalls. A dedicated 600-unit Normal worker benchmark now exercises the 20 Hz
+clock and fixed-cadence snapshot cloning, failing on missed deadlines or work
+that exceeds the 50 ms tick budget. Phase 13's delta snapshot and scalable
+rendering contract is the next architecture milestone.
 
 Phase 9A now presents active play as a full-bleed battlefield with compact
 persistent status and command overlays. Construction, production, detailed
@@ -141,8 +145,7 @@ status, and authority.
 
 The initial Phase 0-6 baseline is recorded in the
 [initial v1 implementation plan](docs/initial-v1-implementation-plan.md).
-The completed Phase 7-11 work, active Phase 12 worker boundary, and remaining
-scaling phases are sequenced in the
+The completed Phase 7-12 work and remaining scaling phases are sequenced in the
 [development roadmap](docs/development-roadmap.md), with detailed supporting
 plans for the [overlay HUD](docs/full-bleed-battlefield-ui-plan.md), viewport
 fit, the [player UI upgrade](docs/ui-upgrade-plan.md), four-player scaling, and

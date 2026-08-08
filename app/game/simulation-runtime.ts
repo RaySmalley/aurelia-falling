@@ -10,10 +10,17 @@ import {
   type SimulationRuntimePauseReason,
   type SimulationRuntimeRequest,
 } from "./runtime-protocol";
+import type { AiDifficulty, SimulationScenario } from "./types";
 
 export type SimulationRuntimeEventListener = (
   event: SimulationRuntimeEvent,
 ) => void;
+
+export type SimulationFactory = (
+  seed: number,
+  scenario: SimulationScenario,
+  difficulty: AiDifficulty,
+) => Simulation;
 
 type ScheduledRuntimeMessage =
   | QueueSimulationCommandMessage
@@ -141,6 +148,11 @@ export class InProcessSimulationRuntime {
 
   constructor(
     private readonly reportListenerError: (error: unknown) => void = () => {},
+    private readonly createSimulation: SimulationFactory = (
+      seed,
+      scenario,
+      difficulty,
+    ) => new Simulation(seed, scenario, difficulty),
   ) {}
 
   subscribe(listener: SimulationRuntimeEventListener) {
@@ -283,7 +295,7 @@ export class InProcessSimulationRuntime {
           (left, right) => left.sequence - right.sequence,
         )) {
           if (message.type === "restart") {
-            this.simulation = new Simulation(
+            this.simulation = this.createSimulation(
               message.seed,
               message.scenario,
               message.difficulty,
@@ -339,7 +351,7 @@ export class InProcessSimulationRuntime {
       return;
     }
     this.snapshotCadenceTicks = cadence;
-    this.simulation = new Simulation(
+    this.simulation = this.createSimulation(
       message.seed,
       message.scenario,
       message.difficulty,
