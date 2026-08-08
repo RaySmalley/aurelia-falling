@@ -80,7 +80,8 @@ export type SimulationRuntimeErrorCode =
   | "late_command"
   | "not_initialized"
   | "protocol_version_mismatch"
-  | "runtime_terminated";
+  | "runtime_terminated"
+  | "worker_failure";
 
 export type SimulationRuntimeReadyEvent = VersionedRuntimeMessage &
   Readonly<{
