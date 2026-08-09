@@ -93,6 +93,35 @@ test("unchanged snapshots have constant-size empty entity payloads", () => {
   assert.equal(delta.structures.hotIds.length, 0);
 });
 
+test("unchanged entities do not rematerialize omitted render data", () => {
+  const encoder = new RenderSnapshotDeltaEncoder();
+  const sourceUnit = unit(1);
+  const sourceStructure = structure(2);
+  let pathReads = 0;
+  let queueReads = 0;
+  Object.defineProperty(sourceUnit, "path", {
+    enumerable: true,
+    get() {
+      pathReads += 1;
+      return [];
+    },
+  });
+  Object.defineProperty(sourceStructure, "queue", {
+    enumerable: true,
+    get() {
+      queueReads += 1;
+      return [];
+    },
+  });
+
+  encoder.encode(snapshot(1, [sourceUnit], [sourceStructure]));
+  assert.equal(pathReads, 1);
+  assert.equal(queueReads, 1);
+  encoder.encode(snapshot(2, [sourceUnit], [sourceStructure]));
+  assert.equal(pathReads, 1);
+  assert.equal(queueReads, 1);
+});
+
 test("hot unit and structure changes use packed numeric arrays", () => {
   const encoder = new RenderSnapshotDeltaEncoder();
   encoder.encode(snapshot(1, [unit(7)], [structure(9)]));
@@ -174,4 +203,23 @@ test("delta store reconstructs visible state and rejects sequence gaps", () => {
     () => store.apply({ ...encoder.encode(snapshot(3, [], [])), sequence: 4 }),
     /sequence gap/,
   );
+});
+
+test("metadata updates cannot implicitly reveal hidden entities", () => {
+  const encoder = new RenderSnapshotDeltaEncoder();
+  const store = new RenderSnapshotDeltaStore();
+  store.apply(encoder.encode(snapshot(1, [unit(1)], [])));
+  store.apply(encoder.encode(snapshot(2, [], [])));
+  const reveal = encoder.encode(snapshot(3, [unit(1, { selected: true })], []));
+  const invalidUpdate = {
+    ...reveal,
+    units: {
+      ...reveal.units,
+      update: reveal.units.reveal,
+      reveal: [],
+    },
+  };
+
+  assert.throws(() => store.apply(invalidUpdate), /cannot be updated before reveal/);
+  assert.deepEqual(store.snapshot().units, []);
 });

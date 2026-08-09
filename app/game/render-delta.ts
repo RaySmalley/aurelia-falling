@@ -233,15 +233,24 @@ export class RenderSnapshotDeltaEncoder {
       this.visibleUnits.delete(id);
     }
     for (const unit of snapshot.units) {
-      const next = toRenderUnit(unit);
       const previous = this.units.get(unit.id);
-      if (!previous) unitCreate.push(next);
-      else if (!this.visibleUnits.has(unit.id)) unitReveal.push(next);
-      else {
-        if (!unitMetadataEqual(previous, next)) {
-          unitUpdate.push(toUnitMetadata(next));
+      if (!previous) {
+        const next = toRenderUnit(unit);
+        unitCreate.push(next);
+        this.units.set(unit.id, next);
+      } else if (!this.visibleUnits.has(unit.id)) {
+        const next = toRenderUnit(unit);
+        unitReveal.push(next);
+        this.units.set(unit.id, next);
+      } else {
+        const metadataChanged = !unitMetadataEqual(previous, unit);
+        const hotChanged = !unitHotEqual(previous, unit);
+        if (metadataChanged || hotChanged) {
+          const next = toRenderUnit(unit);
+          if (metadataChanged) unitUpdate.push(toUnitMetadata(next));
+          this.units.set(unit.id, next);
         }
-        if (!unitHotEqual(previous, next)) {
+        if (hotChanged) {
           unitHotIds.push(unit.id);
           unitHotValues.push(
             unit.position.x,
@@ -252,7 +261,6 @@ export class RenderSnapshotDeltaEncoder {
           );
         }
       }
-      this.units.set(unit.id, next);
       this.visibleUnits.add(unit.id);
     }
 
@@ -271,15 +279,26 @@ export class RenderSnapshotDeltaEncoder {
       this.visibleStructures.delete(id);
     }
     for (const structure of snapshot.structures) {
-      const next = toRenderStructure(structure);
       const previous = this.structures.get(structure.id);
-      if (!previous) structureCreate.push(next);
-      else if (!this.visibleStructures.has(structure.id)) structureReveal.push(next);
-      else {
-        if (!structureMetadataEqual(previous, next)) {
-          structureUpdate.push(toStructureMetadata(next));
+      if (!previous) {
+        const next = toRenderStructure(structure);
+        structureCreate.push(next);
+        this.structures.set(structure.id, next);
+      } else if (!this.visibleStructures.has(structure.id)) {
+        const next = toRenderStructure(structure);
+        structureReveal.push(next);
+        this.structures.set(structure.id, next);
+      } else {
+        const metadataChanged = !structureMetadataEqual(previous, structure);
+        const hotChanged = !structureHotEqual(previous, structure);
+        if (metadataChanged || hotChanged) {
+          const next = toRenderStructure(structure);
+          if (metadataChanged) {
+            structureUpdate.push(toStructureMetadata(next));
+          }
+          this.structures.set(structure.id, next);
         }
-        if (!structureHotEqual(previous, next)) {
+        if (hotChanged) {
           structureHotIds.push(structure.id);
           structureHotValues.push(
             structure.health,
@@ -287,7 +306,6 @@ export class RenderSnapshotDeltaEncoder {
           );
         }
       }
-      this.structures.set(structure.id, next);
       this.visibleStructures.add(structure.id);
     }
 
@@ -423,8 +441,10 @@ export class RenderSnapshotDeltaStore {
     for (const update of delta.update) {
       const entity = entities.get(update.id);
       if (!entity) throw new Error(`Entity ${update.id} cannot be updated.`);
+      if (!visible.has(update.id)) {
+        throw new Error(`Hidden entity ${update.id} cannot be updated before reveal.`);
+      }
       entities.set(update.id, merge(entity, update));
-      visible.add(update.id);
     }
     for (const id of delta.hide) visible.delete(id as Id);
     for (const entity of delta.reveal) {
