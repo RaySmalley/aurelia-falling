@@ -24,7 +24,7 @@ final evidence; plans describe sequencing and acceptance intent.
 
 | Document | Status | Scope |
 | --- | --- | --- |
-| [Four-player scaling](./four-player-scaling-plan.md) | In progress; roadmap Phases 10-16 | Detailed scale plan. Indexed entities/spatial queries and budgeted pathfinding are complete; the simulation-worker phase is active. |
+| [Four-player scaling](./four-player-scaling-plan.md) | In progress; roadmap Phases 10-16 | Detailed scale plan. Indexed entities/spatial queries, budgeted pathfinding, and the simulation-worker boundary are complete; the delta-rendering phase is active. |
 | [TypeScript 7 adoption](./typescript-7-adoption-plan.md) | Deferred | Isolated toolchain proposal. The repository currently uses TypeScript 6; revalidate upstream compatibility before implementation. |
 
 ## Operational references
@@ -52,3 +52,6 @@ The documentation set was reconciled with `main` on August 8, 2026 after the
 first Phase 12 runtime-protocol slice. The Phase 12 worker-transport slice then
 added the dedicated worker host, browser transport, and actual Node
 worker-thread parity coverage while retaining the in-process comparison oracle.
+The first Phase 13 slice then established the versioned render-delta contract,
+packed hot fields, explicit entity lifecycle records, and sequence-checked
+reconstruction before worker and Phaser integration.
