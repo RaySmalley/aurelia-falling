@@ -5,7 +5,8 @@
 Current canonical roadmap following completion of Phases 7-12 and all Phase 9A
 presentation slices. Phase 13 is next: replace full render snapshots with a
 versioned delta protocol and scalable presentation pipeline before beginning
-the final player UI upgrade in Phase 13A.
+the final player UI upgrade in Phase 13A and the first-play experience in Phase
+13B.
 
 This document defines the order of the remaining phases. Detailed technical
 design remains in the supporting plans:
@@ -70,10 +71,12 @@ foundations come before four-player rules, and the generalized local world
 model comes before networking.
 
 The main player UI upgrade follows the stable worker and delta-presentation
-contracts in Phases 12-13 and precedes the four-player match experience in
-Phase 14. UX inventory, screenshot baselines, design tokens, and isolated
-low-risk usability fixes may proceed earlier, but the command-interface
-restructure must not race the snapshot protocol it will consume.
+contracts in Phases 12-13. A dedicated first-play experience then turns those
+systems into a coherent, release-quality mission opening before Phase 14 adds
+four-player match complexity. UX inventory, screenshot baselines, design
+tokens, and isolated low-risk usability fixes may proceed earlier, but the
+command-interface restructure must not race the snapshot protocol it will
+consume.
 
 The roadmap targets:
 
@@ -665,6 +668,76 @@ The UI upgrade uses a deliberately split schedule:
 
 See the [player UI upgrade plan](./ui-upgrade-plan.md).
 
+## Phase 13B: First-play experience and mission opening
+
+### Objective
+
+Turn the technically complete single-player skirmish into a polished first
+deployment that establishes stakes, teaches the core economy and command loop,
+and delivers an early payoff before four-player setup expands the product
+surface.
+
+### Execution boundary
+
+- Phase 13B begins after the Phase 13A information architecture, safe regions,
+  command surfaces, responsive modes, and accessibility contracts are stable.
+- This phase composes existing deterministic gameplay systems through scenario
+  data, queued commands, snapshots, and presentation events. Cinematic framing
+  and guidance must not mutate simulation state directly.
+- The guided first operation and custom skirmish are separate entry paths that
+  share gameplay systems. Custom skirmish remains the explicit home for seed,
+  AI pacing, and other advanced match configuration.
+- Four-player lobby, team, alliance, and slot complexity remains in Phase 14;
+  Phase 13B proves the one-player-versus-AI experience first.
+
+### Work
+
+- Replace the configuration-first opening with one dominant first-run action
+  that enters a guided operation; expose Custom Skirmish as a secondary path.
+- Add skippable mission framing, an intentional camera reveal, radio/subtitle
+  direction, and a concise statement of stakes and victory conditions.
+- Define the first operation as data-driven objective beats with one meaningful
+  task at a time, contextual focus, success feedback, and a clear transition to
+  unrestricted skirmish play.
+- Reconcile the starting force with the teaching sequence. Never instruct the
+  player to construct, discover, or unlock something already supplied unless
+  the objective explicitly explains why a second instance is needed.
+- Teach selection, economy, production, control groups, combat movement, the
+  Oracle, and Solar Spear in an order justified by the mission rather than as a
+  detached mechanics checklist.
+- Prevent hostile simulation pressure while a blocking briefing or required
+  reading surface owns input. Any grace period or objective gate uses explicit
+  deterministic scenario state and integer ticks rather than wall-clock time.
+- Give returning players a fast path, persist first-play completion, and allow
+  the guided operation to be replayed or restarted from Help.
+- Provide reduced-motion camera treatment, complete subtitles, keyboard and
+  assistive-technology operation, and non-audio equivalents for every cue.
+- Capture first-launch, briefing, early-objective, transition, skip, replay,
+  and custom-skirmish screenshot and interaction fixtures across the supported
+  viewport and UI-scale matrix.
+
+### Acceptance gates
+
+- A first launch presents one unmistakable primary action; seed and detailed AI
+  configuration are not required to begin playing.
+- The watched and skipped openings reach the same deterministic playable state
+  for the same scenario version, seed, difficulty, and command stream.
+- Starting assets, objective copy, available commands, and completion triggers
+  agree throughout the guided operation.
+- A new player can identify the mission goal, complete the first meaningful
+  objective, and understand the next action without external instructions.
+- A representative first-time usability run reaches a clear command or economy
+  payoff within 60-90 seconds without rushing dialogue or reading.
+- Briefings, guidance, subtitles, warnings, and command surfaces respect Phase
+  13A safe regions and never compete for the same required action.
+- Skipping, dismissing, replaying, pausing, losing focus, and returning from
+  settings cannot strand input, advance the simulation unintentionally, or
+  corrupt onboarding progress.
+- Keyboard-only, screen-reader, reduced-motion, muted-audio, and compact-layout
+  users can complete the opening and enter unrestricted play.
+- Deterministic replays, worker parity, viewport tests, accessibility checks,
+  unit tests, type checking, linting, production build, and Graphify update pass.
+
 ## Phase 14: Four-player world model and match experience
 
 ### Objective
@@ -822,22 +895,26 @@ current proposal and exit condition.
 | 12. Simulation worker | Phases 10-11 predictable costs | Main-thread-independent simulation |
 | 13. Delta rendering | Phase 12 protocol | Scalable snapshots and renderer |
 | 13A. Player UI upgrade | Phase 13 presentation contract; UI inventory/tokens may start earlier | Final single-player information architecture and interaction model |
-| 14. Four-player world model | Phases 10-13A | General local player model and match experience |
+| 13B. First-play experience | Phase 13A interface and accessibility contracts | Polished guided operation and coherent custom-skirmish entry |
+| 14. Four-player world model | Phases 10-13B | General local player model and match experience |
 | 15. Deterministic multiplayer | Phase 14 | Synchronized remote matches |
 | 16. Release hardening | Phases 7-15 | Maintained production envelope |
 
 ## Recommended next pull requests
 
-The critical execution path is Phase 13 -> Phase 13A -> Phase 14 -> Phase 15 ->
-Phase 16.
+The critical execution path is Phase 13 -> Phase 13A -> Phase 13B -> Phase 14 ->
+Phase 15 -> Phase 16.
 
 1. Deliver the Phase 13 delta protocol, slow UI/economy channel, and scalable
    renderer before restructuring React presentation consumers.
 2. Execute Phase 13A in the pull-request slices defined by the player UI
    upgrade plan: status/safe regions, command-panel architecture, panel
    migrations, onboarding/feedback, responsive modes, and accessibility polish.
-3. Begin Phase 14 player-slot and match-experience integration only after the
-   Phase 13A acceptance gates pass.
+3. Deliver Phase 13B as focused first-play slices: entry-path separation,
+   deterministic mission beats, cinematic presentation, onboarding coherence,
+   and first-run usability validation.
+4. Begin Phase 14 player-slot and match-experience integration only after the
+   Phase 13B acceptance gates pass.
 
 UI-plan Phase 0 inventory and Phase 1 token/component-foundation work may run as
 isolated parallel pull requests during Phase 13. They must not
@@ -850,6 +927,8 @@ These are pull-request slices, not replacements for the phase acceptance gates.
 
 This roadmap is complete when Aurelia Falling:
 
+- Welcomes a new player through a coherent, accessible, release-quality first
+  operation with an early payoff and a clear path into custom skirmishes.
 - Fits every supported viewport and UI scale without document scrolling.
 - Presents a complete and readable textured battlefield with robust fallbacks.
 - Maintains deterministic 20 Hz simulation at the normal four-player target.
