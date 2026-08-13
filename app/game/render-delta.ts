@@ -189,6 +189,14 @@ export class RenderSnapshotDeltaEncoder {
   private readonly structures = new Map<StructureId, RenderStructureSnapshot>();
   private readonly visibleStructures = new Set<StructureId>();
 
+  reset() {
+    this.sequence = 0;
+    this.units.clear();
+    this.visibleUnits.clear();
+    this.structures.clear();
+    this.visibleStructures.clear();
+  }
+
   encode(
     snapshot: RenderSnapshotSource,
     lifecycle: RenderDeltaLifecycle = {},
@@ -349,6 +357,9 @@ export class RenderSnapshotDeltaStore {
     if (delta.protocolVersion !== RENDER_DELTA_PROTOCOL_VERSION) {
       throw new Error(`Unsupported render delta protocol ${delta.protocolVersion}.`);
     }
+    if (delta.baseSequence === null && delta.sequence === 1 && this.sequence > 0) {
+      this.reset();
+    }
     const expectedBase = this.sequence === 0 ? null : this.sequence;
     if (delta.baseSequence !== expectedBase || delta.sequence !== this.sequence + 1) {
       throw new Error(
@@ -421,6 +432,15 @@ export class RenderSnapshotDeltaStore {
         .sort((left, right) => left - right)
         .map((id) => this.structures.get(id)!),
     } as const;
+  }
+
+  private reset() {
+    this.sequence = 0;
+    this.tick = 0;
+    this.units.clear();
+    this.visibleUnits.clear();
+    this.structures.clear();
+    this.visibleStructures.clear();
   }
 
   private applyEntities<

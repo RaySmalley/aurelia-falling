@@ -4,8 +4,9 @@ import type {
   SimulationScenario,
   SimulationSnapshot,
 } from "./types";
+import type { RenderSnapshotDelta } from "./render-delta";
 
-export const SIMULATION_RUNTIME_PROTOCOL_VERSION = 1 as const;
+export const SIMULATION_RUNTIME_PROTOCOL_VERSION = 2 as const;
 export const DEFAULT_SNAPSHOT_CADENCE_TICKS = 2;
 
 export type SimulationRuntimeProtocolVersion =
@@ -97,6 +98,8 @@ export type SimulationRuntimeSnapshotEvent = VersionedRuntimeMessage &
     /** Transport-only wall-clock sample used to bound live command latency. */
     publishedAtMs?: number;
     snapshot: SimulationSnapshot;
+    /** High-frequency entity presentation state, reconstructed independently. */
+    renderDelta: RenderSnapshotDelta;
   }>;
 
 export type SimulationRuntimePauseEvent = VersionedRuntimeMessage &

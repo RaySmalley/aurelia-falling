@@ -5,6 +5,7 @@ import {
   type SimulationRuntimePauseReason,
 } from "./runtime-protocol";
 import type { WorkerSimulationRuntime } from "./simulation-worker-client";
+import { RenderSnapshotDeltaStore } from "./render-delta";
 import type {
   AiDifficulty,
   SimCommand,
@@ -36,6 +37,7 @@ export class SimulationWorkerSession {
   private nextSequence = 0;
   private started = false;
   private terminated = false;
+  private readonly renderStore = new RenderSnapshotDeltaStore();
 
   constructor(
     private readonly runtime: WorkerSimulationRuntime,
@@ -51,6 +53,10 @@ export class SimulationWorkerSession {
   subscribe(listener: SessionListener) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  renderSnapshot() {
+    return this.renderStore.snapshot();
   }
 
   initialize(timeoutMs = 5_000) {
@@ -193,12 +199,37 @@ export class SimulationWorkerSession {
           ? event.publishedAtMs
           : this.now();
     }
-    if (event.type === "snapshot") this.latestSnapshot = event.snapshot;
+    if (event.type === "snapshot") {
+      try {
+        this.renderStore.apply(event.renderDelta);
+      } catch (error) {
+        this.failRenderChannel(error, event.tick);
+        return;
+      }
+      this.latestSnapshot = event.snapshot;
+    }
     if (event.type === "pauseChanged") {
       this.pauseReasons.clear();
       for (const reason of event.reasons) this.pauseReasons.add(reason);
     }
     if (event.type === "terminated") this.terminated = true;
     for (const listener of [...this.listeners]) listener(event);
+  }
+
+  private failRenderChannel(error: unknown, tick: number) {
+    const failure: SimulationRuntimeEvent = {
+      protocolVersion: SIMULATION_RUNTIME_PROTOCOL_VERSION,
+      type: "error",
+      code: "invalid_message",
+      message:
+        error instanceof Error
+          ? `Render channel failed: ${error.message}`
+          : "Render channel failed with an invalid delta.",
+      recoverable: false,
+      tick,
+    };
+    this.runtime.terminate();
+    this.terminated = true;
+    for (const listener of [...this.listeners]) listener(failure);
   }
 }

@@ -8,11 +8,17 @@ const vite = await createServer({
   server: { middlewareMode: true },
 });
 const deltaModule = await vite.ssrLoadModule("/app/game/render-delta.ts");
+const protocolModule = await vite.ssrLoadModule("/app/game/runtime-protocol.ts");
+const runtimeModule = await vite.ssrLoadModule("/app/game/simulation-runtime.ts");
+const hostModule = await vite.ssrLoadModule("/app/game/simulation-worker-host.ts");
 const {
   RENDER_DELTA_PROTOCOL_VERSION,
   RenderSnapshotDeltaEncoder,
   RenderSnapshotDeltaStore,
 } = deltaModule;
+const { InProcessSimulationRuntime } = runtimeModule;
+const { startSimulationWorkerHost } = hostModule;
+const { SIMULATION_RUNTIME_PROTOCOL_VERSION: runtimeVersion } = protocolModule;
 
 test.after(() => vite.close());
 
@@ -205,6 +211,20 @@ test("delta store reconstructs visible state and rejects sequence gaps", () => {
   );
 });
 
+test("delta store accepts a fresh base after a runtime restart", () => {
+  const firstEncoder = new RenderSnapshotDeltaEncoder();
+  const store = new RenderSnapshotDeltaStore();
+  store.apply(firstEncoder.encode(snapshot(1, [unit(1)], [])));
+
+  const restartedEncoder = new RenderSnapshotDeltaEncoder();
+  const state = store.apply(
+    restartedEncoder.encode(snapshot(1, [unit(9)], [structure(10)])),
+  );
+
+  assert.deepEqual(state.units.map(({ id }) => id), [9]);
+  assert.deepEqual(state.structures.map(({ id }) => id), [10]);
+});
+
 test("metadata updates cannot implicitly reveal hidden entities", () => {
   const encoder = new RenderSnapshotDeltaEncoder();
   const store = new RenderSnapshotDeltaStore();
@@ -222,4 +242,60 @@ test("metadata updates cannot implicitly reveal hidden entities", () => {
 
   assert.throws(() => store.apply(invalidUpdate), /cannot be updated before reveal/);
   assert.deepEqual(store.snapshot().units, []);
+});
+
+test("runtime snapshot events carry sequence-checked render deltas", () => {
+  const runtime = new InProcessSimulationRuntime();
+  const events = [];
+  runtime.subscribe((event) => {
+    if (event.type === "snapshot") events.push(event);
+  });
+  runtime.dispatch({
+    protocolVersion: runtimeVersion,
+    type: "initialize",
+    seed: 4_115,
+    scenario: "skirmish",
+    difficulty: "normal",
+    snapshotCadenceTicks: 1,
+  });
+  runtime.advance();
+
+  const store = new RenderSnapshotDeltaStore();
+  const initial = store.apply(events[0].renderDelta);
+  const next = store.apply(events[1].renderDelta);
+  assert.equal(initial.tick, events[0].snapshot.tick);
+  assert.equal(next.tick, events[1].snapshot.tick);
+  assert.deepEqual(
+    next.units.map(({ id }) => id),
+    events[1].snapshot.units.map(({ id }) => id),
+  );
+});
+
+test("worker host transfers every packed render-delta buffer", () => {
+  let receive = () => {};
+  const posted = [];
+  const host = startSimulationWorkerHost(
+    {
+      postMessage: (event, transfer) => posted.push({ event, transfer }),
+      subscribe(listener) {
+        receive = listener;
+        return () => {};
+      },
+    },
+    { start() {}, stop() {} },
+  );
+  receive({
+    protocolVersion: runtimeVersion,
+    type: "initialize",
+    seed: 4_115,
+    scenario: "skirmish",
+    difficulty: "normal",
+  });
+
+  const published = posted.find(({ event }) => event.type === "snapshot");
+  assert.equal(published.transfer.length, 8);
+  assert.ok(
+    published.transfer.includes(published.event.renderDelta.units.hotValues.buffer),
+  );
+  host.stop();
 });

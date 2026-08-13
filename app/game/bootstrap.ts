@@ -11,6 +11,10 @@ import {
 } from "./simulation-worker-session";
 import { DEFAULT_SNAPSHOT_CADENCE_TICKS } from "./runtime-protocol";
 import type {
+  RenderStructureSnapshot,
+  RenderUnitSnapshot,
+} from "./render-delta";
+import type {
   AudioCueSnapshot,
   AudioSettings,
   AureliteFieldSnapshot,
@@ -96,6 +100,23 @@ function fixedToWorld(point: Vec2) {
     x: point.x / TILE_MILLI,
     y: point.y / TILE_MILLI,
   });
+}
+
+function withRenderEntities(
+  snapshot: SimulationSnapshot,
+  render: Readonly<{
+    units: readonly RenderUnitSnapshot[];
+    structures: readonly RenderStructureSnapshot[];
+  }>,
+): SimulationSnapshot {
+  return {
+    ...snapshot,
+    units: render.units.map((unit) => ({ ...unit, path: [] })),
+    structures: render.structures.map((structure) => ({
+      ...structure,
+      queue: [],
+    })),
+  };
 }
 
 export function structureContainsWorldPoint(
@@ -221,7 +242,11 @@ export async function createGameRuntime(
   let renderer = "initializing";
   let runtimeError: string | null = null;
   let lastSnapshot = initialSimulationSnapshot;
-  let previousSnapshot = lastSnapshot;
+  let lastRenderSnapshot = withRenderEntities(
+    initialSimulationSnapshot,
+    workerSession.renderSnapshot(),
+  );
+  let previousRenderSnapshot = lastRenderSnapshot;
   let lastSnapshotReceivedAt = performance.now();
   let detachKeyboardCaptureGuard = () => {};
   let refreshKeyboardInput = () => {};
@@ -268,11 +293,15 @@ export async function createGameRuntime(
   const unsubscribeWorkerSession = workerSession.subscribe((event) => {
     if (event.type === "snapshot") {
       const nextSnapshot = event.snapshot;
+      const nextRenderSnapshot = withRenderEntities(
+        nextSnapshot,
+        workerSession.renderSnapshot(),
+      );
       if (
         pendingFogMemoryResetAtTick !== null &&
         event.tick >= pendingFogMemoryResetAtTick
       ) {
-        previousSnapshot = nextSnapshot;
+        previousRenderSnapshot = nextRenderSnapshot;
         pendingFogMemoryResetAtTick = null;
         fogMemoryResetReady = true;
       } else if (
@@ -282,12 +311,13 @@ export async function createGameRuntime(
           DEFAULT_SNAPSHOT_CADENCE_TICKS,
         )
       ) {
-        previousSnapshot = lastSnapshot;
+        previousRenderSnapshot = lastRenderSnapshot;
         proceduralAudio.observe(lastSnapshot, nextSnapshot);
       } else {
-        previousSnapshot = nextSnapshot;
+        previousRenderSnapshot = nextRenderSnapshot;
       }
       lastSnapshot = nextSnapshot;
+      lastRenderSnapshot = nextRenderSnapshot;
       lastSnapshotReceivedAt = performance.now();
       emit();
       return;
@@ -400,8 +430,8 @@ export async function createGameRuntime(
         .setStrokeStyle(2, 0xf4bd55, 0.95)
         .setDepth(30)
         .setVisible(false);
-      this.syncUnitViews(lastSnapshot);
-      this.syncStructureViews(lastSnapshot);
+      this.syncUnitViews(lastRenderSnapshot);
+      this.syncStructureViews(lastRenderSnapshot);
       this.syncFieldViews(lastSnapshot);
       this.drawFog(lastSnapshot);
 
@@ -600,13 +630,13 @@ export async function createGameRuntime(
       }
 
       this.updateCamera(delta);
-      this.syncUnitViews(lastSnapshot);
-      this.syncStructureViews(lastSnapshot);
-      this.syncStaleStructureViews(lastSnapshot);
+      this.syncUnitViews(lastRenderSnapshot);
+      this.syncStructureViews(lastRenderSnapshot);
+      this.syncStaleStructureViews(lastRenderSnapshot);
       this.syncFieldViews(lastSnapshot);
       this.renderUnits(
-        previousSnapshot,
-        lastSnapshot,
+        previousRenderSnapshot,
+        lastRenderSnapshot,
         paused
           ? 1
           : Math.min(
@@ -1413,7 +1443,7 @@ export async function createGameRuntime(
       const click = width < 10 && height < 10;
       let unitIds: number[] = [];
       if (click) {
-        const nearest = lastSnapshot.units
+        const nearest = lastRenderSnapshot.units
           .filter(
             (unit) => unit.playerId === lastSnapshot.controlledPlayer,
           )
@@ -1442,7 +1472,7 @@ export async function createGameRuntime(
           return;
         }
       } else {
-        unitIds = lastSnapshot.units
+        unitIds = lastRenderSnapshot.units
           .filter((unit) => {
             if (unit.playerId !== lastSnapshot.controlledPlayer) return false;
             const world = fixedToWorld(unit.position);
@@ -1466,7 +1496,7 @@ export async function createGameRuntime(
       point: Phaser.Math.Vector2,
       playerId: 1 | 2,
     ) {
-      return lastSnapshot.units
+      return lastRenderSnapshot.units
         .filter((unit) => unit.playerId === playerId)
         .map((unit) => {
           const world = fixedToWorld(unit.position);
@@ -1487,7 +1517,7 @@ export async function createGameRuntime(
       playerId: 1 | 2,
     ) {
       return pickStructureAtWorldPoint(
-        lastSnapshot.structures,
+        lastRenderSnapshot.structures,
         point,
         playerId,
         this.textures.exists("structure-atlas"),
@@ -1564,7 +1594,7 @@ export async function createGameRuntime(
     resume() {
       paused = false;
       pauseReason = null;
-      previousSnapshot = lastSnapshot;
+      previousRenderSnapshot = lastRenderSnapshot;
       lastSnapshotReceivedAt = performance.now();
       workerSession.resume();
       proceduralAudio.setPaused(false);

@@ -1,4 +1,5 @@
 import { Simulation } from "./simulation";
+import { RenderSnapshotDeltaEncoder } from "./render-delta";
 import {
   DEFAULT_SNAPSHOT_CADENCE_TICKS,
   SIMULATION_RUNTIME_PROTOCOL_VERSION,
@@ -145,6 +146,9 @@ export class InProcessSimulationRuntime {
   private readonly listeners = new Set<SimulationRuntimeEventListener>();
   private readonly pendingEvents: SimulationRuntimeEvent[] = [];
   private emitting = false;
+  private readonly renderDeltaEncoder = new RenderSnapshotDeltaEncoder();
+  private authoritativeUnitIds = new Set<number>();
+  private authoritativeStructureIds = new Set<number>();
 
   constructor(
     private readonly reportListenerError: (error: unknown) => void = () => {},
@@ -300,6 +304,9 @@ export class InProcessSimulationRuntime {
               message.scenario,
               message.difficulty,
             );
+            this.renderDeltaEncoder.reset();
+            this.authoritativeUnitIds.clear();
+            this.authoritativeStructureIds.clear();
             this.scheduledCommands.clear();
           } else {
             this.simulation!.enqueue(message.command);
@@ -430,11 +437,25 @@ export class InProcessSimulationRuntime {
   }
 
   private emitSnapshot(snapshot: ReturnType<Simulation["snapshot"]>) {
+    const entityIds = this.simulation!.renderEntityIds();
+    const nextUnitIds = new Set(entityIds.unitIds);
+    const nextStructureIds = new Set(entityIds.structureIds);
+    const renderDelta = this.renderDeltaEncoder.encode(snapshot, {
+      destroyedUnitIds: [...this.authoritativeUnitIds].filter(
+        (id) => !nextUnitIds.has(id),
+      ),
+      destroyedStructureIds: [...this.authoritativeStructureIds].filter(
+        (id) => !nextStructureIds.has(id),
+      ),
+    });
+    this.authoritativeUnitIds = nextUnitIds;
+    this.authoritativeStructureIds = nextStructureIds;
     this.emit({
       protocolVersion: SIMULATION_RUNTIME_PROTOCOL_VERSION,
       type: "snapshot",
       tick: this.lastTick,
       snapshot,
+      renderDelta,
     });
   }
 

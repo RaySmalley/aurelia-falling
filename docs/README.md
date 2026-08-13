@@ -52,6 +52,8 @@ The documentation set was reconciled with `main` on August 8, 2026 after the
 first Phase 12 runtime-protocol slice. The Phase 12 worker-transport slice then
 added the dedicated worker host, browser transport, and actual Node
 worker-thread parity coverage while retaining the in-process comparison oracle.
-The first Phase 13 slice then established the versioned render-delta contract,
+The first Phase 13 slice established the versioned render-delta contract,
 packed hot fields, explicit entity lifecycle records, and sequence-checked
-reconstruction before worker and Phaser integration.
+reconstruction. The second integrates transferable delta buffers with the
+worker session and Phaser entity rendering while the slower UI/economy channel
+remains pending.

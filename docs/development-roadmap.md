@@ -562,14 +562,14 @@ scale limit.
 ### Current implementation slice
 
 The first slice defines render-delta protocol version 1 and a transport-neutral
-encoder/store pair. Unit position and combat values and structure health and
-construction progress use packed typed arrays; cold metadata changes use
-explicit records. Creation, visibility hide/reveal, and authoritative
-destruction are distinct lifecycle operations. The render channel excludes
-complete unit paths and structure production queues, validates sequence
-continuity, and emits empty entity payloads when nothing changed. Worker
-transport integration, the slower UI/economy channel, and Phaser rendering
-changes remain follow-up slices.
+encoder/store pair. The second slice integrates that channel with runtime
+protocol version 2: workers transfer packed buffers without cloning, the live
+session reconstructs sequence-checked entity state, and Phaser renders and
+hit-tests those reconstructed units and structures. Creation, visibility
+hide/reveal, authoritative destruction, and restart resets remain distinct.
+The render channel excludes complete unit paths and structure production
+queues. The slower UI/economy channel, culling, pooling, batching, and detail
+budgets remain follow-up slices.
 
 ### Work
 

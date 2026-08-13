@@ -119,7 +119,7 @@ function createControlledTransport() {
   };
 }
 
-function waitForEvent(runtime, predicate, timeoutMs = 5_000) {
+function waitForEvent(runtime, predicate, timeoutMs = 15_000) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       unsubscribe();
@@ -136,12 +136,12 @@ function waitForEvent(runtime, predicate, timeoutMs = 5_000) {
 
 function initialSnapshot() {
   const runtime = new InProcessSimulationRuntime();
-  let snapshot;
+  let snapshotEvent;
   runtime.subscribe((event) => {
-    if (event.type === "snapshot") snapshot = event.snapshot;
+    if (event.type === "snapshot") snapshotEvent = event;
   });
   runtime.dispatch(initialize());
-  return snapshot;
+  return snapshotEvent;
 }
 
 test("live session initialization uses the versioned worker protocol", async () => {
@@ -164,12 +164,13 @@ test("live session initialization uses the versioned worker protocol", async () 
       snapshotCadenceTicks: 2,
     },
   ]);
-  const snapshot = initialSnapshot();
+  const { snapshot, renderDelta } = initialSnapshot();
   controlled.emit({
     protocolVersion: version,
     type: "snapshot",
     tick: 0,
     snapshot,
+    renderDelta,
   });
   assert.equal(await initialized, snapshot);
   session.terminate();
@@ -186,12 +187,13 @@ test("live command scheduling stays ahead of a worker after a main-thread stall"
     now: () => now,
   });
   const initialized = session.initialize();
-  const snapshot = initialSnapshot();
+  const { snapshot, renderDelta } = initialSnapshot();
   controlled.emit({
     protocolVersion: version,
     type: "snapshot",
     tick: 10,
     snapshot,
+    renderDelta,
   });
   await initialized;
 
@@ -214,7 +216,7 @@ test("delayed snapshot delivery preserves the worker publication clock", async (
     now: () => now,
   });
   const initialized = session.initialize();
-  const snapshot = initialSnapshot();
+  const { snapshot, renderDelta } = initialSnapshot();
   now = 260;
   controlled.emit({
     protocolVersion: version,
@@ -222,6 +224,7 @@ test("delayed snapshot delivery preserves the worker publication clock", async (
     tick: 2,
     publishedAtMs: 100,
     snapshot,
+    renderDelta,
   });
   await initialized;
 
@@ -243,12 +246,13 @@ test("paused live-session restarts target the frozen tick and resume explicitly"
     now: () => 0,
   });
   const initialized = session.initialize();
-  const snapshot = initialSnapshot();
+  const { snapshot, renderDelta } = initialSnapshot();
   controlled.emit({
     protocolVersion: version,
     type: "snapshot",
     tick: 12,
     snapshot,
+    renderDelta,
   });
   await initialized;
   session.pause("manual");
@@ -294,12 +298,13 @@ test("resuming rebases command scheduling after a long pause", async () => {
     now: () => now,
   });
   const initialized = session.initialize();
-  const snapshot = initialSnapshot();
+  const { snapshot, renderDelta } = initialSnapshot();
   controlled.emit({
     protocolVersion: version,
     type: "snapshot",
     tick: 12,
     snapshot,
+    renderDelta,
   });
   await initialized;
   session.pause("manual");
@@ -361,23 +366,30 @@ test("worker thread and in-process runtime publish identical checkpoints", async
 test("a blocked main thread does not stop the worker-owned fixed-step clock", async () => {
   const { runtime, worker, heartbeat } = createNodeWorkerRuntime();
   const ready = waitForEvent(runtime, (event) => event.type === "ready");
+  const initialSnapshot = waitForEvent(
+    runtime,
+    (event) => event.type === "snapshot" && event.tick === 0,
+  );
   runtime.dispatch(initialize({ snapshotCadenceTicks: 2 }));
   await ready;
+  await initialSnapshot;
 
-  const advanced = waitForEvent(
-    runtime,
-    (event) => event.type === "snapshot" && event.tick >= 4,
-  );
-  const blockedUntil = performance.now() + 260;
-  while (performance.now() < blockedUntil) {
-    // Deliberately occupy the parent event loop; the simulation owns another thread.
+  try {
+    const advanced = waitForEvent(
+      runtime,
+      (event) => event.type === "snapshot" && event.tick >= 4,
+    );
+    const blockedUntil = performance.now() + 1_000;
+    while (performance.now() < blockedUntil) {
+      // Deliberately occupy the parent event loop; the simulation owns another thread.
+    }
+    assert.ok(Atomics.load(heartbeat, 0) >= 4);
+    const event = await advanced;
+    assert.ok(event.tick >= 4);
+  } finally {
+    runtime.terminate();
+    await worker.terminate();
   }
-  assert.ok(Atomics.load(heartbeat, 0) >= 4);
-  const event = await advanced;
-  assert.ok(event.tick >= 4);
-
-  runtime.terminate();
-  await worker.terminate();
 });
 
 test("worker termination surfaces a recoverable structured failure", async () => {

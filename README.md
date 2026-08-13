@@ -73,11 +73,12 @@ fixed-cadence snapshots and sends tick-stamped commands with a two-tick input
 lead; worker publication timestamps keep that delay bounded after main-thread
 stalls. A dedicated 600-unit Normal worker benchmark now exercises the 20 Hz
 clock and fixed-cadence snapshot cloning, failing on missed deadlines or work
-that exceeds the 50 ms tick budget. Phase 13 is now active: its first slice
-defines a versioned render-delta contract with packed hot unit and structure
-fields, explicit create/update/hide/reveal/destroy records, sequence-checked
-reconstruction, and no full unit paths or production queues in the render
-channel. Worker transport and Phaser consumption remain subsequent slices.
+that exceeds the 50 ms tick budget. Phase 13 is now active: its first two slices
+define a versioned render-delta contract and carry it through the worker as
+transferable packed buffers. The live session sequence-checks reconstruction,
+and Phaser consumes the reconstructed entity channel without full unit paths
+or production queues. The slower UI/economy channel and scalable view work
+remain subsequent slices.
 
 Phase 9A now presents active play as a full-bleed battlefield with compact
 persistent status and command overlays. Construction, production, detailed
