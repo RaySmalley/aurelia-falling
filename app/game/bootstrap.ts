@@ -134,7 +134,7 @@ function withRenderEntities(
 ): SimulationSnapshot {
   return {
     ...snapshot,
-    units: render.units.map((unit) => ({ ...unit, path: [] })),
+    units: render.units,
     structures: render.structures.map((structure) => ({
       ...structure,
       queue: [],

@@ -15,6 +15,8 @@ export type RenderUnitSnapshot = Readonly<
     "position" | "path" | "health" | "cooldownTicks" | "cargo"
   > & {
     position: Readonly<{ x: number; y: number }>;
+    /** Route overlays only need paths for selected units. */
+    path: UnitSnapshot["path"];
     health: number;
     cooldownTicks: number;
     cargo: number;
@@ -87,6 +89,16 @@ const pointEqual = (
   right: Readonly<{ x: number; y: number }> | null,
 ) => left === right || (!!left && !!right && left.x === right.x && left.y === right.y);
 
+const pathEqual = (
+  left: UnitSnapshot["path"],
+  right: UnitSnapshot["path"],
+) =>
+  left === right ||
+  (left.length === right.length &&
+    left.every((point, index) => pointEqual(point, right[index])));
+
+const renderPath = (unit: UnitSnapshot) => (unit.selected ? unit.path : []);
+
 const unitMetadataEqual = (
   left: RenderUnitSnapshot,
   right: RenderUnitSnapshot,
@@ -101,6 +113,7 @@ const unitMetadataEqual = (
   left.selected === right.selected &&
   left.order === right.order &&
   left.pathingState === right.pathingState &&
+  pathEqual(left.path, renderPath(right)) &&
   left.maxHealth === right.maxHealth &&
   left.weaponId === right.weaponId &&
   left.targetId === right.targetId &&
@@ -140,9 +153,8 @@ const structureHotEqual = (
   left.constructionRemainingTicks === right.constructionRemainingTicks;
 
 const toRenderUnit = (unit: UnitSnapshot): RenderUnitSnapshot => {
-  const { path: _path, ...renderUnit } = unit;
-  void _path;
-  return renderUnit;
+  const { path, ...renderUnit } = unit;
+  return { ...renderUnit, path: unit.selected ? path : [] };
 };
 
 const toRenderStructure = (

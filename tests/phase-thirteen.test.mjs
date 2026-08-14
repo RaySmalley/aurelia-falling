@@ -113,15 +113,18 @@ const structure = (id, overrides = {}) => ({
 
 const snapshot = (tick, units, structures) => ({ tick, units, structures });
 
-test("initial render delta creates entities without paths or production queues", () => {
+test("initial render delta retains selected routes but omits production queues", () => {
   const encoder = new RenderSnapshotDeltaEncoder();
-  const delta = encoder.encode(snapshot(10, [unit(1)], [structure(2)]));
+  const delta = encoder.encode(
+    snapshot(10, [unit(1), unit(3, { selected: true })], [structure(2)]),
+  );
 
   assert.equal(delta.protocolVersion, RENDER_DELTA_PROTOCOL_VERSION);
   assert.equal(delta.sequence, 1);
   assert.equal(delta.baseSequence, null);
-  assert.equal(delta.units.create.length, 1);
-  assert.equal("path" in delta.units.create[0], false);
+  assert.equal(delta.units.create.length, 2);
+  assert.deepEqual(delta.units.create[0].path, []);
+  assert.deepEqual(delta.units.create[1].path, [{ x: 4, y: 5 }]);
   assert.equal(delta.structures.create.length, 1);
   assert.equal("queue" in delta.structures.create[0], false);
 });
@@ -247,10 +250,31 @@ test("delta store reconstructs visible state and rejects sequence gaps", () => {
   assert.equal(state.sequence, 2);
   assert.equal(state.units[0].health, 81);
   assert.equal(state.units[0].selected, true);
+  assert.deepEqual(state.units[0].path, [{ x: 4, y: 5 }]);
   assert.throws(
     () => store.apply({ ...encoder.encode(snapshot(3, [], [])), sequence: 4 }),
     /sequence gap/,
   );
+});
+
+test("selected route changes are value-compared and reconstructed", () => {
+  const encoder = new RenderSnapshotDeltaEncoder();
+  const store = new RenderSnapshotDeltaStore();
+  store.apply(
+    encoder.encode(snapshot(1, [unit(3, { selected: true })], [])),
+  );
+
+  const unchanged = encoder.encode(
+    snapshot(2, [unit(3, { selected: true, path: [{ x: 4, y: 5 }] })], []),
+  );
+  assert.deepEqual(unchanged.units.update, []);
+
+  const changed = encoder.encode(
+    snapshot(3, [unit(3, { selected: true, path: [{ x: 8, y: 9 }] })], []),
+  );
+  assert.deepEqual(changed.units.update[0].path, [{ x: 8, y: 9 }]);
+  assert.deepEqual(store.apply(unchanged).units[0].path, [{ x: 4, y: 5 }]);
+  assert.deepEqual(store.apply(changed).units[0].path, [{ x: 8, y: 9 }]);
 });
 
 test("delta store accepts a fresh base after a runtime restart", () => {
