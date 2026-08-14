@@ -72,13 +72,15 @@ third slice makes that worker authoritative in live play. Phaser now consumes
 fixed-cadence snapshots and sends tick-stamped commands with a two-tick input
 lead; worker publication timestamps keep that delay bounded after main-thread
 stalls. A dedicated 600-unit Normal worker benchmark now exercises the 20 Hz
-clock and fixed-cadence snapshot cloning, failing on missed deadlines or work
-that exceeds the 50 ms tick budget. Phase 13 is now active: its first two slices
+clock and production-equivalent transferable snapshot publication, separating
+simulation work from synchronous publication cost and failing on missed
+deadlines or work that exceeds the 50 ms tick budget. Phase 13 is now active: its first three slices
 define a versioned render-delta contract and carry it through the worker as
 transferable packed buffers. The live session sequence-checks reconstruction,
 and Phaser consumes the reconstructed entity channel without full unit paths
-or production queues. The slower UI/economy channel and scalable view work
-remain subsequent slices.
+or production queues. A separate bounded UI/economy channel now updates React
+at 2 Hz with summaries and selected-asset detail instead of full entity graphs.
+Culling, pooling, batching, and scalable detail work remain subsequent slices.
 
 Phase 9A now presents active play as a full-bleed battlefield with compact
 persistent status and command overlays. Construction, production, detailed

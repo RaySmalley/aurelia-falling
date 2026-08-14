@@ -40,30 +40,25 @@ const INITIAL_SNAPSHOT: RuntimeSnapshot = {
     tick: 0,
     scenario: "skirmish",
     controlledPlayer: 1,
-    units: [],
-    structures: [],
-    fields: [],
     players: {
       1: EMPTY_PLAYER,
       2: Object.freeze({ ...EMPTY_PLAYER, id: 2 as const }),
     },
-    projectiles: [],
-    selectedUnitIds: [],
-    selectedStructureIds: [],
-    rallies: [],
+    selectedUnitCount: 0,
+    selectedUnitTotalHealth: 0,
+    leadUnit: null,
+    selectedStructure: null,
+    friendlyUnitCount: 0,
+    friendlyStructureCount: 0,
+    visibleEnemyCount: 0,
+    exploredTileCount: 0,
+    visibilityTileCount: 0,
     status: "active",
     winner: null,
     kills: { 1: 0, 2: 0 },
     seed: 0,
     lastPlacementFailure: null,
     lastSolarFailure: null,
-    visibility: {
-      enabled: true,
-      width: 64,
-      height: 64,
-      revision: 0,
-      tiles: [],
-    },
     ai: {
       enabled: true,
       playerId: 2,
@@ -488,19 +483,11 @@ export default function SkirmishShell() {
 
   const side = simulation.controlledPlayer;
   const player = simulation.players[side];
-  const selectedUnits = simulation.units.filter((unit) => unit.selected);
-  const selectedStructure =
-    simulation.structures.find((structure) => structure.selected) ?? null;
-  const leadUnit = selectedUnits[0] ?? null;
+  const selectedUnitCount = simulation.selectedUnitCount;
+  const selectedStructure = simulation.selectedStructure;
+  const leadUnit = simulation.leadUnit;
   const placementFailure = simulation.lastPlacementFailure;
-  const exploredTiles = simulation.visibility.tiles.filter(
-    (level) => level > 0,
-  ).length;
-  const visibleEnemies =
-    simulation.units.filter((unit) => unit.playerId !== side).length +
-    simulation.structures.filter(
-      (structure) => structure.playerId !== side,
-    ).length;
+  const visibleEnemies = simulation.visibleEnemyCount;
   const solar = simulation.solarSpears[side];
   const solarProgress = Math.floor(
     (100 * solar.chargeTicks) / Math.max(1, solar.chargeTotalTicks),
@@ -1245,8 +1232,8 @@ export default function SkirmishShell() {
                                 : "low power"
                             }`
                           : leadUnit
-                            ? `${selectedUnits.length} unit${
-                                selectedUnits.length === 1 ? "" : "s"
+                            ? `${selectedUnitCount} unit${
+                                selectedUnitCount === 1 ? "" : "s"
                               } · ${leadUnit.order}`
                             : "Awaiting selection"}
                       </span>
@@ -1367,15 +1354,12 @@ export default function SkirmishShell() {
                     <dl className="asset-stats">
                       <div>
                         <dt>FORMATION</dt>
-                        <dd>{selectedUnits.length}</dd>
+                        <dd>{selectedUnitCount}</dd>
                       </div>
                       <div>
                         <dt>INTEGRITY</dt>
                         <dd>
-                          {selectedUnits.reduce(
-                            (sum, unit) => sum + unit.health,
-                            0,
-                          )}
+                          {simulation.selectedUnitTotalHealth}
                         </dd>
                       </div>
                       <div>
@@ -1409,17 +1393,9 @@ export default function SkirmishShell() {
                     <div>
                       <dt>FORCES</dt>
                       <dd>
-                        {
-                          simulation.units.filter(
-                            (unit) => unit.playerId === side,
-                          ).length
-                        }
+                        {simulation.friendlyUnitCount}
                         U /{" "}
-                        {
-                          simulation.structures.filter(
-                            (structure) => structure.playerId === side,
-                          ).length
-                        }
+                        {simulation.friendlyStructureCount}
                         B
                       </dd>
                     </div>
@@ -1444,11 +1420,11 @@ export default function SkirmishShell() {
                     <div>
                       <dt>EXPLORED</dt>
                       <dd>
-                        {simulation.visibility.tiles.length === 0
+                        {simulation.visibilityTileCount === 0
                           ? 0
                           : Math.floor(
-                              (100 * exploredTiles) /
-                                simulation.visibility.tiles.length,
+                              (100 * simulation.exploredTileCount) /
+                                simulation.visibilityTileCount,
                             )}
                         %
                       </dd>
@@ -1495,8 +1471,8 @@ export default function SkirmishShell() {
                   {selectedStructure
                     ? `${selectedStructure.health}/${selectedStructure.maxHealth} integrity`
                     : leadUnit
-                      ? `${selectedUnits.length} unit${
-                          selectedUnits.length === 1 ? "" : "s"
+                      ? `${selectedUnitCount} unit${
+                          selectedUnitCount === 1 ? "" : "s"
                         } · ${leadUnit.order}`
                       : "Awaiting selection"}
                 </span>

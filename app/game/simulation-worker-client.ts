@@ -119,6 +119,7 @@ export class WorkerSimulationRuntime {
       candidate.protocolVersion === SIMULATION_RUNTIME_PROTOCOL_VERSION &&
       (candidate.type === "ready" ||
         candidate.type === "snapshot" ||
+        candidate.type === "uiSnapshot" ||
         candidate.type === "pauseChanged" ||
         candidate.type === "terminated" ||
         candidate.type === "error")

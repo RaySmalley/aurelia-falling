@@ -72,7 +72,11 @@ test("runtime protocol initializes and publishes snapshots at a fixed cadence", 
   runtime.subscribe((event) => events.push(event));
 
   runtime.dispatch(initialize({ snapshotCadenceTicks: 2 }));
-  assert.deepEqual(events.map((event) => event.type), ["ready", "snapshot"]);
+  assert.deepEqual(events.map((event) => event.type), [
+    "ready",
+    "snapshot",
+    "uiSnapshot",
+  ]);
   assert.equal(events[1].tick, 0);
 
   runtime.advance(5);
@@ -251,7 +255,11 @@ test("ready listeners cannot advance ahead of the initial snapshot", () => {
 
   runtime.dispatch(initialize({ snapshotCadenceTicks: 1 }));
   assert.deepEqual(advances, [0]);
-  assert.deepEqual(events.map((event) => event.type), ["ready", "snapshot"]);
+  assert.deepEqual(events.map((event) => event.type), [
+    "ready",
+    "snapshot",
+    "uiSnapshot",
+  ]);
   assert.equal(events.at(-1).tick, 0);
   assert.equal(events.at(-1).snapshot.tick, 0);
   assert.equal(runtime.tick(), 0);

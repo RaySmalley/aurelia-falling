@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createServer } from "vite";
 
@@ -265,10 +266,100 @@ test("runtime snapshot events carry sequence-checked render deltas", () => {
   const next = store.apply(events[1].renderDelta);
   assert.equal(initial.tick, events[0].snapshot.tick);
   assert.equal(next.tick, events[1].snapshot.tick);
-  assert.deepEqual(
-    next.units.map(({ id }) => id),
-    events[1].snapshot.units.map(({ id }) => id),
+  assert.ok(next.units.length > 0);
+  assert.equal("units" in events[1].snapshot, false);
+  assert.equal("structures" in events[1].snapshot, false);
+});
+
+test("UI snapshots are bounded summaries without entity collections", () => {
+  const runtime = new InProcessSimulationRuntime();
+  let fullSnapshot;
+  runtime.subscribe((event) => {
+    if (event.type === "uiSnapshot" && !fullSnapshot) {
+      fullSnapshot = event.snapshot;
+    }
+  });
+  runtime.dispatch({
+    protocolVersion: runtimeVersion,
+    type: "initialize",
+    seed: 4_115,
+    scenario: "skirmish",
+    difficulty: "normal",
+  });
+
+  assert.equal("units" in fullSnapshot, false);
+  assert.equal("structures" in fullSnapshot, false);
+  assert.equal("visibility" in fullSnapshot, false);
+  assert.equal(Object.isFrozen(fullSnapshot), true);
+  assert.equal(typeof fullSnapshot.friendlyUnitCount, "number");
+  assert.equal(typeof fullSnapshot.visibleEnemyCount, "number");
+});
+
+test("UI presentation cadence is independent from render cadence", () => {
+  const runtime = new InProcessSimulationRuntime();
+  const renderTicks = [];
+  const uiTicks = [];
+  runtime.subscribe((event) => {
+    if (event.type === "snapshot") renderTicks.push(event.tick);
+    if (event.type === "uiSnapshot") uiTicks.push(event.tick);
+  });
+  runtime.dispatch({
+    protocolVersion: runtimeVersion,
+    type: "initialize",
+    seed: 4_115,
+    scenario: "skirmish",
+    difficulty: "normal",
+    snapshotCadenceTicks: 2,
+    uiCadenceTicks: 10,
+  });
+  runtime.advance(10);
+
+  assert.deepEqual(renderTicks, [0, 2, 4, 6, 8, 10]);
+  assert.deepEqual(uiTicks, [0, 10]);
+});
+
+test("accepted player commands force prompt bounded UI feedback", () => {
+  const runtime = new InProcessSimulationRuntime();
+  const uiTicks = [];
+  runtime.subscribe((event) => {
+    if (event.type === "uiSnapshot") uiTicks.push(event.tick);
+  });
+  runtime.dispatch({
+    protocolVersion: runtimeVersion,
+    type: "initialize",
+    seed: 4_115,
+    scenario: "skirmish",
+    difficulty: "normal",
+    snapshotCadenceTicks: 2,
+    uiCadenceTicks: 10,
+  });
+  runtime.dispatch({
+    protocolVersion: runtimeVersion,
+    type: "command",
+    sequence: 0,
+    intendedTick: 0,
+    command: { kind: "selectUnits", unitIds: [1], additive: false },
+  });
+  runtime.advance();
+
+  assert.deepEqual(uiTicks, [0, 1]);
+});
+
+test("React publication follows UI snapshots instead of render snapshots", async () => {
+  const source = await readFile(
+    new URL("../app/game/bootstrap.ts", import.meta.url),
+    "utf8",
   );
+  const renderBranch = source.match(
+    /if \(event\.type === "snapshot"\) \{([\s\S]*?)\n    \}/,
+  )?.[1];
+  const uiBranch = source.match(
+    /if \(event\.type === "uiSnapshot"\) \{([\s\S]*?)\n    \}/,
+  )?.[1];
+
+  assert.ok(renderBranch);
+  assert.equal(renderBranch.includes("emit();"), false);
+  assert.match(uiBranch, /lastUiSnapshot = event\.snapshot;[\s\S]*emit\(\);/);
 });
 
 test("worker host transfers every packed render-delta buffer", () => {

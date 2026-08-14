@@ -568,7 +568,10 @@ session reconstructs sequence-checked entity state, and Phaser renders and
 hit-tests those reconstructed units and structures. Creation, visibility
 hide/reveal, authoritative destruction, and restart resets remain distinct.
 The render channel excludes complete unit paths and structure production
-queues. The slower UI/economy channel, culling, pooling, batching, and detail
+queues. The third slice introduces runtime protocol version 3 and a bounded
+2 Hz UI/economy channel containing economy, match state, intel summaries, and
+only the lead unit or selected structure detail. React no longer receives or
+updates for the 10 Hz render stream. Culling, pooling, batching, and detail
 budgets remain follow-up slices.
 
 ### Work

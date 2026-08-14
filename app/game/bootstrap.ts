@@ -23,7 +23,9 @@ import type {
   RuntimeListener,
   RuntimeSnapshot,
   SimCommand,
+  SimulationRenderFrame,
   SimulationSnapshot,
+  SimulationUiSnapshot,
   StructureSnapshot,
   UnitSnapshot,
   Vec2,
@@ -103,7 +105,7 @@ function fixedToWorld(point: Vec2) {
 }
 
 function withRenderEntities(
-  snapshot: SimulationSnapshot,
+  snapshot: SimulationRenderFrame,
   render: Readonly<{
     units: readonly RenderUnitSnapshot[];
     structures: readonly RenderStructureSnapshot[];
@@ -218,9 +220,9 @@ export async function createGameRuntime(
     },
   );
   let Phaser: typeof import("phaser");
-  let initialSimulationSnapshot: SimulationSnapshot;
+  let initialUiSnapshot: SimulationUiSnapshot;
   try {
-    [Phaser, initialSimulationSnapshot] = await Promise.all([
+    [Phaser, initialUiSnapshot] = await Promise.all([
       import("phaser"),
       workerSession.initialize(),
     ]);
@@ -229,6 +231,11 @@ export async function createGameRuntime(
     throw error;
   }
   const listeners = new Set<RuntimeListener>();
+  const initialRenderFrame = workerSession.renderFrame();
+  if (!initialRenderFrame) {
+    workerSession.terminate();
+    throw new Error("Simulation worker did not publish an initial render frame.");
+  }
   let paused = false;
   let pauseReason: RuntimeSnapshot["pauseReason"] = null;
   let audioReady = false;
@@ -241,11 +248,12 @@ export async function createGameRuntime(
   let nextAudioCueId = 1;
   let renderer = "initializing";
   let runtimeError: string | null = null;
-  let lastSnapshot = initialSimulationSnapshot;
+  let lastUiSnapshot = initialUiSnapshot;
   let lastRenderSnapshot = withRenderEntities(
-    initialSimulationSnapshot,
+    initialRenderFrame,
     workerSession.renderSnapshot(),
   );
+  let lastSnapshot = lastRenderSnapshot;
   let previousRenderSnapshot = lastRenderSnapshot;
   let lastSnapshotReceivedAt = performance.now();
   let detachKeyboardCaptureGuard = () => {};
@@ -256,7 +264,7 @@ export async function createGameRuntime(
 
   const emit = () => {
     const snapshot: RuntimeSnapshot = {
-      simulation: lastSnapshot,
+      simulation: lastUiSnapshot,
       paused,
       pauseReason,
       audioReady,
@@ -292,9 +300,8 @@ export async function createGameRuntime(
   });
   const unsubscribeWorkerSession = workerSession.subscribe((event) => {
     if (event.type === "snapshot") {
-      const nextSnapshot = event.snapshot;
       const nextRenderSnapshot = withRenderEntities(
-        nextSnapshot,
+        event.snapshot,
         workerSession.renderSnapshot(),
       );
       if (
@@ -307,18 +314,22 @@ export async function createGameRuntime(
       } else if (
         isContinuousAudioTransition(
           lastSnapshot,
-          nextSnapshot,
+          nextRenderSnapshot,
           DEFAULT_SNAPSHOT_CADENCE_TICKS,
         )
       ) {
         previousRenderSnapshot = lastRenderSnapshot;
-        proceduralAudio.observe(lastSnapshot, nextSnapshot);
+        proceduralAudio.observe(lastSnapshot, nextRenderSnapshot);
       } else {
         previousRenderSnapshot = nextRenderSnapshot;
       }
-      lastSnapshot = nextSnapshot;
+      lastSnapshot = nextRenderSnapshot;
       lastRenderSnapshot = nextRenderSnapshot;
       lastSnapshotReceivedAt = performance.now();
+      return;
+    }
+    if (event.type === "uiSnapshot") {
+      lastUiSnapshot = event.snapshot;
       emit();
       return;
     }

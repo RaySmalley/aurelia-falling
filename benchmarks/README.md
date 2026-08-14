@@ -30,9 +30,11 @@ The worker benchmark runs the production worker host, runtime dispatch, 20 Hz
 clock, and snapshot-publication path on a Node worker thread. Its
 deterministic 600-unit fixture retains the Normal skirmish economy, AI, fog,
 connectivity, production, and combat systems rather than substituting the
-combat-only idle scenario. It runs 100 measured ticks, publishes a full
-snapshot every two ticks, and includes structured-clone submission in the
-measured work. Its
+combat-only idle scenario. It runs 100 measured ticks, publishes a render
+snapshot every two ticks and a bounded UI snapshot every ten ticks, and honors
+the same transferable-buffer list as the browser worker. Synchronous event
+publication remains included in the complete tick timing and is also reported
+separately from derived simulation work. Its
 machine-readable gate fails if the workload is not exactly 600 units, does not
 complete every tick, takes more than the 50 ms tick interval, or misses the
 following fixed-step deadline. Scheduling lateness is reported separately so
@@ -42,6 +44,8 @@ exactly 100 measured ticks, 20 warmup ticks, all 50 expected two-tick-cadence
 snapshots, and the pinned Node.js 24.19.0 runtime. Any CLI override or runtime
 mismatch makes the run explicitly diagnostic: it still reports timings and the
 reason for the mismatch but does not claim an acceptance pass or failure.
+The gate also checks all ten expected UI snapshots and all eight packed buffers
+for every render snapshot.
 Initial and final unit counts are
 reported separately because the active skirmish workload permits real combat
 casualties. The production clock schedules against absolute deadlines to avoid
