@@ -57,3 +57,5 @@ packed hot fields, explicit entity lifecycle records, and sequence-checked
 reconstruction. The second integrates transferable delta buffers with the
 worker session and Phaser entity rendering. The third adds the bounded 2 Hz
 UI/economy channel and removes full entity collections from React updates.
+The fourth adds camera-margin culling for live, stale, field, unit, and
+projectile presentation while retaining snapshot-backed selection and targeting.

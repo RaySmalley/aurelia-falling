@@ -75,6 +75,7 @@ const STRUCTURE_ATLAS_SIZE = Object.freeze({
 const STRUCTURE_ATLAS_OFFSET_Y = 8;
 const STRUCTURE_ATLAS_ORIGIN_Y = 0.8;
 const PROCEDURAL_STRUCTURE_HIT_RADIUS = 38;
+export const VIEW_CULL_MARGIN_WORLD = 160;
 const BATTLEFIELD_ATLAS_FRAME = Object.freeze({
   groundA: 0,
   groundB: 1,
@@ -102,6 +103,26 @@ function fixedToWorld(point: Vec2) {
     x: point.x / TILE_MILLI,
     y: point.y / TILE_MILLI,
   });
+}
+
+type CameraWorldView = Readonly<{
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}>;
+
+export function worldPointWithinCameraMargin(
+  point: Vec2,
+  view: CameraWorldView,
+  margin = VIEW_CULL_MARGIN_WORLD,
+) {
+  return (
+    point.x >= view.x - margin &&
+    point.x <= view.x + view.width + margin &&
+    point.y >= view.y - margin &&
+    point.y <= view.y + view.height + margin
+  );
 }
 
 function withRenderEntities(
@@ -150,6 +171,30 @@ type StructureHitTarget = Pick<
   StructureSnapshot,
   "id" | "kind" | "playerId" | "tile"
 >;
+
+type UnitHitTarget = Pick<UnitSnapshot, "id" | "playerId" | "position">;
+
+export function pickUnitAtWorldPoint<T extends UnitHitTarget>(
+  units: readonly T[],
+  point: Vec2,
+  playerId: UnitSnapshot["playerId"],
+  radius = 34,
+) {
+  return units
+    .filter((unit) => unit.playerId === playerId)
+    .map((unit) => {
+      const world = fixedToWorld(unit.position);
+      const dx = world.x - point.x;
+      const dy = world.y - point.y;
+      return { unit, distanceSquared: dx * dx + dy * dy };
+    })
+    .filter((candidate) => candidate.distanceSquared <= radius * radius)
+    .sort(
+      (left, right) =>
+        left.distanceSquared - right.distanceSquared ||
+        left.unit.id - right.unit.id,
+    )[0]?.unit;
+}
 
 export function pickStructureAtWorldPoint<T extends StructureHitTarget>(
   structures: readonly T[],
@@ -641,10 +686,11 @@ export async function createGameRuntime(
       }
 
       this.updateCamera(delta);
+      const cameraView = this.cameras.main.worldView;
       this.syncUnitViews(lastRenderSnapshot);
-      this.syncStructureViews(lastRenderSnapshot);
-      this.syncStaleStructureViews(lastRenderSnapshot);
-      this.syncFieldViews(lastSnapshot);
+      this.syncStructureViews(lastRenderSnapshot, cameraView);
+      this.syncStaleStructureViews(lastRenderSnapshot, cameraView);
+      this.syncFieldViews(lastSnapshot, cameraView);
       this.renderUnits(
         previousRenderSnapshot,
         lastRenderSnapshot,
@@ -656,9 +702,10 @@ export async function createGameRuntime(
                 (DEFAULT_SNAPSHOT_CADENCE_TICKS *
                   SIMULATION_TICK_INTERVAL_MS),
             ),
+        cameraView,
       );
       this.drawRoutes(lastSnapshot);
-      this.drawProjectiles(lastSnapshot);
+      this.drawProjectiles(lastSnapshot, cameraView);
       this.drawBuildRadii(lastSnapshot);
       this.drawFog(lastSnapshot);
       this.drawSolarSpear(lastSnapshot);
@@ -1026,7 +1073,20 @@ export async function createGameRuntime(
       );
     }
 
-    private syncFieldViews(snapshot: SimulationSnapshot) {
+    private setViewWithinCameraMargin(
+      view: Phaser.GameObjects.Container,
+      world: Vec2,
+      cameraView: CameraWorldView,
+    ) {
+      const visible = worldPointWithinCameraMargin(world, cameraView);
+      if (view.visible !== visible) view.setVisible(visible);
+      return visible;
+    }
+
+    private syncFieldViews(
+      snapshot: SimulationSnapshot,
+      cameraView?: CameraWorldView,
+    ) {
       const activeIds = new Set(snapshot.fields.map((field) => field.id));
       for (const [id, view] of this.fieldViews) {
         if (activeIds.has(id)) continue;
@@ -1035,13 +1095,21 @@ export async function createGameRuntime(
       }
       for (const field of snapshot.fields) {
         if (!this.fieldViews.has(field.id)) this.createFieldView(field);
-        const amount = this.fieldViews
-          .get(field.id)
-          ?.getByName("amount") as Phaser.GameObjects.Graphics | null;
+        const view = this.fieldViews.get(field.id)!;
+        const world = gridToWorld(field.tile);
+        if (
+          cameraView &&
+          !this.setViewWithinCameraMargin(view, world, cameraView)
+        ) {
+          continue;
+        }
+        const amount = view.getByName(
+          "amount",
+        ) as Phaser.GameObjects.Graphics | null;
         if (!amount) continue;
-        const sprite = this.fieldViews
-          .get(field.id)
-          ?.getByName("sprite") as Phaser.GameObjects.Image | null;
+        const sprite = view.getByName(
+          "sprite",
+        ) as Phaser.GameObjects.Image | null;
         sprite
           ?.setTint(field.contested ? 0xffd59c : 0xffffff)
           .setAlpha(
@@ -1062,7 +1130,10 @@ export async function createGameRuntime(
       }
     }
 
-    private syncStructureViews(snapshot: SimulationSnapshot) {
+    private syncStructureViews(
+      snapshot: SimulationSnapshot,
+      cameraView?: CameraWorldView,
+    ) {
       const activeIds = new Set(
         snapshot.structures.map((structure) => structure.id),
       );
@@ -1079,6 +1150,13 @@ export async function createGameRuntime(
         (
           view.getByName("selection") as Phaser.GameObjects.Ellipse | null
         )?.setVisible(structure.selected);
+        const world = gridToWorld(structure.tile);
+        if (
+          cameraView &&
+          !this.setViewWithinCameraMargin(view, world, cameraView)
+        ) {
+          continue;
+        }
         const status = view.getByName(
           "status",
         ) as Phaser.GameObjects.Graphics | null;
@@ -1134,7 +1212,10 @@ export async function createGameRuntime(
       }
     }
 
-    private syncStaleStructureViews(snapshot: SimulationSnapshot) {
+    private syncStaleStructureViews(
+      snapshot: SimulationSnapshot,
+      cameraView?: CameraWorldView,
+    ) {
       const visibleIds = new Set(
         snapshot.structures.map((structure) => structure.id),
       );
@@ -1162,9 +1243,18 @@ export async function createGameRuntime(
         }
       }
       for (const [id, view] of this.staleStructureViews) {
-        if (desired.has(id)) continue;
-        view.destroy(true);
-        this.staleStructureViews.delete(id);
+        if (!desired.has(id)) {
+          view.destroy(true);
+          this.staleStructureViews.delete(id);
+          continue;
+        }
+        if (cameraView) {
+          this.setViewWithinCameraMargin(
+            view,
+            gridToWorld(this.staleStructureMemory.get(id)!.tile),
+            cameraView,
+          );
+        }
       }
     }
 
@@ -1292,6 +1382,7 @@ export async function createGameRuntime(
       previous: SimulationSnapshot,
       current: SimulationSnapshot,
       alpha: number,
+      cameraView: CameraWorldView,
     ) {
       const previousById = new Map(previous.units.map((unit) => [unit.id, unit]));
       for (const unit of current.units) {
@@ -1323,6 +1414,9 @@ export async function createGameRuntime(
         (
           view.getByName("selection") as Phaser.GameObjects.Ellipse | null
         )?.setVisible(unit.selected);
+        if (!this.setViewWithinCameraMargin(view, world, cameraView)) {
+          continue;
+        }
         const health = view.getByName(
           "health",
         ) as Phaser.GameObjects.Graphics | null;
@@ -1373,10 +1467,14 @@ export async function createGameRuntime(
       }
     }
 
-    private drawProjectiles(snapshot: SimulationSnapshot) {
+    private drawProjectiles(
+      snapshot: SimulationSnapshot,
+      cameraView: CameraWorldView,
+    ) {
       this.projectileGraphics.clear();
       for (const projectile of snapshot.projectiles) {
         const world = fixedToWorld(projectile.position);
+        if (!worldPointWithinCameraMargin(world, cameraView)) continue;
         const color = projectile.playerId === 1 ? 0xffd36e : 0x79fff1;
         const radius = projectile.weaponId === "gorgonMortar" ? 5 : 3;
         this.projectileGraphics.fillStyle(color, 0.95);
@@ -1454,21 +1552,12 @@ export async function createGameRuntime(
       const click = width < 10 && height < 10;
       let unitIds: number[] = [];
       if (click) {
-        const nearest = lastRenderSnapshot.units
-          .filter(
-            (unit) => unit.playerId === lastSnapshot.controlledPlayer,
-          )
-          .map((unit) => {
-            const world = fixedToWorld(unit.position);
-            const dx = world.x - end.x;
-            const dy = world.y - end.y;
-            return { id: unit.id, distanceSquared: dx * dx + dy * dy };
-          })
-          .filter((candidate) => candidate.distanceSquared <= 32 * 32)
-          .sort(
-            (a, b) =>
-              a.distanceSquared - b.distanceSquared || a.id - b.id,
-          )[0];
+        const nearest = pickUnitAtWorldPoint(
+          lastRenderSnapshot.units,
+          end,
+          lastSnapshot.controlledPlayer,
+          32,
+        );
         unitIds = nearest ? [nearest.id] : [];
         if (unitIds.length === 0) {
           const structure = this.structureAtWorldPoint(
@@ -1507,20 +1596,11 @@ export async function createGameRuntime(
       point: Phaser.Math.Vector2,
       playerId: 1 | 2,
     ) {
-      return lastRenderSnapshot.units
-        .filter((unit) => unit.playerId === playerId)
-        .map((unit) => {
-          const world = fixedToWorld(unit.position);
-          const dx = world.x - point.x;
-          const dy = world.y - point.y;
-          return { unit, distanceSquared: dx * dx + dy * dy };
-        })
-        .filter((candidate) => candidate.distanceSquared <= 34 * 34)
-        .sort(
-          (left, right) =>
-            left.distanceSquared - right.distanceSquared ||
-            left.unit.id - right.unit.id,
-        )[0]?.unit;
+      return pickUnitAtWorldPoint(
+        lastRenderSnapshot.units,
+        point,
+        playerId,
+      );
     }
 
     private structureAtWorldPoint(

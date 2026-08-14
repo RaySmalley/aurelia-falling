@@ -3,10 +3,10 @@
 ## Status
 
 Current canonical roadmap following completion of Phases 7-12 and all Phase 9A
-presentation slices. Phase 13 is next: replace full render snapshots with a
-versioned delta protocol and scalable presentation pipeline before beginning
-the final player UI upgrade in Phase 13A and the first-play experience in Phase
-13B.
+presentation slices. Phase 13 is active: its delta transport, bounded UI
+channel, and camera-culling foundations are implemented, with pooling, batching,
+detail budgets, and performance gates remaining before the final player UI
+upgrade in Phase 13A and the first-play experience in Phase 13B.
 
 This document defines the order of the remaining phases. Detailed technical
 design remains in the supporting plans:
@@ -56,8 +56,9 @@ The implemented release through Phase 12 provides:
 
 The next work begins from the remaining scale limits:
 
-- The runtime still publishes full object-graph snapshots. Phase 13 introduces
-  versioned deltas and scalable presentation channels.
+- Versioned render deltas and bounded UI summaries now constrain routine worker
+  transport, but remaining Phase 13 presentation work must reduce per-view draw,
+  allocation, and detail cost at 600-1,000 visible units.
 - The simulation remains a two-player world model despite its larger-army
   performance foundations.
 - Player identity, visibility, victory, and setup flows assume two sides.
@@ -571,8 +572,12 @@ The render channel excludes complete unit paths and structure production
 queues. The third slice introduces runtime protocol version 3 and a bounded
 2 Hz UI/economy channel containing economy, match state, intel summaries, and
 only the lead unit or selected structure detail. React no longer receives or
-updates for the 10 Hz render stream. Culling, pooling, batching, and detail
-budgets remain follow-up slices.
+updates for the 10 Hz render stream. The fourth slice culls live units,
+structures, stale structure memory, Aurelite fields, and projectiles outside the
+camera world view plus a 160-unit safety margin. It changes only Phaser Game
+Object visibility and draw work; selection and targeting still query the full
+reconstructed render state. Pooling, batching, and detail budgets remain
+follow-up slices.
 
 ### Work
 

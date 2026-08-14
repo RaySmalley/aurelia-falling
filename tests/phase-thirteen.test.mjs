@@ -12,6 +12,7 @@ const deltaModule = await vite.ssrLoadModule("/app/game/render-delta.ts");
 const protocolModule = await vite.ssrLoadModule("/app/game/runtime-protocol.ts");
 const runtimeModule = await vite.ssrLoadModule("/app/game/simulation-runtime.ts");
 const hostModule = await vite.ssrLoadModule("/app/game/simulation-worker-host.ts");
+const bootstrapModule = await vite.ssrLoadModule("/app/game/bootstrap.ts");
 const {
   RENDER_DELTA_PROTOCOL_VERSION,
   RenderSnapshotDeltaEncoder,
@@ -19,9 +20,49 @@ const {
 } = deltaModule;
 const { InProcessSimulationRuntime } = runtimeModule;
 const { startSimulationWorkerHost } = hostModule;
+const {
+  VIEW_CULL_MARGIN_WORLD,
+  pickUnitAtWorldPoint,
+  worldPointWithinCameraMargin,
+} = bootstrapModule;
 const { SIMULATION_RUNTIME_PROTOCOL_VERSION: runtimeVersion } = protocolModule;
 
 test.after(() => vite.close());
+
+test("camera culling retains a safe interaction margin", () => {
+  const view = { x: 100, y: 200, width: 800, height: 450 };
+
+  assert.equal(VIEW_CULL_MARGIN_WORLD, 160);
+  assert.equal(
+    worldPointWithinCameraMargin({ x: -60, y: 200 }, view),
+    true,
+  );
+  assert.equal(
+    worldPointWithinCameraMargin({ x: 1_060, y: 650 }, view),
+    true,
+  );
+  assert.equal(
+    worldPointWithinCameraMargin({ x: -60.01, y: 200 }, view),
+    false,
+  );
+  assert.equal(
+    worldPointWithinCameraMargin({ x: 1_060.01, y: 650 }, view),
+    false,
+  );
+});
+
+test("culled presentation state does not remove units from hit testing", () => {
+  const target = {
+    id: 7,
+    playerId: 2,
+    position: { x: 10_000, y: 10_000 },
+  };
+  const point = { x: 0, y: 320 };
+  const distantView = { x: 2_000, y: 2_000, width: 800, height: 450 };
+
+  assert.equal(worldPointWithinCameraMargin(point, distantView), false);
+  assert.equal(pickUnitAtWorldPoint([target], point, 2), target);
+});
 
 const unit = (id, overrides = {}) => ({
   id,

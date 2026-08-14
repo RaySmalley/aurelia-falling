@@ -592,6 +592,29 @@ test("pointer-to-world selection stays accurate after viewport changes", async (
   expectFullBleedBattlefield(await readLayout(page));
 });
 
+test("camera culling preserves selection through pan and recenter", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 650 });
+  await loadSetup(page);
+  await page.getByRole("button", { name: "Begin operation" }).click();
+  await expect(page.locator(".economy-deck")).toBeVisible();
+
+  await clickLogicalCanvas(page, 608, 242);
+  const selectedAsset = page.locator(".compact-selection h2");
+  await expect(selectedAsset).toHaveText("Citadel Command Hub");
+
+  await page.keyboard.down("d");
+  await page.waitForTimeout(2_500);
+  await page.keyboard.up("d");
+  await expect(selectedAsset).toHaveText("Citadel Command Hub");
+
+  await page.getByRole("button", { name: "Center", exact: true }).click();
+  await page.waitForTimeout(100);
+  await clickLogicalCanvas(page, 608, 242);
+  await expect(selectedAsset).toHaveText("Citadel Command Hub");
+});
+
 test("browser fullscreen transitions preserve canvas bounds and pointer mapping", async ({
   page,
 }) => {
