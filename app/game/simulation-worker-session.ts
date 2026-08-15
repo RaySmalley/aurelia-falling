@@ -204,8 +204,11 @@ export class SimulationWorkerSession {
   private receive(event: SimulationRuntimeEvent) {
     if (this.terminated) return;
     if (event.tick !== null) {
+      const advancesRuntimeTick = event.tick > this.latestRuntimeTick;
       this.latestRuntimeTick = Math.max(this.latestRuntimeTick, event.tick);
-      if (event.type !== "uiSnapshot") {
+      if (event.type === "uiSnapshot") {
+        if (advancesRuntimeTick) this.latestRuntimeTickAt = this.now();
+      } else {
         this.latestRuntimeTickAt =
           event.type === "snapshot" && event.publishedAtMs !== undefined
             ? event.publishedAtMs

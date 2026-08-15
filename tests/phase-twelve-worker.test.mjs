@@ -257,6 +257,43 @@ test("delayed snapshot delivery preserves the worker publication clock", async (
   session.terminate();
 });
 
+test("newer UI ticks rebase live command extrapolation", async () => {
+  let now = 100;
+  const controlled = createControlledTransport();
+  const runtime = new WorkerSimulationRuntime(controlled.transport);
+  const session = new SimulationWorkerSession(runtime, {
+    seed: 4_115,
+    scenario: "skirmish",
+    difficulty: "normal",
+    now: () => now,
+  });
+  const initialized = session.initialize();
+  const { snapshot, renderDelta, uiSnapshot } = initialSnapshot();
+  controlled.emit({
+    protocolVersion: version,
+    type: "snapshot",
+    tick: 2,
+    publishedAtMs: 100,
+    snapshot,
+    renderDelta,
+  });
+  now = 150;
+  controlled.emit({
+    protocolVersion: version,
+    type: "uiSnapshot",
+    tick: 3,
+    snapshot: uiSnapshot,
+  });
+  await initialized;
+
+  session.enqueue({ kind: "stop" });
+  assert.equal(
+    controlled.posted.at(-1).intendedTick,
+    3 + LIVE_COMMAND_INPUT_DELAY_TICKS,
+  );
+  session.terminate();
+});
+
 test("paused live-session restarts target the frozen tick and resume explicitly", async () => {
   const controlled = createControlledTransport();
   const runtime = new WorkerSimulationRuntime(controlled.transport);
