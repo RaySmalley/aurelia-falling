@@ -22,7 +22,10 @@ const { InProcessSimulationRuntime } = runtimeModule;
 const { startSimulationWorkerHost } = hostModule;
 const {
   VIEW_CULL_MARGIN_WORLD,
+  fieldAmountValuesEqual,
   pickUnitAtWorldPoint,
+  structureStatusValuesEqual,
+  unitMeterValuesEqual,
   worldPointWithinCameraMargin,
 } = bootstrapModule;
 const { SIMULATION_RUNTIME_PROTOCOL_VERSION: runtimeVersion } = protocolModule;
@@ -62,6 +65,53 @@ test("culled presentation state does not remove units from hit testing", () => {
 
   assert.equal(worldPointWithinCameraMargin(point, distantView), false);
   assert.equal(pickUnitAtWorldPoint([target], point, 2), target);
+});
+
+test("presentation graphics invalidate only when their drawn values change", () => {
+  const baseUnit = unit(1);
+  assert.equal(
+    unitMeterValuesEqual(baseUnit, {
+      ...baseUnit,
+      position: { x: 999, y: 999 },
+      cooldownTicks: 7,
+    }),
+    true,
+  );
+  assert.equal(
+    unitMeterValuesEqual(baseUnit, { ...baseUnit, health: 99 }),
+    false,
+  );
+  assert.equal(
+    unitMeterValuesEqual(baseUnit, { ...baseUnit, selected: true }),
+    false,
+  );
+
+  const baseStructure = structure(2);
+  assert.equal(
+    structureStatusValuesEqual(baseStructure, {
+      ...baseStructure,
+      selected: true,
+      repairing: true,
+    }),
+    true,
+  );
+  assert.equal(
+    structureStatusValuesEqual(baseStructure, {
+      ...baseStructure,
+      powered: false,
+    }),
+    false,
+  );
+
+  const field = { amount: 800, capacity: 1_000, contested: false };
+  assert.equal(
+    fieldAmountValuesEqual(field, { ...field, id: 7, tile: { x: 3, y: 4 } }),
+    true,
+  );
+  assert.equal(
+    fieldAmountValuesEqual(field, { ...field, amount: 799 }),
+    false,
+  );
 });
 
 const unit = (id, overrides = {}) => ({

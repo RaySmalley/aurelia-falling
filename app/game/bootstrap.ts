@@ -112,6 +112,62 @@ type CameraWorldView = Readonly<{
   height: number;
 }>;
 
+export function unitMeterValuesEqual(
+  left: UnitSnapshot,
+  right: UnitSnapshot,
+) {
+  return (
+    left.health === right.health &&
+    left.maxHealth === right.maxHealth &&
+    left.armor === right.armor &&
+    left.kind === right.kind &&
+    left.playerId === right.playerId &&
+    left.selected === right.selected &&
+    left.cargo === right.cargo &&
+    left.cargoCapacity === right.cargoCapacity
+  );
+}
+
+export function structureStatusValuesEqual(
+  left: StructureSnapshot,
+  right: StructureSnapshot,
+) {
+  return (
+    left.health === right.health &&
+    left.maxHealth === right.maxHealth &&
+    left.playerId === right.playerId &&
+    left.completed === right.completed &&
+    left.constructionRemainingTicks === right.constructionRemainingTicks &&
+    left.constructionTotalTicks === right.constructionTotalTicks &&
+    left.powered === right.powered &&
+    left.connected === right.connected
+  );
+}
+
+export function fieldAmountValuesEqual(
+  left: AureliteFieldSnapshot,
+  right: AureliteFieldSnapshot,
+) {
+  return (
+    left.amount === right.amount &&
+    left.capacity === right.capacity &&
+    left.contested === right.contested
+  );
+}
+
+function cameraWorldViewsEqual(
+  left: CameraWorldView | null,
+  right: CameraWorldView,
+) {
+  return (
+    left !== null &&
+    left.x === right.x &&
+    left.y === right.y &&
+    left.width === right.width &&
+    left.height === right.height
+  );
+}
+
 export function worldPointWithinCameraMargin(
   point: Vec2,
   view: CameraWorldView,
@@ -415,13 +471,23 @@ export async function createGameRuntime(
     private dragStart: Phaser.Math.Vector2 | null = null;
     private unitViews = new Map<number, Phaser.GameObjects.Container>();
     private unitFacings = new Map<number, number>();
+    private unitMeterSnapshots = new Map<number, UnitSnapshot>();
+    private unitMeterControlledPlayer: SimulationSnapshot["controlledPlayer"] | null =
+      null;
     private structureViews = new Map<number, Phaser.GameObjects.Container>();
+    private structureStatusSnapshots = new Map<number, StructureSnapshot>();
     private staleStructureViews = new Map<
       number,
       Phaser.GameObjects.Container
     >();
     private staleStructureMemory = new Map<number, StructureSnapshot>();
     private fieldViews = new Map<number, Phaser.GameObjects.Container>();
+    private fieldAmountSnapshots = new Map<number, AureliteFieldSnapshot>();
+    private lastRouteSnapshot: SimulationSnapshot | null = null;
+    private lastProjectileSnapshot: SimulationSnapshot | null = null;
+    private lastProjectileCameraView: CameraWorldView | null = null;
+    private lastBuildRadiusSnapshot: SimulationSnapshot | null = null;
+    private lastSolarSnapshot: SimulationSnapshot | null = null;
     private lastImpactShakeTick = -1;
     private pendingOrder: "move" | "attackMove" | "rally" = "move";
 
@@ -738,6 +804,8 @@ export async function createGameRuntime(
     }
 
     private drawSolarSpear(snapshot: SimulationSnapshot) {
+      if (this.lastSolarSnapshot === snapshot) return;
+      this.lastSolarSnapshot = snapshot;
       this.solarGraphics.clear();
       for (const playerId of [1, 2] as const) {
         const solar = snapshot.solarSpears[playerId];
@@ -1092,6 +1160,7 @@ export async function createGameRuntime(
         if (activeIds.has(id)) continue;
         view.destroy(true);
         this.fieldViews.delete(id);
+        this.fieldAmountSnapshots.delete(id);
       }
       for (const field of snapshot.fields) {
         if (!this.fieldViews.has(field.id)) this.createFieldView(field);
@@ -1117,6 +1186,8 @@ export async function createGameRuntime(
               ? 0.94
               : 0.88 + Math.sin(snapshot.tick / 7) * 0.08,
           );
+        const previous = this.fieldAmountSnapshots.get(field.id);
+        if (previous && fieldAmountValuesEqual(previous, field)) continue;
         amount.clear();
         amount.fillStyle(0x071318, 0.92);
         amount.fillRect(-22, 20, 44, 5);
@@ -1127,6 +1198,7 @@ export async function createGameRuntime(
           Math.ceil(42 * (field.amount / field.capacity)),
           3,
         );
+        this.fieldAmountSnapshots.set(field.id, field);
       }
     }
 
@@ -1141,20 +1213,28 @@ export async function createGameRuntime(
         if (activeIds.has(id)) continue;
         view.destroy(true);
         this.structureViews.delete(id);
+        this.structureStatusSnapshots.delete(id);
       }
       for (const structure of snapshot.structures) {
         if (!this.structureViews.has(structure.id)) {
           this.createStructureView(structure);
         }
         const view = this.structureViews.get(structure.id)!;
-        (
-          view.getByName("selection") as Phaser.GameObjects.Ellipse | null
-        )?.setVisible(structure.selected);
+        const selection = view.getByName(
+          "selection",
+        ) as Phaser.GameObjects.Ellipse | null;
+        if (selection && selection.visible !== structure.selected) {
+          selection.setVisible(structure.selected);
+        }
         const world = gridToWorld(structure.tile);
         if (
           cameraView &&
           !this.setViewWithinCameraMargin(view, world, cameraView)
         ) {
+          continue;
+        }
+        const previous = this.structureStatusSnapshots.get(structure.id);
+        if (previous && structureStatusValuesEqual(previous, structure)) {
           continue;
         }
         const status = view.getByName(
@@ -1209,6 +1289,7 @@ export async function createGameRuntime(
           status.lineStyle(2, 0xe6a63f, 0.9);
           status.strokeCircle(0, -8, 28);
         }
+        this.structureStatusSnapshots.set(structure.id, structure);
       }
     }
 
@@ -1268,6 +1349,8 @@ export async function createGameRuntime(
     }
 
     private drawBuildRadii(snapshot: SimulationSnapshot) {
+      if (this.lastBuildRadiusSnapshot === snapshot) return;
+      this.lastBuildRadiusSnapshot = snapshot;
       this.buildRadiusGraphics.clear();
       for (const structure of snapshot.structures) {
         if (
@@ -1372,6 +1455,7 @@ export async function createGameRuntime(
         view.destroy(true);
         this.unitViews.delete(id);
         this.unitFacings.delete(id);
+        this.unitMeterSnapshots.delete(id);
       }
       for (const unit of snapshot.units) {
         if (!this.unitViews.has(unit.id)) this.createUnitView(unit);
@@ -1384,6 +1468,10 @@ export async function createGameRuntime(
       alpha: number,
       cameraView: CameraWorldView,
     ) {
+      if (this.unitMeterControlledPlayer !== current.controlledPlayer) {
+        this.unitMeterControlledPlayer = current.controlledPlayer;
+        this.unitMeterSnapshots.clear();
+      }
       const previousById = new Map(previous.units.map((unit) => [unit.id, unit]));
       for (const unit of current.units) {
         const prior = previousById.get(unit.id) ?? unit;
@@ -1411,10 +1499,17 @@ export async function createGameRuntime(
         (
           view.getByName("sprite") as Phaser.GameObjects.Image | null
         )?.setFrame(UNIT_ATLAS_FRAME[unit.kind] + facing, false, false);
-        (
-          view.getByName("selection") as Phaser.GameObjects.Ellipse | null
-        )?.setVisible(unit.selected);
+        const selection = view.getByName(
+          "selection",
+        ) as Phaser.GameObjects.Ellipse | null;
+        if (selection && selection.visible !== unit.selected) {
+          selection.setVisible(unit.selected);
+        }
         if (!this.setViewWithinCameraMargin(view, world, cameraView)) {
+          continue;
+        }
+        const previousMeters = this.unitMeterSnapshots.get(unit.id);
+        if (previousMeters && unitMeterValuesEqual(previousMeters, unit)) {
           continue;
         }
         const health = view.getByName(
@@ -1464,6 +1559,7 @@ export async function createGameRuntime(
             }
           }
         }
+        this.unitMeterSnapshots.set(unit.id, unit);
       }
     }
 
@@ -1471,6 +1567,19 @@ export async function createGameRuntime(
       snapshot: SimulationSnapshot,
       cameraView: CameraWorldView,
     ) {
+      if (
+        this.lastProjectileSnapshot === snapshot &&
+        cameraWorldViewsEqual(this.lastProjectileCameraView, cameraView)
+      ) {
+        return;
+      }
+      this.lastProjectileSnapshot = snapshot;
+      this.lastProjectileCameraView = {
+        x: cameraView.x,
+        y: cameraView.y,
+        width: cameraView.width,
+        height: cameraView.height,
+      };
       this.projectileGraphics.clear();
       for (const projectile of snapshot.projectiles) {
         const world = fixedToWorld(projectile.position);
@@ -1485,6 +1594,8 @@ export async function createGameRuntime(
     }
 
     private drawRoutes(snapshot: SimulationSnapshot) {
+      if (this.lastRouteSnapshot === snapshot) return;
+      this.lastRouteSnapshot = snapshot;
       this.routeGraphics.clear();
       this.rallyGraphics.clear();
       for (const unit of snapshot.units) {

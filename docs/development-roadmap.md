@@ -576,8 +576,11 @@ updates for the 10 Hz render stream. The fourth slice culls live units,
 structures, stale structure memory, Aurelite fields, and projectiles outside the
 camera world view plus a 160-unit safety margin. It changes only Phaser Game
 Object visibility and draw work; selection and targeting still query the full
-reconstructed render state. Pooling, batching, and detail budgets remain
-follow-up slices.
+reconstructed render state. The fifth slice retains Phaser Graphics command
+buffers until their displayed unit, structure, or field values change, and
+retains shared route, projectile, build-radius, and Solar Spear buffers until
+their snapshot or camera inputs change. Pooling, batching, and detail budgets
+remain follow-up slices.
 
 ### Work
 
