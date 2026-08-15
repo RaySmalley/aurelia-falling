@@ -27,8 +27,9 @@ const {
   UNIT_VIEW_POOL_CAPACITY,
   fieldAmountValuesEqual,
   pickUnitAtWorldPoint,
+  structureOverlayStyle,
   structureStatusValuesEqual,
-  unitMeterValuesEqual,
+  unitOverlayStyle,
   worldPointWithinCameraMargin,
 } = bootstrapModule;
 const { BoundedKeyedPool } = viewPoolModule;
@@ -92,26 +93,49 @@ test("culled presentation state does not remove units from hit testing", () => {
   assert.equal(pickUnitAtWorldPoint([target], point, 2), target);
 });
 
-test("presentation graphics invalidate only when their drawn values change", () => {
+test("batched overlay styles preserve meter and warning rules", () => {
   const baseUnit = unit(1);
+  assert.deepEqual(unitOverlayStyle(baseUnit, 1), {
+    healthWidth: 40,
+    healthRatio: 1,
+    selectionSize: [52, 24],
+    cargoRatio: null,
+  });
   assert.equal(
-    unitMeterValuesEqual(baseUnit, {
-      ...baseUnit,
-      position: { x: 999, y: 999 },
-      cooldownTicks: 7,
-    }),
-    true,
+    unitOverlayStyle(
+      unit(2, {
+        kind: "midasHarvester",
+        cargo: 25,
+        cargoCapacity: 50,
+      }),
+      1,
+    ).cargoRatio,
+    0.5,
   );
   assert.equal(
-    unitMeterValuesEqual(baseUnit, { ...baseUnit, health: 99 }),
-    false,
-  );
-  assert.equal(
-    unitMeterValuesEqual(baseUnit, { ...baseUnit, selected: true }),
-    false,
+    unitOverlayStyle(
+      unit(3, {
+        playerId: 2,
+        kind: "midasHarvester",
+        cargo: 25,
+        cargoCapacity: 50,
+      }),
+      1,
+    ).cargoRatio,
+    null,
   );
 
   const baseStructure = structure(2);
+  assert.deepEqual(structureOverlayStyle(baseStructure), {
+    healthRatio: 1,
+    healthColor: 0x79e0d3,
+    constructionRatio: null,
+    warning: null,
+  });
+  assert.equal(
+    structureOverlayStyle({ ...baseStructure, powered: false }).warning,
+    "unpowered",
+  );
   assert.equal(
     structureStatusValuesEqual(baseStructure, {
       ...baseStructure,
@@ -136,6 +160,22 @@ test("presentation graphics invalidate only when their drawn values change", () 
   assert.equal(
     fieldAmountValuesEqual(field, { ...field, amount: 799 }),
     false,
+  );
+});
+
+test("entity indicators use shared scene-level Graphics batches", async () => {
+  const source = await readFile(
+    new URL("../app/game/bootstrap.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(source, /selectionGraphics = this\.add\.graphics\(\)/);
+  assert.match(source, /meterGraphics = this\.add\.graphics\(\)/);
+  assert.match(source, /drawStructureOverlays\(current, cameraView\)/);
+  assert.match(source, /drawUnitOverlay\(unit, world, current\.controlledPlayer\)/);
+  assert.doesNotMatch(
+    source,
+    /setName\("(?:health|cargo|status|selection)"\)/,
   );
 });
 

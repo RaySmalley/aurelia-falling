@@ -115,20 +115,30 @@ type CameraWorldView = Readonly<{
   height: number;
 }>;
 
-export function unitMeterValuesEqual(
-  left: UnitSnapshot,
-  right: UnitSnapshot,
+function healthColor(ratio: number) {
+  return ratio > 0.55 ? 0x79e0d3 : ratio > 0.25 ? 0xe6a63f : 0xf06d5c;
+}
+
+export function unitOverlayStyle(
+  unit: UnitSnapshot,
+  controlledPlayer: SimulationSnapshot["controlledPlayer"],
 ) {
-  return (
-    left.health === right.health &&
-    left.maxHealth === right.maxHealth &&
-    left.armor === right.armor &&
-    left.kind === right.kind &&
-    left.playerId === right.playerId &&
-    left.selected === right.selected &&
-    left.cargo === right.cargo &&
-    left.cargoCapacity === right.cargoCapacity
-  );
+  const heavy = unit.armor === "heavy" || unit.armor === "siege";
+  const cargoVisible =
+    unit.kind === "midasHarvester" &&
+    unit.playerId === controlledPlayer &&
+    (unit.selected || unit.cargo > 0);
+  return {
+    healthWidth: heavy ? 40 : 34,
+    healthRatio: unit.health / unit.maxHealth,
+    selectionSize: heavy ? ([52, 24] as const) : ([45, 20] as const),
+    cargoRatio:
+      cargoVisible && unit.cargoCapacity > 0
+        ? Math.min(1, unit.cargo / unit.cargoCapacity)
+        : cargoVisible
+          ? 0
+          : null,
+  };
 }
 
 export function structureStatusValuesEqual(
@@ -145,6 +155,26 @@ export function structureStatusValuesEqual(
     left.powered === right.powered &&
     left.connected === right.connected
   );
+}
+
+export function structureOverlayStyle(structure: StructureSnapshot) {
+  const healthRatio = structure.health / structure.maxHealth;
+  return {
+    healthRatio,
+    healthColor: healthColor(healthRatio),
+    constructionRatio: structure.completed
+      ? null
+      : 1 -
+        structure.constructionRemainingTicks /
+          Math.max(1, structure.constructionTotalTicks),
+    warning: !structure.completed
+      ? null
+      : !structure.powered
+        ? "unpowered"
+        : !structure.connected
+          ? "disconnected"
+          : null,
+  } as const;
 }
 
 export function fieldAmountValuesEqual(
@@ -462,6 +492,8 @@ export async function createGameRuntime(
     private shiftKey!: Phaser.Input.Keyboard.Key;
     private ctrlKey!: Phaser.Input.Keyboard.Key;
     private selectionBox!: Phaser.GameObjects.Graphics;
+    private selectionGraphics!: Phaser.GameObjects.Graphics;
+    private meterGraphics!: Phaser.GameObjects.Graphics;
     private routeGraphics!: Phaser.GameObjects.Graphics;
     private rallyGraphics!: Phaser.GameObjects.Graphics;
     private projectileGraphics!: Phaser.GameObjects.Graphics;
@@ -482,9 +514,6 @@ export async function createGameRuntime(
       string
     >();
     private unitFacings = new Map<number, number>();
-    private unitMeterSnapshots = new Map<number, UnitSnapshot>();
-    private unitMeterControlledPlayer: SimulationSnapshot["controlledPlayer"] | null =
-      null;
     private structureViews = new Map<number, Phaser.GameObjects.Container>();
     private structureViewPool = new BoundedKeyedPool<
       string,
@@ -553,6 +582,8 @@ export async function createGameRuntime(
       this.routeGraphics = this.add.graphics().setDepth(8);
       this.rallyGraphics = this.add.graphics().setDepth(7);
       this.projectileGraphics = this.add.graphics().setDepth(24);
+      this.selectionGraphics = this.add.graphics().setDepth(9);
+      this.meterGraphics = this.add.graphics().setDepth(25);
       this.buildRadiusGraphics = this.add.graphics().setDepth(6);
       this.solarGraphics = this.add.graphics().setDepth(70);
       this.fogTexture = this.add
@@ -1144,29 +1175,19 @@ export async function createGameRuntime(
             )
             .setName("sprite")
         : null;
-      const status = this.add.graphics().setName("status");
       const teamHalo = this.add
         .ellipse(0, 17, 67, 30)
         .setStrokeStyle(1.4, teamColor, stale ? 0.4 : 0.86)
         .setName("team-halo");
-      const selection = this.add
-        .ellipse(0, 17, 65, 30)
-        .setStrokeStyle(2, 0xf4f0b5, 0.98)
-        .setName("selection")
-        .setVisible(!stale && structure.selected);
       const world = gridToWorld(structure.tile);
       const teamMark = this.add
         .rectangle(0, 9, 9, 9, teamColor, stale ? 0.5 : 0.95)
         .setStrokeStyle(1, outline, stale ? 0.55 : 1)
         .setAngle(45)
         .setName("team-mark");
-      const children: Phaser.GameObjects.GameObject[] = [
-        teamHalo,
-        selection,
-        body,
-      ];
+      const children: Phaser.GameObjects.GameObject[] = [teamHalo, body];
       if (sprite) children.push(sprite);
-      children.push(teamMark, status);
+      children.push(teamMark);
       const container = this.add
         .container(world.x, world.y, children)
         .setDepth(structureRenderDepth(structure.tile))
@@ -1273,12 +1294,6 @@ export async function createGameRuntime(
           this.createStructureView(structure);
         }
         const view = this.structureViews.get(structure.id)!;
-        const selection = view.getByName(
-          "selection",
-        ) as Phaser.GameObjects.Ellipse | null;
-        if (selection && selection.visible !== structure.selected) {
-          selection.setVisible(structure.selected);
-        }
         const world = gridToWorld(structure.tile);
         if (
           cameraView &&
@@ -1290,13 +1305,6 @@ export async function createGameRuntime(
         if (previous && structureStatusValuesEqual(previous, structure)) {
           continue;
         }
-        const status = view.getByName(
-          "status",
-        ) as Phaser.GameObjects.Graphics | null;
-        if (!status) continue;
-        status.clear();
-        status.fillStyle(0x071318, 0.92);
-        status.fillRect(-25, -49, 50, 6);
         const ratio = structure.health / structure.maxHealth;
         const sprite = view.getByName(
           "sprite",
@@ -1313,34 +1321,6 @@ export async function createGameRuntime(
                   ? 0xffcfad
                   : baseTint,
             );
-        }
-        status.fillStyle(
-          ratio > 0.55 ? 0x79e0d3 : ratio > 0.25 ? 0xe6a63f : 0xf06d5c,
-          1,
-        );
-        status.fillRect(-24, -48, Math.ceil(48 * ratio), 4);
-        if (ratio <= 0.55) {
-          status.lineStyle(1.2, ratio <= 0.25 ? 0xff6d5c : 0xe6a63f, 0.8);
-          for (let offset = -18; offset <= 18; offset += 9) {
-            status.lineBetween(offset - 5, -35, offset + 5, -25);
-          }
-        }
-        if (!structure.completed) {
-          const progress =
-            1 -
-            structure.constructionRemainingTicks /
-              Math.max(1, structure.constructionTotalTicks);
-          status.fillStyle(0x071318, 0.92);
-          status.fillRect(-25, 25, 50, 6);
-          status.fillStyle(0xe6a63f, 1);
-          status.fillRect(-24, 26, Math.ceil(48 * progress), 4);
-        } else if (!structure.powered) {
-          status.lineStyle(2, 0xf06d5c, 1);
-          status.strokeCircle(0, -8, 29);
-          status.lineBetween(-19, -29, 19, 13);
-        } else if (!structure.connected) {
-          status.lineStyle(2, 0xe6a63f, 0.9);
-          status.strokeCircle(0, -8, 28);
         }
         this.structureStatusSnapshots.set(structure.id, structure);
       }
@@ -1498,16 +1478,9 @@ export async function createGameRuntime(
         .setStrokeStyle(1, outline, 1)
         .setAngle(45);
       const core = this.add.circle(0, 0, 4, 0xe9ffff);
-      const health = this.add.graphics().setName("health");
-      const cargo = this.add.graphics().setName("cargo");
-      const ring = this.add
-        .ellipse(0, 13, heavy ? 52 : 45, heavy ? 24 : 20)
-        .setStrokeStyle(2, 0xf4f0b5, 0.98)
-        .setName("selection")
-        .setVisible(unit.selected);
-      const children: Phaser.GameObjects.GameObject[] = [ring, body];
+      const children: Phaser.GameObjects.GameObject[] = [body];
       if (sprite) children.push(sprite);
-      children.push(teamMark, core, health, cargo);
+      children.push(teamMark, core);
       const container = this.add
         .container(0, 0, children)
         .setDepth(10)
@@ -1523,7 +1496,6 @@ export async function createGameRuntime(
     ) {
       this.unitViews.delete(id);
       this.unitFacings.delete(id);
-      this.unitMeterSnapshots.delete(id);
       view.setActive(false).setVisible(false);
       const poolKey = this.unitViewPoolKeys.get(view);
       if (poolKey && this.unitViewPool.release(poolKey, view)) return;
@@ -1541,16 +1513,137 @@ export async function createGameRuntime(
       }
     }
 
+    private drawStructureOverlays(
+      snapshot: SimulationSnapshot,
+      cameraView: CameraWorldView,
+    ) {
+      for (const structure of snapshot.structures) {
+        const world = gridToWorld(structure.tile);
+        if (!worldPointWithinCameraMargin(world, cameraView)) continue;
+        if (structure.selected) {
+          this.selectionGraphics.lineStyle(2, 0xf4f0b5, 0.98);
+          this.selectionGraphics.strokeEllipse(
+            world.x,
+            world.y + 17,
+            65,
+            30,
+          );
+        }
+
+        const style = structureOverlayStyle(structure);
+        this.meterGraphics.fillStyle(0x071318, 0.92);
+        this.meterGraphics.fillRect(world.x - 25, world.y - 49, 50, 6);
+        this.meterGraphics.fillStyle(style.healthColor, 1);
+        this.meterGraphics.fillRect(
+          world.x - 24,
+          world.y - 48,
+          Math.ceil(48 * style.healthRatio),
+          4,
+        );
+        if (style.healthRatio <= 0.55) {
+          this.meterGraphics.lineStyle(
+            1.2,
+            style.healthRatio <= 0.25 ? 0xff6d5c : 0xe6a63f,
+            0.8,
+          );
+          for (let offset = -18; offset <= 18; offset += 9) {
+            this.meterGraphics.lineBetween(
+              world.x + offset - 5,
+              world.y - 35,
+              world.x + offset + 5,
+              world.y - 25,
+            );
+          }
+        }
+        if (style.constructionRatio !== null) {
+          this.meterGraphics.fillStyle(0x071318, 0.92);
+          this.meterGraphics.fillRect(world.x - 25, world.y + 25, 50, 6);
+          this.meterGraphics.fillStyle(0xe6a63f, 1);
+          this.meterGraphics.fillRect(
+            world.x - 24,
+            world.y + 26,
+            Math.ceil(48 * style.constructionRatio),
+            4,
+          );
+        } else if (style.warning === "unpowered") {
+          this.meterGraphics.lineStyle(2, 0xf06d5c, 1);
+          this.meterGraphics.strokeCircle(world.x, world.y - 8, 29);
+          this.meterGraphics.lineBetween(
+            world.x - 19,
+            world.y - 29,
+            world.x + 19,
+            world.y + 13,
+          );
+        } else if (style.warning === "disconnected") {
+          this.meterGraphics.lineStyle(2, 0xe6a63f, 0.9);
+          this.meterGraphics.strokeCircle(world.x, world.y - 8, 28);
+        }
+      }
+    }
+
+    private drawUnitOverlay(
+      unit: UnitSnapshot,
+      world: Vec2,
+      controlledPlayer: SimulationSnapshot["controlledPlayer"],
+    ) {
+      const style = unitOverlayStyle(unit, controlledPlayer);
+      if (unit.selected) {
+        this.selectionGraphics.lineStyle(2, 0xf4f0b5, 0.98);
+        this.selectionGraphics.strokeEllipse(
+          world.x,
+          world.y + 13,
+          style.selectionSize[0],
+          style.selectionSize[1],
+        );
+      }
+      this.meterGraphics.fillStyle(0x071318, 0.92);
+      this.meterGraphics.fillRect(
+        world.x - style.healthWidth / 2 - 1,
+        world.y - 27,
+        style.healthWidth + 2,
+        5,
+      );
+      this.meterGraphics.fillStyle(healthColor(style.healthRatio), 1);
+      this.meterGraphics.fillRect(
+        world.x - style.healthWidth / 2,
+        world.y - 26,
+        Math.ceil(style.healthWidth * style.healthRatio),
+        3,
+      );
+      if (style.cargoRatio === null) return;
+
+      const width = 34;
+      const segments = 5;
+      const segmentWidth = (width - (segments - 1) * 2) / segments;
+      for (let segment = 0; segment < segments; segment += 1) {
+        const x = world.x - width / 2 + segment * (segmentWidth + 2);
+        this.meterGraphics.fillStyle(0x071318, 0.94);
+        this.meterGraphics.fillRect(x, world.y - 20, segmentWidth, 4);
+        const segmentFill = Math.max(
+          0,
+          Math.min(1, style.cargoRatio * segments - segment),
+        );
+        if (segmentFill > 0) {
+          this.meterGraphics.fillStyle(0xf0bf57, 1);
+          this.meterGraphics.fillRect(
+            x,
+            world.y - 19,
+            segmentWidth * segmentFill,
+            2,
+          );
+        }
+      }
+    }
+
     private renderUnits(
       previous: SimulationSnapshot,
       current: SimulationSnapshot,
       alpha: number,
       cameraView: CameraWorldView,
     ) {
-      if (this.unitMeterControlledPlayer !== current.controlledPlayer) {
-        this.unitMeterControlledPlayer = current.controlledPlayer;
-        this.unitMeterSnapshots.clear();
-      }
+      this.selectionGraphics.clear();
+      this.meterGraphics.clear();
+      this.drawStructureOverlays(current, cameraView);
       const previousById = new Map(previous.units.map((unit) => [unit.id, unit]));
       for (const unit of current.units) {
         const prior = previousById.get(unit.id) ?? unit;
@@ -1578,67 +1671,10 @@ export async function createGameRuntime(
         (
           view.getByName("sprite") as Phaser.GameObjects.Image | null
         )?.setFrame(UNIT_ATLAS_FRAME[unit.kind] + facing, false, false);
-        const selection = view.getByName(
-          "selection",
-        ) as Phaser.GameObjects.Ellipse | null;
-        if (selection && selection.visible !== unit.selected) {
-          selection.setVisible(unit.selected);
-        }
         if (!this.setViewWithinCameraMargin(view, world, cameraView)) {
           continue;
         }
-        const previousMeters = this.unitMeterSnapshots.get(unit.id);
-        if (previousMeters && unitMeterValuesEqual(previousMeters, unit)) {
-          continue;
-        }
-        const health = view.getByName(
-          "health",
-        ) as Phaser.GameObjects.Graphics | null;
-        if (health) {
-          const width = unit.armor === "heavy" || unit.armor === "siege" ? 40 : 34;
-          const ratio = unit.health / unit.maxHealth;
-          health.clear();
-          health.fillStyle(0x071318, 0.92);
-          health.fillRect(-width / 2 - 1, -27, width + 2, 5);
-          health.fillStyle(
-            ratio > 0.55 ? 0x79e0d3 : ratio > 0.25 ? 0xe6a63f : 0xf06d5c,
-            1,
-          );
-          health.fillRect(-width / 2, -26, Math.ceil(width * ratio), 3);
-        }
-        const cargo = view.getByName(
-          "cargo",
-        ) as Phaser.GameObjects.Graphics | null;
-        if (cargo) {
-          const showCargo =
-            unit.kind === "midasHarvester" &&
-            unit.playerId === current.controlledPlayer &&
-            (unit.selected || unit.cargo > 0);
-          cargo.clear().setVisible(showCargo);
-          if (showCargo) {
-            const width = 34;
-            const segments = 5;
-            const ratio =
-              unit.cargoCapacity > 0
-                ? Math.min(1, unit.cargo / unit.cargoCapacity)
-                : 0;
-            const segmentWidth = (width - (segments - 1) * 2) / segments;
-            for (let segment = 0; segment < segments; segment += 1) {
-              const x = -width / 2 + segment * (segmentWidth + 2);
-              cargo.fillStyle(0x071318, 0.94);
-              cargo.fillRect(x, -20, segmentWidth, 4);
-              const segmentFill = Math.max(
-                0,
-                Math.min(1, ratio * segments - segment),
-              );
-              if (segmentFill > 0) {
-                cargo.fillStyle(0xf0bf57, 1);
-                cargo.fillRect(x, -19, segmentWidth * segmentFill, 2);
-              }
-            }
-          }
-        }
-        this.unitMeterSnapshots.set(unit.id, unit);
+        this.drawUnitOverlay(unit, world, current.controlledPlayer);
       }
     }
 
