@@ -27,6 +27,7 @@ const {
   UNIT_VIEW_POOL_CAPACITY,
   fieldAmountValuesEqual,
   pickUnitAtWorldPoint,
+  presentationDetailTierForZoom,
   structureOverlayStyle,
   structureStatusValuesEqual,
   unitOverlayStyle,
@@ -98,6 +99,7 @@ test("batched overlay styles preserve meter and warning rules", () => {
   assert.deepEqual(unitOverlayStyle(baseUnit, 1), {
     healthWidth: 40,
     healthRatio: 1,
+    healthVisible: true,
     selectionSize: [52, 24],
     cargoRatio: null,
   });
@@ -129,6 +131,8 @@ test("batched overlay styles preserve meter and warning rules", () => {
   assert.deepEqual(structureOverlayStyle(baseStructure), {
     healthRatio: 1,
     healthColor: 0x79e0d3,
+    healthVisible: true,
+    damageHatchingVisible: false,
     constructionRatio: null,
     warning: null,
   });
@@ -163,6 +167,66 @@ test("batched overlay styles preserve meter and warning rules", () => {
   );
 });
 
+test("camera zoom selects deterministic presentation detail tiers", () => {
+  assert.equal(presentationDetailTierForZoom(0.75), "overview");
+  assert.equal(presentationDetailTierForZoom(0.9), "tactical");
+  assert.equal(presentationDetailTierForZoom(1), "full");
+  assert.equal(presentationDetailTierForZoom(1.25), "full");
+
+  const baseUnit = unit(10);
+  assert.equal(unitOverlayStyle(baseUnit, 1, "overview").healthVisible, false);
+  assert.equal(
+    unitOverlayStyle({ ...baseUnit, health: 99 }, 1, "overview").healthVisible,
+    true,
+  );
+  assert.equal(
+    unitOverlayStyle(
+      {
+        ...baseUnit,
+        kind: "midasHarvester",
+        cargo: 25,
+        cargoCapacity: 50,
+      },
+      1,
+      "overview",
+    ).cargoRatio,
+    null,
+  );
+  assert.equal(
+    unitOverlayStyle(
+      {
+        ...baseUnit,
+        kind: "midasHarvester",
+        selected: true,
+        cargo: 25,
+        cargoCapacity: 50,
+      },
+      1,
+      "overview",
+    ).cargoRatio,
+    0.5,
+  );
+
+  const damagedStructure = structure(11, { health: 250 });
+  assert.equal(
+    structureOverlayStyle(structure(12), "overview").healthVisible,
+    false,
+  );
+  assert.equal(
+    structureOverlayStyle(damagedStructure, "overview").healthVisible,
+    true,
+  );
+  assert.equal(
+    structureOverlayStyle(damagedStructure, "tactical")
+      .damageHatchingVisible,
+    false,
+  );
+  assert.equal(
+    structureOverlayStyle(damagedStructure, "full").damageHatchingVisible,
+    true,
+  );
+});
+
 test("entity indicators use shared scene-level Graphics batches", async () => {
   const source = await readFile(
     new URL("../app/game/bootstrap.ts", import.meta.url),
@@ -171,8 +235,10 @@ test("entity indicators use shared scene-level Graphics batches", async () => {
 
   assert.match(source, /selectionGraphics = this\.add\.graphics\(\)/);
   assert.match(source, /meterGraphics = this\.add\.graphics\(\)/);
-  assert.match(source, /drawStructureOverlays\(current, cameraView\)/);
-  assert.match(source, /drawUnitOverlay\(unit, world, current\.controlledPlayer\)/);
+  assert.match(source, /drawStructureOverlays\(current, cameraView, detailTier\)/);
+  assert.match(source, /this\.drawUnitOverlay\(/);
+  assert.match(source, /const showAmount = detailTier !== "overview"/);
+  assert.match(source, /if \(detailTier === "full"\)/);
   assert.doesNotMatch(
     source,
     /setName\("(?:health|cargo|status|selection)"\)/,

@@ -119,18 +119,31 @@ function healthColor(ratio: number) {
   return ratio > 0.55 ? 0x79e0d3 : ratio > 0.25 ? 0xe6a63f : 0xf06d5c;
 }
 
+export type PresentationDetailTier = "overview" | "tactical" | "full";
+
+export function presentationDetailTierForZoom(
+  zoom: number,
+): PresentationDetailTier {
+  if (zoom <= 0.8) return "overview";
+  if (zoom < 1) return "tactical";
+  return "full";
+}
+
 export function unitOverlayStyle(
   unit: UnitSnapshot,
   controlledPlayer: SimulationSnapshot["controlledPlayer"],
+  detailTier: PresentationDetailTier = "full",
 ) {
   const heavy = unit.armor === "heavy" || unit.armor === "siege";
   const cargoVisible =
     unit.kind === "midasHarvester" &&
     unit.playerId === controlledPlayer &&
-    (unit.selected || unit.cargo > 0);
+    (unit.selected || (detailTier !== "overview" && unit.cargo > 0));
   return {
     healthWidth: heavy ? 40 : 34,
     healthRatio: unit.health / unit.maxHealth,
+    healthVisible:
+      detailTier !== "overview" || unit.selected || unit.health < unit.maxHealth,
     selectionSize: heavy ? ([52, 24] as const) : ([45, 20] as const),
     cargoRatio:
       cargoVisible && unit.cargoCapacity > 0
@@ -157,11 +170,19 @@ export function structureStatusValuesEqual(
   );
 }
 
-export function structureOverlayStyle(structure: StructureSnapshot) {
+export function structureOverlayStyle(
+  structure: StructureSnapshot,
+  detailTier: PresentationDetailTier = "full",
+) {
   const healthRatio = structure.health / structure.maxHealth;
   return {
     healthRatio,
     healthColor: healthColor(healthRatio),
+    healthVisible:
+      detailTier !== "overview" ||
+      structure.selected ||
+      structure.health < structure.maxHealth,
+    damageHatchingVisible: detailTier === "full" && healthRatio <= 0.55,
     constructionRatio: structure.completed
       ? null
       : 1 -
@@ -534,6 +555,7 @@ export async function createGameRuntime(
     private lastRouteSnapshot: SimulationSnapshot | null = null;
     private lastProjectileSnapshot: SimulationSnapshot | null = null;
     private lastProjectileCameraView: CameraWorldView | null = null;
+    private lastProjectileDetailTier: PresentationDetailTier | null = null;
     private lastBuildRadiusSnapshot: SimulationSnapshot | null = null;
     private lastSolarSnapshot: SimulationSnapshot | null = null;
     private lastImpactShakeTick = -1;
@@ -803,10 +825,13 @@ export async function createGameRuntime(
 
       this.updateCamera(delta);
       const cameraView = this.cameras.main.worldView;
+      const detailTier = presentationDetailTierForZoom(
+        this.cameras.main.zoom,
+      );
       this.syncUnitViews(lastRenderSnapshot);
       this.syncStructureViews(lastRenderSnapshot, cameraView);
       this.syncStaleStructureViews(lastRenderSnapshot, cameraView);
-      this.syncFieldViews(lastSnapshot, cameraView);
+      this.syncFieldViews(lastSnapshot, cameraView, detailTier);
       this.renderUnits(
         previousRenderSnapshot,
         lastRenderSnapshot,
@@ -819,9 +844,10 @@ export async function createGameRuntime(
                   SIMULATION_TICK_INTERVAL_MS),
             ),
         cameraView,
+        detailTier,
       );
       this.drawRoutes(lastSnapshot);
-      this.drawProjectiles(lastSnapshot, cameraView);
+      this.drawProjectiles(lastSnapshot, cameraView, detailTier);
       this.drawBuildRadii(lastSnapshot);
       this.drawFog(lastSnapshot);
       this.drawSolarSpear(lastSnapshot);
@@ -1230,6 +1256,7 @@ export async function createGameRuntime(
     private syncFieldViews(
       snapshot: SimulationSnapshot,
       cameraView?: CameraWorldView,
+      detailTier: PresentationDetailTier = "full",
     ) {
       const activeIds = new Set(snapshot.fields.map((field) => field.id));
       for (const [id, view] of this.fieldViews) {
@@ -1252,6 +1279,8 @@ export async function createGameRuntime(
           "amount",
         ) as Phaser.GameObjects.Graphics | null;
         if (!amount) continue;
+        const showAmount = detailTier !== "overview";
+        if (amount.visible !== showAmount) amount.setVisible(showAmount);
         const sprite = view.getByName(
           "sprite",
         ) as Phaser.GameObjects.Image | null;
@@ -1262,6 +1291,7 @@ export async function createGameRuntime(
               ? 0.94
               : 0.88 + Math.sin(snapshot.tick / 7) * 0.08,
           );
+        if (!showAmount) continue;
         const previous = this.fieldAmountSnapshots.get(field.id);
         if (previous && fieldAmountValuesEqual(previous, field)) continue;
         amount.clear();
@@ -1516,6 +1546,7 @@ export async function createGameRuntime(
     private drawStructureOverlays(
       snapshot: SimulationSnapshot,
       cameraView: CameraWorldView,
+      detailTier: PresentationDetailTier,
     ) {
       for (const structure of snapshot.structures) {
         const world = gridToWorld(structure.tile);
@@ -1530,17 +1561,19 @@ export async function createGameRuntime(
           );
         }
 
-        const style = structureOverlayStyle(structure);
-        this.meterGraphics.fillStyle(0x071318, 0.92);
-        this.meterGraphics.fillRect(world.x - 25, world.y - 49, 50, 6);
-        this.meterGraphics.fillStyle(style.healthColor, 1);
-        this.meterGraphics.fillRect(
-          world.x - 24,
-          world.y - 48,
-          Math.ceil(48 * style.healthRatio),
-          4,
-        );
-        if (style.healthRatio <= 0.55) {
+        const style = structureOverlayStyle(structure, detailTier);
+        if (style.healthVisible) {
+          this.meterGraphics.fillStyle(0x071318, 0.92);
+          this.meterGraphics.fillRect(world.x - 25, world.y - 49, 50, 6);
+          this.meterGraphics.fillStyle(style.healthColor, 1);
+          this.meterGraphics.fillRect(
+            world.x - 24,
+            world.y - 48,
+            Math.ceil(48 * style.healthRatio),
+            4,
+          );
+        }
+        if (style.damageHatchingVisible) {
           this.meterGraphics.lineStyle(
             1.2,
             style.healthRatio <= 0.25 ? 0xff6d5c : 0xe6a63f,
@@ -1585,8 +1618,9 @@ export async function createGameRuntime(
       unit: UnitSnapshot,
       world: Vec2,
       controlledPlayer: SimulationSnapshot["controlledPlayer"],
+      detailTier: PresentationDetailTier,
     ) {
-      const style = unitOverlayStyle(unit, controlledPlayer);
+      const style = unitOverlayStyle(unit, controlledPlayer, detailTier);
       if (unit.selected) {
         this.selectionGraphics.lineStyle(2, 0xf4f0b5, 0.98);
         this.selectionGraphics.strokeEllipse(
@@ -1596,20 +1630,22 @@ export async function createGameRuntime(
           style.selectionSize[1],
         );
       }
-      this.meterGraphics.fillStyle(0x071318, 0.92);
-      this.meterGraphics.fillRect(
-        world.x - style.healthWidth / 2 - 1,
-        world.y - 27,
-        style.healthWidth + 2,
-        5,
-      );
-      this.meterGraphics.fillStyle(healthColor(style.healthRatio), 1);
-      this.meterGraphics.fillRect(
-        world.x - style.healthWidth / 2,
-        world.y - 26,
-        Math.ceil(style.healthWidth * style.healthRatio),
-        3,
-      );
+      if (style.healthVisible) {
+        this.meterGraphics.fillStyle(0x071318, 0.92);
+        this.meterGraphics.fillRect(
+          world.x - style.healthWidth / 2 - 1,
+          world.y - 27,
+          style.healthWidth + 2,
+          5,
+        );
+        this.meterGraphics.fillStyle(healthColor(style.healthRatio), 1);
+        this.meterGraphics.fillRect(
+          world.x - style.healthWidth / 2,
+          world.y - 26,
+          Math.ceil(style.healthWidth * style.healthRatio),
+          3,
+        );
+      }
       if (style.cargoRatio === null) return;
 
       const width = 34;
@@ -1640,10 +1676,11 @@ export async function createGameRuntime(
       current: SimulationSnapshot,
       alpha: number,
       cameraView: CameraWorldView,
+      detailTier: PresentationDetailTier,
     ) {
       this.selectionGraphics.clear();
       this.meterGraphics.clear();
-      this.drawStructureOverlays(current, cameraView);
+      this.drawStructureOverlays(current, cameraView, detailTier);
       const previousById = new Map(previous.units.map((unit) => [unit.id, unit]));
       for (const unit of current.units) {
         const prior = previousById.get(unit.id) ?? unit;
@@ -1674,17 +1711,24 @@ export async function createGameRuntime(
         if (!this.setViewWithinCameraMargin(view, world, cameraView)) {
           continue;
         }
-        this.drawUnitOverlay(unit, world, current.controlledPlayer);
+        this.drawUnitOverlay(
+          unit,
+          world,
+          current.controlledPlayer,
+          detailTier,
+        );
       }
     }
 
     private drawProjectiles(
       snapshot: SimulationSnapshot,
       cameraView: CameraWorldView,
+      detailTier: PresentationDetailTier,
     ) {
       if (
         this.lastProjectileSnapshot === snapshot &&
-        cameraWorldViewsEqual(this.lastProjectileCameraView, cameraView)
+        cameraWorldViewsEqual(this.lastProjectileCameraView, cameraView) &&
+        this.lastProjectileDetailTier === detailTier
       ) {
         return;
       }
@@ -1695,6 +1739,7 @@ export async function createGameRuntime(
         width: cameraView.width,
         height: cameraView.height,
       };
+      this.lastProjectileDetailTier = detailTier;
       this.projectileGraphics.clear();
       for (const projectile of snapshot.projectiles) {
         const world = fixedToWorld(projectile.position);
@@ -1703,8 +1748,10 @@ export async function createGameRuntime(
         const radius = projectile.weaponId === "gorgonMortar" ? 5 : 3;
         this.projectileGraphics.fillStyle(color, 0.95);
         this.projectileGraphics.fillCircle(world.x, world.y, radius);
-        this.projectileGraphics.lineStyle(1, 0xffffff, 0.45);
-        this.projectileGraphics.strokeCircle(world.x, world.y, radius + 2);
+        if (detailTier === "full") {
+          this.projectileGraphics.lineStyle(1, 0xffffff, 0.45);
+          this.projectileGraphics.strokeCircle(world.x, world.y, radius + 2);
+        }
       }
     }
 

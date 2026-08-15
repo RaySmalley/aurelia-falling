@@ -6,9 +6,9 @@ Current canonical roadmap following completion of Phases 7-12 and all Phase 9A
 presentation slices. Phase 13 is active: its delta transport, bounded UI
 channel, camera-culling foundations, graphics caching, and primary entity-view
 pooling are implemented. Shared entity-indicator, route, and projectile batches
-are also in place, with detail budgets, effect caps, and performance gates
-remaining before the final player UI upgrade in Phase 13A and the first-play
-experience in Phase 13B.
+are also in place, along with zoom-based presentation detail tiers. Effect caps
+and performance gates remain before the final player UI upgrade in Phase 13A
+and the first-play experience in Phase 13B.
 
 This document defines the order of the remaining phases. Detailed technical
 design remains in the supporting plans:
@@ -588,8 +588,14 @@ visible, positional, depth, naming, and facing state before use.
 The seventh slice removes per-container health, cargo, structure-status, and
 selection Game Objects. Two scene-level Phaser Graphics command buffers now
 draw every camera-visible entity indicator from interpolated, read-only render
-state, joining the existing shared route and projectile batches. Distance-based
-detail, effect caps, and performance gates remain follow-up slices.
+state, joining the existing shared route and projectile batches. The eighth
+slice maps the supported camera zooms to overview, tactical, and full-detail
+tiers. Overview renders meters only for selected or damaged entities, limits
+Harvester cargo to selected friendly units, and hides Aurelite amount bars;
+tactical restores meters while retaining simplified damage and projectile
+treatment. Full detail preserves every existing indicator. All tiers keep
+selection rings, structure warnings, projectile bodies, entity visibility, hit
+testing, and commands unchanged. Effect caps and performance gates remain.
 
 ### Work
 
