@@ -2,6 +2,9 @@ import type {
   AudioSettings,
   SimulationSnapshot,
 } from "./types";
+import { PresentationEffectBudget } from "./effect-budget";
+
+export const LOW_PRIORITY_AUDIO_EFFECTS_PER_SNAPSHOT = 1;
 
 const clampVolume = (value: number) =>
   Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
@@ -22,6 +25,9 @@ export class ProceduralAudio {
   private effectsGain: GainNode | null = null;
   private ambientNodes: AudioNode[] = [];
   private paused = false;
+  private readonly transientEffectBudget = new PresentationEffectBudget(
+    LOW_PRIORITY_AUDIO_EFFECTS_PER_SNAPSHOT,
+  );
   private settings: AudioSettings = {
     masterVolume: 0.8,
     musicVolume: 0.35,
@@ -78,12 +84,17 @@ export class ProceduralAudio {
 
   observe(previous: SimulationSnapshot, current: SimulationSnapshot) {
     if (current.tick === previous.tick) return;
+    this.transientEffectBudget.reset();
     if (
       previous.selectedUnitIds.length + previous.selectedStructureIds.length ===
         0 &&
       current.selectedUnitIds.length + current.selectedStructureIds.length > 0
     ) {
-      this.radio("Coalition asset selected", [540, 720]);
+      this.radio(
+        "Coalition asset selected",
+        [540, 720],
+        this.transientEffectBudget.admit("low"),
+      );
     }
 
     const previousCompleted = new Set(
@@ -117,7 +128,8 @@ export class ProceduralAudio {
     if (
       current.projectiles.some(
         (projectile) => !previousProjectiles.has(projectile.id),
-      )
+      ) &&
+      this.transientEffectBudget.admit("low")
     ) {
       this.tone(130, 0.08, "sawtooth", 0.08);
       this.tone(260, 0.055, "square", 0.045, 0.015);
@@ -207,8 +219,13 @@ export class ProceduralAudio {
     );
   }
 
-  private radio(text: string, notes: readonly number[]) {
+  private radio(
+    text: string,
+    notes: readonly number[],
+    playAudio = true,
+  ) {
     this.onCue(text);
+    if (!playAudio) return;
     notes.forEach((frequency, index) =>
       this.tone(frequency, 0.07, "square", 0.055, index * 0.085),
     );

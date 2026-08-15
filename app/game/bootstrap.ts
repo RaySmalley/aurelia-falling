@@ -4,6 +4,7 @@ import {
   isContinuousAudioTransition,
   ProceduralAudio,
 } from "./audio";
+import { PresentationEffectBudget } from "./effect-budget";
 import { createBrowserSimulationWorkerRuntime } from "./browser-simulation-worker-runtime";
 import {
   SIMULATION_TICK_INTERVAL_MS,
@@ -79,6 +80,7 @@ const PROCEDURAL_STRUCTURE_HIT_RADIUS = 38;
 export const VIEW_CULL_MARGIN_WORLD = 160;
 export const UNIT_VIEW_POOL_CAPACITY = 128;
 export const STRUCTURE_VIEW_POOL_CAPACITY = 64;
+export const LOW_PRIORITY_PROJECTILE_ACCENTS_PER_BATCH = 96;
 const BATTLEFIELD_ATLAS_FRAME = Object.freeze({
   groundA: 0,
   groundB: 1,
@@ -518,6 +520,9 @@ export async function createGameRuntime(
     private routeGraphics!: Phaser.GameObjects.Graphics;
     private rallyGraphics!: Phaser.GameObjects.Graphics;
     private projectileGraphics!: Phaser.GameObjects.Graphics;
+    private readonly projectileEffectBudget = new PresentationEffectBudget(
+      LOW_PRIORITY_PROJECTILE_ACCENTS_PER_BATCH,
+    );
     private buildRadiusGraphics!: Phaser.GameObjects.Graphics;
     private solarGraphics!: Phaser.GameObjects.Graphics;
     private fogTexture!: Phaser.GameObjects.RenderTexture;
@@ -1741,6 +1746,7 @@ export async function createGameRuntime(
       };
       this.lastProjectileDetailTier = detailTier;
       this.projectileGraphics.clear();
+      this.projectileEffectBudget.reset();
       for (const projectile of snapshot.projectiles) {
         const world = fixedToWorld(projectile.position);
         if (!worldPointWithinCameraMargin(world, cameraView)) continue;
@@ -1748,7 +1754,10 @@ export async function createGameRuntime(
         const radius = projectile.weaponId === "gorgonMortar" ? 5 : 3;
         this.projectileGraphics.fillStyle(color, 0.95);
         this.projectileGraphics.fillCircle(world.x, world.y, radius);
-        if (detailTier === "full") {
+        if (
+          detailTier === "full" &&
+          this.projectileEffectBudget.admit("low")
+        ) {
           this.projectileGraphics.lineStyle(1, 0xffffff, 0.45);
           this.projectileGraphics.strokeCircle(world.x, world.y, radius + 2);
         }

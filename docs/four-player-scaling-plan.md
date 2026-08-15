@@ -230,6 +230,13 @@ next bottleneck after the simulation moves off the main thread.
 - Cap transient visual and audio effects by priority without changing
   simulation outcomes.
 
+The active Phase 13 implementation caps only expendable presentation polish:
+full-detail projectile halo strokes have a fixed per-redraw budget, and
+synthesized selection/weapon sounds share a fixed low-priority budget per
+snapshot. Projectile bodies and gameplay-significant subtitles, alerts,
+warnings, Solar Spear effects, match results, and camera shake bypass that
+budget.
+
 ### Acceptance gates
 
 - Snapshot production and transfer remain below 2 ms p95 at the normal target.

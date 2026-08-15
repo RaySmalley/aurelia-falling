@@ -595,7 +595,13 @@ Harvester cargo to selected friendly units, and hides Aurelite amount bars;
 tactical restores meters while retaining simplified damage and projectile
 treatment. Full detail preserves every existing indicator. All tiers keep
 selection rings, structure warnings, projectile bodies, entity visibility, hit
-testing, and commands unchanged. Effect caps and performance gates remain.
+testing, and commands unchanged. The ninth slice applies reusable deterministic
+presentation budgets to expendable polish: full-detail projectile halo strokes
+are capped per redraw and synthesized selection/weapon sounds share one
+low-priority slot per snapshot. Projectile bodies, alert subtitles, construction
+and loss cues, warnings, Solar Spear feedback, match-result feedback, camera
+shake, visibility, hit testing, and commands remain uncapped. Performance gates
+remain.
 
 ### Work
 

@@ -14,7 +14,10 @@ const [audioModule, dataModule, simulationModule] = await Promise.all([
   vite.ssrLoadModule("/app/game/data.ts"),
   vite.ssrLoadModule("/app/game/simulation.ts"),
 ]);
-const { isContinuousAudioTransition } = audioModule;
+const {
+  LOW_PRIORITY_AUDIO_EFFECTS_PER_SNAPSHOT,
+  isContinuousAudioTransition,
+} = audioModule;
 const { gameData } = dataModule;
 const { Simulation } = simulationModule;
 
@@ -202,6 +205,7 @@ test("surrender and seeded restart stay inside the fixed-step command queue", ()
 });
 
 test("audio observation skips snapshot discontinuities across restarts", () => {
+  assert.equal(LOW_PRIORITY_AUDIO_EFFECTS_PER_SNAPSHOT, 1);
   const simulation = new Simulation(5_007, "skirmish");
   const initial = simulation.snapshot();
   simulation.step();

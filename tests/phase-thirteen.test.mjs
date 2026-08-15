@@ -14,6 +14,9 @@ const runtimeModule = await vite.ssrLoadModule("/app/game/simulation-runtime.ts"
 const hostModule = await vite.ssrLoadModule("/app/game/simulation-worker-host.ts");
 const bootstrapModule = await vite.ssrLoadModule("/app/game/bootstrap.ts");
 const viewPoolModule = await vite.ssrLoadModule("/app/game/view-pool.ts");
+const effectBudgetModule = await vite.ssrLoadModule(
+  "/app/game/effect-budget.ts",
+);
 const {
   RENDER_DELTA_PROTOCOL_VERSION,
   RenderSnapshotDeltaEncoder,
@@ -25,6 +28,7 @@ const {
   VIEW_CULL_MARGIN_WORLD,
   STRUCTURE_VIEW_POOL_CAPACITY,
   UNIT_VIEW_POOL_CAPACITY,
+  LOW_PRIORITY_PROJECTILE_ACCENTS_PER_BATCH,
   fieldAmountValuesEqual,
   pickUnitAtWorldPoint,
   presentationDetailTierForZoom,
@@ -34,9 +38,26 @@ const {
   worldPointWithinCameraMargin,
 } = bootstrapModule;
 const { BoundedKeyedPool } = viewPoolModule;
+const { PresentationEffectBudget } = effectBudgetModule;
 const { SIMULATION_RUNTIME_PROTOCOL_VERSION: runtimeVersion } = protocolModule;
 
 test.after(() => vite.close());
+
+test("presentation effect budgets cap only low-priority polish", () => {
+  const budget = new PresentationEffectBudget(2);
+
+  assert.equal(LOW_PRIORITY_PROJECTILE_ACCENTS_PER_BATCH, 96);
+  assert.equal(budget.admit("low"), true);
+  assert.equal(budget.admit("low"), true);
+  assert.equal(budget.admit("low"), false);
+  assert.equal(budget.admit("essential"), true);
+  assert.equal(budget.admit("essential"), true);
+
+  budget.reset();
+  assert.equal(budget.admit("low"), true);
+  assert.equal(budget.admit("low"), true);
+  assert.equal(budget.admit("low"), false);
+});
 
 test("presentation view pools stay bounded and archetype-compatible", () => {
   const pool = new BoundedKeyedPool(2);
@@ -238,7 +259,7 @@ test("entity indicators use shared scene-level Graphics batches", async () => {
   assert.match(source, /drawStructureOverlays\(current, cameraView, detailTier\)/);
   assert.match(source, /this\.drawUnitOverlay\(/);
   assert.match(source, /const showAmount = detailTier !== "overview"/);
-  assert.match(source, /if \(detailTier === "full"\)/);
+  assert.match(source, /detailTier === "full"/);
   assert.doesNotMatch(
     source,
     /setName\("(?:health|cargo|status|selection)"\)/,
