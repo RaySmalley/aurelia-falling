@@ -30,6 +30,7 @@ import type {
   UnitSnapshot,
   Vec2,
 } from "./types";
+import { BoundedKeyedPool } from "./view-pool";
 
 const TILE_WIDTH = 64;
 const TILE_HEIGHT = 32;
@@ -76,6 +77,8 @@ const STRUCTURE_ATLAS_OFFSET_Y = 8;
 const STRUCTURE_ATLAS_ORIGIN_Y = 0.8;
 const PROCEDURAL_STRUCTURE_HIT_RADIUS = 38;
 export const VIEW_CULL_MARGIN_WORLD = 160;
+export const UNIT_VIEW_POOL_CAPACITY = 128;
+export const STRUCTURE_VIEW_POOL_CAPACITY = 64;
 const BATTLEFIELD_ATLAS_FRAME = Object.freeze({
   groundA: 0,
   groundB: 1,
@@ -470,11 +473,27 @@ export async function createGameRuntime(
     private orderMarker!: Phaser.GameObjects.Arc;
     private dragStart: Phaser.Math.Vector2 | null = null;
     private unitViews = new Map<number, Phaser.GameObjects.Container>();
+    private unitViewPool = new BoundedKeyedPool<
+      string,
+      Phaser.GameObjects.Container
+    >(UNIT_VIEW_POOL_CAPACITY);
+    private unitViewPoolKeys = new WeakMap<
+      Phaser.GameObjects.Container,
+      string
+    >();
     private unitFacings = new Map<number, number>();
     private unitMeterSnapshots = new Map<number, UnitSnapshot>();
     private unitMeterControlledPlayer: SimulationSnapshot["controlledPlayer"] | null =
       null;
     private structureViews = new Map<number, Phaser.GameObjects.Container>();
+    private structureViewPool = new BoundedKeyedPool<
+      string,
+      Phaser.GameObjects.Container
+    >(STRUCTURE_VIEW_POOL_CAPACITY);
+    private structureViewPoolKeys = new WeakMap<
+      Phaser.GameObjects.Container,
+      string
+    >();
     private structureStatusSnapshots = new Map<number, StructureSnapshot>();
     private staleStructureViews = new Map<
       number,
@@ -1031,6 +1050,28 @@ export async function createGameRuntime(
       structure: StructureSnapshot,
       stale = false,
     ) {
+      const poolKey = `${stale ? "stale" : "live"}:${structure.playerId}:${structure.kind}:${structure.completed}:${structure.connected}`;
+      const pooled = this.structureViewPool.acquire(poolKey);
+      if (pooled) {
+        const world = gridToWorld(structure.tile);
+        pooled
+          .setActive(true)
+          .setVisible(true)
+          .setPosition(world.x, world.y)
+          .setDepth(structureRenderDepth(structure.tile))
+          .setName(
+            stale
+              ? `stale-structure-${structure.id}`
+              : `structure-${structure.id}`,
+          )
+          .setAlpha(stale ? 0.34 : 1);
+        (stale ? this.staleStructureViews : this.structureViews).set(
+          structure.id,
+          pooled,
+        );
+        this.structureViewPoolKeys.set(pooled, poolKey);
+        return;
+      }
       const teamColor = stale
         ? 0x5a6869
         : structure.playerId === 1
@@ -1139,6 +1180,20 @@ export async function createGameRuntime(
         structure.id,
         container,
       );
+      this.structureViewPoolKeys.set(container, poolKey);
+    }
+
+    private releaseStructureView(
+      id: number,
+      view: Phaser.GameObjects.Container,
+      stale = false,
+    ) {
+      (stale ? this.staleStructureViews : this.structureViews).delete(id);
+      if (!stale) this.structureStatusSnapshots.delete(id);
+      view.setActive(false).setVisible(false);
+      const poolKey = this.structureViewPoolKeys.get(view);
+      if (poolKey && this.structureViewPool.release(poolKey, view)) return;
+      view.destroy(true);
     }
 
     private setViewWithinCameraMargin(
@@ -1211,9 +1266,7 @@ export async function createGameRuntime(
       );
       for (const [id, view] of this.structureViews) {
         if (activeIds.has(id)) continue;
-        view.destroy(true);
-        this.structureViews.delete(id);
-        this.structureStatusSnapshots.delete(id);
+        this.releaseStructureView(id, view);
       }
       for (const structure of snapshot.structures) {
         if (!this.structureViews.has(structure.id)) {
@@ -1303,8 +1356,10 @@ export async function createGameRuntime(
       for (const structure of snapshot.structures) {
         if (structure.playerId === snapshot.controlledPlayer) continue;
         this.staleStructureMemory.set(structure.id, structure);
-        this.staleStructureViews.get(structure.id)?.destroy(true);
-        this.staleStructureViews.delete(structure.id);
+        const staleView = this.staleStructureViews.get(structure.id);
+        if (staleView) {
+          this.releaseStructureView(structure.id, staleView, true);
+        }
       }
 
       const desired = new Set<number>();
@@ -1325,8 +1380,7 @@ export async function createGameRuntime(
       }
       for (const [id, view] of this.staleStructureViews) {
         if (!desired.has(id)) {
-          view.destroy(true);
-          this.staleStructureViews.delete(id);
+          this.releaseStructureView(id, view, true);
           continue;
         }
         if (cameraView) {
@@ -1341,8 +1395,8 @@ export async function createGameRuntime(
 
     private clearStaleFogMemory() {
       this.staleStructureMemory.clear();
-      for (const view of this.staleStructureViews.values()) {
-        view.destroy(true);
+      for (const [id, view] of this.staleStructureViews) {
+        this.releaseStructureView(id, view, true);
       }
       this.staleStructureViews.clear();
       this.lastFogRevision = -1;
@@ -1373,6 +1427,20 @@ export async function createGameRuntime(
     }
 
     private createUnitView(unit: UnitSnapshot) {
+      const poolKey = `${unit.playerId}:${unit.kind}:${unit.armor}`;
+      const pooled = this.unitViewPool.acquire(poolKey);
+      if (pooled) {
+        pooled
+          .setActive(true)
+          .setVisible(true)
+          .setPosition(0, 0)
+          .setDepth(10)
+          .setName(`unit-${unit.id}`);
+        this.unitViews.set(unit.id, pooled);
+        this.unitViewPoolKeys.set(pooled, poolKey);
+        this.unitFacings.set(unit.id, 0);
+        return;
+      }
       const heavy = unit.armor === "heavy" || unit.armor === "siege";
       const teamColor = unit.playerId === 1 ? 0xe4a33a : 0x4ccac0;
       const outline = unit.playerId === 1 ? 0xffd78a : 0xb6fff5;
@@ -1445,17 +1513,28 @@ export async function createGameRuntime(
         .setDepth(10)
         .setName(`unit-${unit.id}`);
       this.unitViews.set(unit.id, container);
+      this.unitViewPoolKeys.set(container, poolKey);
       this.unitFacings.set(unit.id, 0);
+    }
+
+    private releaseUnitView(
+      id: number,
+      view: Phaser.GameObjects.Container,
+    ) {
+      this.unitViews.delete(id);
+      this.unitFacings.delete(id);
+      this.unitMeterSnapshots.delete(id);
+      view.setActive(false).setVisible(false);
+      const poolKey = this.unitViewPoolKeys.get(view);
+      if (poolKey && this.unitViewPool.release(poolKey, view)) return;
+      view.destroy(true);
     }
 
     private syncUnitViews(snapshot: SimulationSnapshot) {
       const activeIds = new Set(snapshot.units.map((unit) => unit.id));
       for (const [id, view] of this.unitViews) {
         if (activeIds.has(id)) continue;
-        view.destroy(true);
-        this.unitViews.delete(id);
-        this.unitFacings.delete(id);
-        this.unitMeterSnapshots.delete(id);
+        this.releaseUnitView(id, view);
       }
       for (const unit of snapshot.units) {
         if (!this.unitViews.has(unit.id)) this.createUnitView(unit);

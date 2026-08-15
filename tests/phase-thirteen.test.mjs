@@ -13,6 +13,7 @@ const protocolModule = await vite.ssrLoadModule("/app/game/runtime-protocol.ts")
 const runtimeModule = await vite.ssrLoadModule("/app/game/simulation-runtime.ts");
 const hostModule = await vite.ssrLoadModule("/app/game/simulation-worker-host.ts");
 const bootstrapModule = await vite.ssrLoadModule("/app/game/bootstrap.ts");
+const viewPoolModule = await vite.ssrLoadModule("/app/game/view-pool.ts");
 const {
   RENDER_DELTA_PROTOCOL_VERSION,
   RenderSnapshotDeltaEncoder,
@@ -22,15 +23,39 @@ const { InProcessSimulationRuntime } = runtimeModule;
 const { startSimulationWorkerHost } = hostModule;
 const {
   VIEW_CULL_MARGIN_WORLD,
+  STRUCTURE_VIEW_POOL_CAPACITY,
+  UNIT_VIEW_POOL_CAPACITY,
   fieldAmountValuesEqual,
   pickUnitAtWorldPoint,
   structureStatusValuesEqual,
   unitMeterValuesEqual,
   worldPointWithinCameraMargin,
 } = bootstrapModule;
+const { BoundedKeyedPool } = viewPoolModule;
 const { SIMULATION_RUNTIME_PROTOCOL_VERSION: runtimeVersion } = protocolModule;
 
 test.after(() => vite.close());
+
+test("presentation view pools stay bounded and archetype-compatible", () => {
+  const pool = new BoundedKeyedPool(2);
+  const scout = { id: "scout" };
+  const tank = { id: "tank" };
+  const overflow = { id: "overflow" };
+
+  assert.equal(UNIT_VIEW_POOL_CAPACITY, 128);
+  assert.equal(STRUCTURE_VIEW_POOL_CAPACITY, 64);
+  assert.equal(pool.release("player-1:scout", scout), true);
+  assert.equal(pool.release("player-1:tank", tank), true);
+  assert.equal(pool.release("player-2:scout", overflow), false);
+  assert.equal(pool.size, 2);
+  assert.equal(pool.acquire("player-2:scout"), undefined);
+  assert.equal(pool.acquire("player-1:scout"), scout);
+  assert.equal(pool.size, 1);
+  assert.equal(pool.release("player-2:scout", overflow), true);
+  assert.equal(pool.acquire("player-2:scout"), overflow);
+  assert.equal(pool.acquire("player-1:tank"), tank);
+  assert.equal(pool.size, 0);
+});
 
 test("camera culling retains a safe interaction margin", () => {
   const view = { x: 100, y: 200, width: 800, height: 450 };

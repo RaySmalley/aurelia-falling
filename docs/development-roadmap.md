@@ -4,9 +4,10 @@
 
 Current canonical roadmap following completion of Phases 7-12 and all Phase 9A
 presentation slices. Phase 13 is active: its delta transport, bounded UI
-channel, and camera-culling foundations are implemented, with pooling, batching,
-detail budgets, and performance gates remaining before the final player UI
-upgrade in Phase 13A and the first-play experience in Phase 13B.
+channel, camera-culling foundations, graphics caching, and primary entity-view
+pooling are implemented, with batching, detail budgets, effect caps, and
+performance gates remaining before the final player UI upgrade in Phase 13A
+and the first-play experience in Phase 13B.
 
 This document defines the order of the remaining phases. Detailed technical
 design remains in the supporting plans:
@@ -579,8 +580,12 @@ Object visibility and draw work; selection and targeting still query the full
 reconstructed render state. The fifth slice retains Phaser Graphics command
 buffers until their displayed unit, structure, or field values change, and
 retains shared route, projectile, build-radius, and Solar Spear buffers until
-their snapshot or camera inputs change. Pooling, batching, and detail budgets
-remain follow-up slices.
+their snapshot or camera inputs change. The sixth slice reuses compatible unit,
+live-structure, and stale-structure Phaser containers through bounded pools;
+overflow views are destroyed, and every acquired view resets its active,
+visible, positional, depth, naming, facing, and cached-meter state before use.
+Batching, distance-based detail, effect caps, and performance gates remain
+follow-up slices.
 
 ### Work
 
