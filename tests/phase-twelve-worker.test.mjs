@@ -31,9 +31,11 @@ const workerClientModule = await vite.ssrLoadModule(
 const workerSessionModule = await vite.ssrLoadModule(
   "/app/game/simulation-worker-session.ts",
 );
+const renderDeltaModule = await vite.ssrLoadModule("/app/game/render-delta.ts");
 const { SIMULATION_RUNTIME_PROTOCOL_VERSION: version } = protocolModule;
 const { InProcessSimulationRuntime } = runtimeModule;
 const { WorkerSimulationRuntime } = workerClientModule;
+const { RenderSnapshotDeltaStore } = renderDeltaModule;
 const {
   LIVE_COMMAND_INPUT_DELAY_TICKS,
   SimulationWorkerSession,
@@ -397,9 +399,16 @@ test("resuming rebases command scheduling after a long pause", async () => {
 
 test("worker thread and in-process runtime publish identical checkpoints", async () => {
   const oracle = new InProcessSimulationRuntime();
+  const oracleRenderStore = new RenderSnapshotDeltaStore();
   const oracleSnapshots = new Map();
   oracle.subscribe((event) => {
-    if (event.type === "snapshot") oracleSnapshots.set(event.tick, event.snapshot);
+    if (event.type !== "snapshot") return;
+    const render = oracleRenderStore.apply(event.renderDelta);
+    oracleSnapshots.set(event.tick, {
+      ...event.snapshot,
+      units: render.units,
+      structures: render.structures,
+    });
   });
 
   const scheduled = [
@@ -412,9 +421,16 @@ test("worker thread and in-process runtime publish identical checkpoints", async
   oracle.advance(8);
 
   const { runtime, worker } = createNodeWorkerRuntime();
+  const workerRenderStore = new RenderSnapshotDeltaStore();
   const workerSnapshots = new Map();
   runtime.subscribe((event) => {
-    if (event.type === "snapshot") workerSnapshots.set(event.tick, event.snapshot);
+    if (event.type !== "snapshot") return;
+    const render = workerRenderStore.apply(event.renderDelta);
+    workerSnapshots.set(event.tick, {
+      ...event.snapshot,
+      units: render.units,
+      structures: render.structures,
+    });
   });
   const checkpoint = waitForEvent(
     runtime,
