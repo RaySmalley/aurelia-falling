@@ -99,6 +99,34 @@ const pathEqual = (
 
 const renderPath = (unit: UnitSnapshot) => (unit.selected ? unit.path : []);
 
+const freezeRenderPoint = <Point extends Readonly<{ x: number; y: number }>>(
+  point: Point,
+): Point =>
+  Object.isFrozen(point) ? point : (Object.freeze({ ...point }) as Point);
+
+const freezeRenderPath = (path: UnitSnapshot["path"]): UnitSnapshot["path"] =>
+  Object.isFrozen(path) && path.every(Object.isFrozen)
+    ? path
+    : Object.freeze(path.map((point) => freezeRenderPoint(point)));
+
+const freezeRenderUnit = (unit: RenderUnitSnapshot): RenderUnitSnapshot =>
+  Object.freeze({
+    ...unit,
+    position: freezeRenderPoint(unit.position),
+    destination: unit.destination
+      ? freezeRenderPoint(unit.destination)
+      : null,
+    path: freezeRenderPath(unit.path),
+  });
+
+const freezeRenderStructure = (
+  structure: RenderStructureSnapshot,
+): RenderStructureSnapshot =>
+  Object.freeze({
+    ...structure,
+    tile: freezeRenderPoint(structure.tile),
+  });
+
 const unitMetadataEqual = (
   left: RenderUnitSnapshot,
   right: RenderUnitSnapshot,
@@ -392,28 +420,34 @@ export class RenderSnapshotDeltaStore {
       delta.units,
       this.units,
       this.visibleUnits,
-      (unit, metadata) => ({ ...unit, ...metadata }),
+      freezeRenderUnit,
+      (unit, metadata) => freezeRenderUnit({ ...unit, ...metadata }),
     );
     this.applyEntities(
       delta.structures,
       this.structures,
       this.visibleStructures,
-      (structure, metadata) => ({ ...structure, ...metadata }),
+      freezeRenderStructure,
+      (structure, metadata) =>
+        freezeRenderStructure({ ...structure, ...metadata }),
     );
     delta.units.hotIds.forEach((id, index) => {
       const unit = this.units.get(id);
       if (!unit) throw new Error(`Unit ${id} received a hot update before creation.`);
       const offset = index * UNIT_HOT_FIELD_STRIDE;
-      this.units.set(id, {
-        ...unit,
-        position: {
-          x: delta.units.hotValues[offset],
-          y: delta.units.hotValues[offset + 1],
-        },
-        health: delta.units.hotValues[offset + 2],
-        cooldownTicks: delta.units.hotValues[offset + 3],
-        cargo: delta.units.hotValues[offset + 4],
-      });
+      this.units.set(
+        id,
+        freezeRenderUnit({
+          ...unit,
+          position: {
+            x: delta.units.hotValues[offset],
+            y: delta.units.hotValues[offset + 1],
+          },
+          health: delta.units.hotValues[offset + 2],
+          cooldownTicks: delta.units.hotValues[offset + 3],
+          cargo: delta.units.hotValues[offset + 4],
+        }),
+      );
     });
     delta.structures.hotIds.forEach((id, index) => {
       const structure = this.structures.get(id);
@@ -421,12 +455,15 @@ export class RenderSnapshotDeltaStore {
         throw new Error(`Structure ${id} received a hot update before creation.`);
       }
       const offset = index * STRUCTURE_HOT_FIELD_STRIDE;
-      this.structures.set(id, {
-        ...structure,
-        health: delta.structures.hotValues[offset],
-        constructionRemainingTicks:
-          delta.structures.hotValues[offset + 1],
-      });
+      this.structures.set(
+        id,
+        freezeRenderStructure({
+          ...structure,
+          health: delta.structures.hotValues[offset],
+          constructionRemainingTicks:
+            delta.structures.hotValues[offset + 1],
+        }),
+      );
     });
     this.sequence = delta.sequence;
     this.tick = delta.tick;
@@ -434,16 +471,20 @@ export class RenderSnapshotDeltaStore {
   }
 
   snapshot() {
-    return {
+    return Object.freeze({
       sequence: this.sequence,
       tick: this.tick,
-      units: [...this.visibleUnits]
-        .sort((left, right) => left - right)
-        .map((id) => this.units.get(id)!),
-      structures: [...this.visibleStructures]
-        .sort((left, right) => left - right)
-        .map((id) => this.structures.get(id)!),
-    } as const;
+      units: Object.freeze(
+        [...this.visibleUnits]
+          .sort((left, right) => left - right)
+          .map((id) => this.units.get(id)!),
+      ),
+      structures: Object.freeze(
+        [...this.visibleStructures]
+          .sort((left, right) => left - right)
+          .map((id) => this.structures.get(id)!),
+      ),
+    } as const);
   }
 
   private reset() {
@@ -463,11 +504,12 @@ export class RenderSnapshotDeltaStore {
     delta: RenderEntityDelta<Entity, Update>,
     entities: Map<Id, Entity>,
     visible: Set<Id>,
+    materialize: (entity: Entity) => Entity,
     merge: (entity: Entity, update: Update) => Entity,
   ) {
     for (const entity of delta.create) {
       if (entities.has(entity.id)) throw new Error(`Entity ${entity.id} already exists.`);
-      entities.set(entity.id, entity);
+      entities.set(entity.id, materialize(entity));
       visible.add(entity.id);
     }
     for (const update of delta.update) {
@@ -481,7 +523,7 @@ export class RenderSnapshotDeltaStore {
     for (const id of delta.hide) visible.delete(id as Id);
     for (const entity of delta.reveal) {
       if (!entities.has(entity.id)) throw new Error(`Entity ${entity.id} cannot be revealed.`);
-      entities.set(entity.id, entity);
+      entities.set(entity.id, materialize(entity));
       visible.add(entity.id);
     }
     for (const id of delta.destroy) {

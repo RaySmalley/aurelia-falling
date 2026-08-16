@@ -43,6 +43,7 @@ const {
   structureOverlayStyle,
   structureStatusValuesEqual,
   unitOverlayStyle,
+  withRenderEntities,
   worldPointWithinCameraMargin,
 } = bootstrapModule;
 const { BoundedKeyedPool } = viewPoolModule;
@@ -519,6 +520,43 @@ test("delta store reconstructs visible state and rejects sequence gaps", () => {
     () => store.apply({ ...encoder.encode(snapshot(3, [], [])), sequence: 4 }),
     /sequence gap/,
   );
+});
+
+test("reconstructed render snapshots remain immutable across the presentation boundary", () => {
+  const encoder = new RenderSnapshotDeltaEncoder();
+  const store = new RenderSnapshotDeltaStore();
+  const render = store.apply(
+    encoder.encode(
+      snapshot(
+        1,
+        [unit(3, { selected: true, destination: { x: 7, y: 8 } })],
+        [structure(4)],
+      ),
+    ),
+  );
+  const presented = withRenderEntities(snapshot(1, [], []), render);
+
+  assert.equal(Object.isFrozen(render), true);
+  assert.equal(Object.isFrozen(render.units), true);
+  assert.equal(Object.isFrozen(render.units[0]), true);
+  assert.equal(Object.isFrozen(render.units[0].position), true);
+  assert.equal(Object.isFrozen(render.units[0].destination), true);
+  assert.equal(Object.isFrozen(render.units[0].path), true);
+  assert.equal(Object.isFrozen(render.units[0].path[0]), true);
+  assert.equal(Object.isFrozen(render.structures[0]), true);
+  assert.equal(Object.isFrozen(render.structures[0].tile), true);
+  assert.equal(Object.isFrozen(presented), true);
+  assert.equal(Object.isFrozen(presented.units), true);
+  assert.equal(Object.isFrozen(presented.structures), true);
+  assert.equal(Object.isFrozen(presented.structures[0]), true);
+  assert.equal(Object.isFrozen(presented.structures[0].queue), true);
+
+  assert.equal(Reflect.set(presented.units[0].position, "x", 999), false);
+  assert.equal(Reflect.set(presented.units[0], "health", 0), false);
+  assert.equal(Reflect.set(presented.structures[0].tile, "x", 999), false);
+  assert.equal(store.snapshot().units[0].position.x, 10);
+  assert.equal(store.snapshot().units[0].health, 100);
+  assert.equal(store.snapshot().structures[0].tile.x, 3);
 });
 
 test("selected route changes are value-compared and reconstructed", () => {

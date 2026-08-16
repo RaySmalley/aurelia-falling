@@ -241,21 +241,27 @@ export function worldPointWithinCameraMargin(
   );
 }
 
-function withRenderEntities(
+const EMPTY_PRODUCTION_QUEUE = Object.freeze([]);
+
+export function withRenderEntities(
   snapshot: SimulationRenderFrame,
   render: Readonly<{
     units: readonly RenderUnitSnapshot[];
     structures: readonly RenderStructureSnapshot[];
   }>,
 ): SimulationSnapshot {
-  return {
+  return Object.freeze({
     ...snapshot,
-    units: render.units,
-    structures: render.structures.map((structure) => ({
-      ...structure,
-      queue: [],
-    })),
-  };
+    units: Object.freeze([...render.units]),
+    structures: Object.freeze(
+      render.structures.map((structure) =>
+        Object.freeze({
+          ...structure,
+          queue: EMPTY_PRODUCTION_QUEUE,
+        }),
+      ),
+    ),
+  });
 }
 
 export function structureContainsWorldPoint(
