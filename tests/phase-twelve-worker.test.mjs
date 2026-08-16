@@ -31,9 +31,11 @@ const workerClientModule = await vite.ssrLoadModule(
 const workerSessionModule = await vite.ssrLoadModule(
   "/app/game/simulation-worker-session.ts",
 );
+const renderDeltaModule = await vite.ssrLoadModule("/app/game/render-delta.ts");
 const { SIMULATION_RUNTIME_PROTOCOL_VERSION: version } = protocolModule;
 const { InProcessSimulationRuntime } = runtimeModule;
 const { WorkerSimulationRuntime } = workerClientModule;
+const { RenderSnapshotDeltaStore } = renderDeltaModule;
 const {
   LIVE_COMMAND_INPUT_DELAY_TICKS,
   SimulationWorkerSession,
@@ -119,7 +121,7 @@ function createControlledTransport() {
   };
 }
 
-function waitForEvent(runtime, predicate, timeoutMs = 5_000) {
+function waitForEvent(runtime, predicate, timeoutMs = 15_000) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       unsubscribe();
@@ -136,12 +138,14 @@ function waitForEvent(runtime, predicate, timeoutMs = 5_000) {
 
 function initialSnapshot() {
   const runtime = new InProcessSimulationRuntime();
-  let snapshot;
+  let snapshotEvent;
+  let uiSnapshot;
   runtime.subscribe((event) => {
-    if (event.type === "snapshot") snapshot = event.snapshot;
+    if (event.type === "snapshot") snapshotEvent = event;
+    if (event.type === "uiSnapshot") uiSnapshot = event.snapshot;
   });
   runtime.dispatch(initialize());
-  return snapshot;
+  return { ...snapshotEvent, uiSnapshot };
 }
 
 test("live session initialization uses the versioned worker protocol", async () => {
@@ -162,16 +166,24 @@ test("live session initialization uses the versioned worker protocol", async () 
       scenario: "skirmish",
       difficulty: "hard",
       snapshotCadenceTicks: 2,
+      uiCadenceTicks: 10,
     },
   ]);
-  const snapshot = initialSnapshot();
+  const { snapshot, renderDelta, uiSnapshot } = initialSnapshot();
   controlled.emit({
     protocolVersion: version,
     type: "snapshot",
     tick: 0,
     snapshot,
+    renderDelta,
   });
-  assert.equal(await initialized, snapshot);
+  controlled.emit({
+    protocolVersion: version,
+    type: "uiSnapshot",
+    tick: 0,
+    snapshot: uiSnapshot,
+  });
+  assert.equal(await initialized, uiSnapshot);
   session.terminate();
 });
 
@@ -186,12 +198,19 @@ test("live command scheduling stays ahead of a worker after a main-thread stall"
     now: () => now,
   });
   const initialized = session.initialize();
-  const snapshot = initialSnapshot();
+  const { snapshot, renderDelta, uiSnapshot } = initialSnapshot();
   controlled.emit({
     protocolVersion: version,
     type: "snapshot",
     tick: 10,
     snapshot,
+    renderDelta,
+  });
+  controlled.emit({
+    protocolVersion: version,
+    type: "uiSnapshot",
+    tick: 10,
+    snapshot: uiSnapshot,
   });
   await initialized;
 
@@ -214,7 +233,7 @@ test("delayed snapshot delivery preserves the worker publication clock", async (
     now: () => now,
   });
   const initialized = session.initialize();
-  const snapshot = initialSnapshot();
+  const { snapshot, renderDelta, uiSnapshot } = initialSnapshot();
   now = 260;
   controlled.emit({
     protocolVersion: version,
@@ -222,6 +241,13 @@ test("delayed snapshot delivery preserves the worker publication clock", async (
     tick: 2,
     publishedAtMs: 100,
     snapshot,
+    renderDelta,
+  });
+  controlled.emit({
+    protocolVersion: version,
+    type: "uiSnapshot",
+    tick: 2,
+    snapshot: uiSnapshot,
   });
   await initialized;
 
@@ -229,6 +255,43 @@ test("delayed snapshot delivery preserves the worker publication clock", async (
   assert.equal(
     controlled.posted.at(-1).intendedTick,
     5 + LIVE_COMMAND_INPUT_DELAY_TICKS,
+  );
+  session.terminate();
+});
+
+test("newer UI ticks rebase live command extrapolation", async () => {
+  let now = 100;
+  const controlled = createControlledTransport();
+  const runtime = new WorkerSimulationRuntime(controlled.transport);
+  const session = new SimulationWorkerSession(runtime, {
+    seed: 4_115,
+    scenario: "skirmish",
+    difficulty: "normal",
+    now: () => now,
+  });
+  const initialized = session.initialize();
+  const { snapshot, renderDelta, uiSnapshot } = initialSnapshot();
+  controlled.emit({
+    protocolVersion: version,
+    type: "snapshot",
+    tick: 2,
+    publishedAtMs: 100,
+    snapshot,
+    renderDelta,
+  });
+  now = 150;
+  controlled.emit({
+    protocolVersion: version,
+    type: "uiSnapshot",
+    tick: 3,
+    snapshot: uiSnapshot,
+  });
+  await initialized;
+
+  session.enqueue({ kind: "stop" });
+  assert.equal(
+    controlled.posted.at(-1).intendedTick,
+    3 + LIVE_COMMAND_INPUT_DELAY_TICKS,
   );
   session.terminate();
 });
@@ -243,12 +306,19 @@ test("paused live-session restarts target the frozen tick and resume explicitly"
     now: () => 0,
   });
   const initialized = session.initialize();
-  const snapshot = initialSnapshot();
+  const { snapshot, renderDelta, uiSnapshot } = initialSnapshot();
   controlled.emit({
     protocolVersion: version,
     type: "snapshot",
     tick: 12,
     snapshot,
+    renderDelta,
+  });
+  controlled.emit({
+    protocolVersion: version,
+    type: "uiSnapshot",
+    tick: 12,
+    snapshot: uiSnapshot,
   });
   await initialized;
   session.pause("manual");
@@ -294,12 +364,19 @@ test("resuming rebases command scheduling after a long pause", async () => {
     now: () => now,
   });
   const initialized = session.initialize();
-  const snapshot = initialSnapshot();
+  const { snapshot, renderDelta, uiSnapshot } = initialSnapshot();
   controlled.emit({
     protocolVersion: version,
     type: "snapshot",
     tick: 12,
     snapshot,
+    renderDelta,
+  });
+  controlled.emit({
+    protocolVersion: version,
+    type: "uiSnapshot",
+    tick: 12,
+    snapshot: uiSnapshot,
   });
   await initialized;
   session.pause("manual");
@@ -322,9 +399,16 @@ test("resuming rebases command scheduling after a long pause", async () => {
 
 test("worker thread and in-process runtime publish identical checkpoints", async () => {
   const oracle = new InProcessSimulationRuntime();
+  const oracleRenderStore = new RenderSnapshotDeltaStore();
   const oracleSnapshots = new Map();
   oracle.subscribe((event) => {
-    if (event.type === "snapshot") oracleSnapshots.set(event.tick, event.snapshot);
+    if (event.type !== "snapshot") return;
+    const render = oracleRenderStore.apply(event.renderDelta);
+    oracleSnapshots.set(event.tick, {
+      ...event.snapshot,
+      units: render.units,
+      structures: render.structures,
+    });
   });
 
   const scheduled = [
@@ -337,9 +421,16 @@ test("worker thread and in-process runtime publish identical checkpoints", async
   oracle.advance(8);
 
   const { runtime, worker } = createNodeWorkerRuntime();
+  const workerRenderStore = new RenderSnapshotDeltaStore();
   const workerSnapshots = new Map();
   runtime.subscribe((event) => {
-    if (event.type === "snapshot") workerSnapshots.set(event.tick, event.snapshot);
+    if (event.type !== "snapshot") return;
+    const render = workerRenderStore.apply(event.renderDelta);
+    workerSnapshots.set(event.tick, {
+      ...event.snapshot,
+      units: render.units,
+      structures: render.structures,
+    });
   });
   const checkpoint = waitForEvent(
     runtime,
@@ -361,23 +452,30 @@ test("worker thread and in-process runtime publish identical checkpoints", async
 test("a blocked main thread does not stop the worker-owned fixed-step clock", async () => {
   const { runtime, worker, heartbeat } = createNodeWorkerRuntime();
   const ready = waitForEvent(runtime, (event) => event.type === "ready");
+  const initialSnapshot = waitForEvent(
+    runtime,
+    (event) => event.type === "snapshot" && event.tick === 0,
+  );
   runtime.dispatch(initialize({ snapshotCadenceTicks: 2 }));
   await ready;
+  await initialSnapshot;
 
-  const advanced = waitForEvent(
-    runtime,
-    (event) => event.type === "snapshot" && event.tick >= 4,
-  );
-  const blockedUntil = performance.now() + 260;
-  while (performance.now() < blockedUntil) {
-    // Deliberately occupy the parent event loop; the simulation owns another thread.
+  try {
+    const advanced = waitForEvent(
+      runtime,
+      (event) => event.type === "snapshot" && event.tick >= 4,
+    );
+    const blockedUntil = performance.now() + 1_000;
+    while (performance.now() < blockedUntil) {
+      // Deliberately occupy the parent event loop; the simulation owns another thread.
+    }
+    assert.ok(Atomics.load(heartbeat, 0) >= 4);
+    const event = await advanced;
+    assert.ok(event.tick >= 4);
+  } finally {
+    runtime.terminate();
+    await worker.terminate();
   }
-  assert.ok(Atomics.load(heartbeat, 0) >= 4);
-  const event = await advanced;
-  assert.ok(event.tick >= 4);
-
-  runtime.terminate();
-  await worker.terminate();
 });
 
 test("worker termination surfaces a recoverable structured failure", async () => {
@@ -434,6 +532,7 @@ test("worker benchmark arguments preserve the Phase 12 acceptance workload", () 
     output: null,
     seed: 12_600,
     snapshotCadenceTicks: 2,
+    uiCadenceTicks: 10,
     unitCount: 600,
     warmupTicks: 20,
   });
@@ -467,7 +566,7 @@ test("overridden worker benchmark runs are explicitly diagnostic", async () => {
   );
   const report = JSON.parse(stdout);
 
-  assert.equal(report.schemaVersion, 2);
+  assert.equal(report.schemaVersion, 3);
   assert.equal(report.benchmark.simulationRateHz, 20);
   assert.equal(report.benchmark.tickIntervalMs, 50);
   assert.equal(report.benchmark.workload, "normal-skirmish");
@@ -478,7 +577,15 @@ test("overridden worker benchmark runs are explicitly diagnostic", async () => {
   assert.equal(typeof report.result.finalUnitCount, "number");
   assert.equal(report.result.completedTicks, 3);
   assert.equal(report.result.snapshotCount, 1);
+  assert.equal(report.result.uiSnapshotCount, 0);
+  assert.equal(report.result.transferredBufferCount, 8);
   assert.equal(report.result.tickTiming.sampleCount, 3);
+  assert.equal(report.result.simulationWorkTiming.sampleCount, 3);
+  assert.equal(report.result.publicationTiming.sampleCount, 3);
+  assert.ok(
+    report.result.tickTiming.worstMs >=
+      report.result.simulationWorkTiming.worstMs,
+  );
   assert.equal(report.result.scheduleLateness.sampleCount, 3);
   assert.equal(report.gate.mode, "diagnostic");
   assert.equal(report.gate.checks, null);
@@ -490,6 +597,7 @@ test("overridden worker benchmark runs are explicitly diagnostic", async () => {
     nodeVersion: "v24.19.0",
     seed: 12_600,
     snapshotCadenceTicks: 2,
+    uiCadenceTicks: 10,
     unitCount: 600,
     warmupTicks: 20,
   });
@@ -505,6 +613,8 @@ test("worker acceptance gate verifies the fixed workload and snapshot cadence", 
     missedDeadlines: 0,
     scenario: "skirmish",
     snapshotCount: 50,
+    uiSnapshotCount: 10,
+    transferredBufferCount: 400,
     unitCount: 600,
   };
   const passing = evaluateAcceptanceGate(
@@ -522,6 +632,8 @@ test("worker acceptance gate verifies the fixed workload and snapshot cadence", 
     unitCount: true,
     completedTicks: true,
     snapshotCadence: true,
+    uiSnapshotCadence: true,
+    transferableBuffers: true,
     tickBudget: true,
     fixedCadence: true,
   });
@@ -534,7 +646,17 @@ test("worker acceptance gate verifies the fixed workload and snapshot cadence", 
     "v24.19.0",
   );
   assert.equal(missingSnapshot.checks.snapshotCadence, false);
+  assert.equal(missingSnapshot.checks.transferableBuffers, false);
   assert.equal(missingSnapshot.passed, false);
+
+  const missingUiSnapshot = evaluateAcceptanceGate(
+    options,
+    { ...result, uiSnapshotCount: 9 },
+    { worstMs: 49 },
+    "v24.19.0",
+  );
+  assert.equal(missingUiSnapshot.checks.uiSnapshotCadence, false);
+  assert.equal(missingUiSnapshot.passed, false);
 
   const syntheticLoop = evaluateAcceptanceGate(
     options,

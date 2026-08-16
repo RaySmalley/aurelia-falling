@@ -260,6 +260,37 @@ export type SimulationSnapshot = Readonly<{
   onboarding: OnboardingSnapshot;
 }>;
 
+export type SimulationRenderFrame = Readonly<
+  Omit<SimulationSnapshot, "units" | "structures">
+>;
+
+export type SimulationUiUnit = Readonly<Omit<UnitSnapshot, "path">>;
+
+export type SimulationUiSnapshot = Readonly<{
+  tick: number;
+  scenario: SimulationScenario;
+  controlledPlayer: PlayerId;
+  players: Readonly<Record<PlayerId, PlayerSnapshot>>;
+  selectedUnitCount: number;
+  selectedUnitTotalHealth: number;
+  leadUnit: SimulationUiUnit | null;
+  selectedStructure: StructureSnapshot | null;
+  friendlyUnitCount: number;
+  friendlyStructureCount: number;
+  visibleEnemyCount: number;
+  exploredTileCount: number;
+  visibilityTileCount: number;
+  status: MatchStatus;
+  winner: PlayerId | null;
+  kills: Readonly<Record<PlayerId, number>>;
+  seed: number;
+  lastPlacementFailure: PlacementFailure | null;
+  lastSolarFailure: SolarSpearFailure | null;
+  ai: AiSnapshot;
+  solarSpears: Readonly<Record<PlayerId, SolarSpearSnapshot>>;
+  onboarding: OnboardingSnapshot;
+}>;
+
 export type AudioSettings = Readonly<{
   masterVolume: number;
   musicVolume: number;
@@ -272,7 +303,7 @@ export type AudioCueSnapshot = Readonly<{
 }>;
 
 export type RuntimeSnapshot = Readonly<{
-  simulation: SimulationSnapshot;
+  simulation: SimulationUiSnapshot;
   paused: boolean;
   pauseReason: "hidden" | "manual" | null;
   audioReady: boolean;

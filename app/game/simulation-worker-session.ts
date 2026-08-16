@@ -1,15 +1,18 @@
 import {
   DEFAULT_SNAPSHOT_CADENCE_TICKS,
+  DEFAULT_UI_CADENCE_TICKS,
   SIMULATION_RUNTIME_PROTOCOL_VERSION,
   type SimulationRuntimeEvent,
   type SimulationRuntimePauseReason,
 } from "./runtime-protocol";
 import type { WorkerSimulationRuntime } from "./simulation-worker-client";
+import { RenderSnapshotDeltaStore } from "./render-delta";
 import type {
   AiDifficulty,
   SimCommand,
+  SimulationRenderFrame,
   SimulationScenario,
-  SimulationSnapshot,
+  SimulationUiSnapshot,
 } from "./types";
 
 export const SIMULATION_TICK_INTERVAL_MS = 50;
@@ -20,6 +23,7 @@ type SimulationWorkerSessionOptions = Readonly<{
   scenario: SimulationScenario;
   difficulty: AiDifficulty;
   snapshotCadenceTicks?: number;
+  uiCadenceTicks?: number;
   now?: () => number;
 }>;
 
@@ -30,12 +34,15 @@ export class SimulationWorkerSession {
   private readonly pauseReasons = new Set<SimulationRuntimePauseReason>();
   private readonly now: () => number;
   private readonly snapshotCadenceTicks: number;
-  private latestSnapshot: SimulationSnapshot | null = null;
+  private readonly uiCadenceTicks: number;
+  private latestRenderFrame: SimulationRenderFrame | null = null;
+  private latestUiSnapshot: SimulationUiSnapshot | null = null;
   private latestRuntimeTick = 0;
   private latestRuntimeTickAt = 0;
   private nextSequence = 0;
   private started = false;
   private terminated = false;
+  private readonly renderStore = new RenderSnapshotDeltaStore();
 
   constructor(
     private readonly runtime: WorkerSimulationRuntime,
@@ -44,6 +51,7 @@ export class SimulationWorkerSession {
     this.now = options.now ?? (() => Date.now());
     this.snapshotCadenceTicks =
       options.snapshotCadenceTicks ?? DEFAULT_SNAPSHOT_CADENCE_TICKS;
+    this.uiCadenceTicks = options.uiCadenceTicks ?? DEFAULT_UI_CADENCE_TICKS;
     this.latestRuntimeTickAt = this.now();
     runtime.subscribe((event) => this.receive(event));
   }
@@ -53,27 +61,35 @@ export class SimulationWorkerSession {
     return () => this.listeners.delete(listener);
   }
 
+  renderSnapshot() {
+    return this.renderStore.snapshot();
+  }
+
+  renderFrame() {
+    return this.latestRenderFrame;
+  }
+
   initialize(timeoutMs = 5_000) {
     if (this.started) {
       return Promise.reject(new Error("Simulation worker session already started."));
     }
     this.started = true;
 
-    return new Promise<SimulationSnapshot>((resolve, reject) => {
+    return new Promise<SimulationUiSnapshot>((resolve, reject) => {
       let settled = false;
       const settle = (
         outcome: "resolve" | "reject",
-        value: SimulationSnapshot | Error,
+        value: SimulationUiSnapshot | Error,
       ) => {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
         unsubscribe();
-        if (outcome === "resolve") resolve(value as SimulationSnapshot);
+        if (outcome === "resolve") resolve(value as SimulationUiSnapshot);
         else reject(value);
       };
       const unsubscribe = this.subscribe((event) => {
-        if (event.type === "snapshot") {
+        if (event.type === "uiSnapshot") {
           settle("resolve", event.snapshot);
         } else if (event.type === "error" && !event.recoverable) {
           settle("reject", new Error(event.message));
@@ -96,12 +112,13 @@ export class SimulationWorkerSession {
         scenario: this.options.scenario,
         difficulty: this.options.difficulty,
         snapshotCadenceTicks: this.snapshotCadenceTicks,
+        uiCadenceTicks: this.uiCadenceTicks,
       });
     });
   }
 
   enqueue(command: SimCommand) {
-    if (this.terminated || !this.latestSnapshot) return null;
+    if (this.terminated || !this.latestUiSnapshot) return null;
     const intendedTick = this.commandTick();
     const sequence = this.nextSequence;
     this.nextSequence += 1;
@@ -122,12 +139,12 @@ export class SimulationWorkerSession {
         type: "restart",
         sequence,
         intendedTick,
-        seed: command.seed ?? this.latestSnapshot.seed,
+        seed: command.seed ?? this.latestUiSnapshot.seed,
         scenario,
         difficulty:
           command.kind === "restartSkirmish"
-            ? command.difficulty ?? this.latestSnapshot.ai.profile
-            : this.latestSnapshot.ai.profile,
+            ? command.difficulty ?? this.latestUiSnapshot.ai.profile
+            : this.latestUiSnapshot.ai.profile,
       });
       return intendedTick;
     }
@@ -187,18 +204,49 @@ export class SimulationWorkerSession {
   private receive(event: SimulationRuntimeEvent) {
     if (this.terminated) return;
     if (event.tick !== null) {
+      const advancesRuntimeTick = event.tick > this.latestRuntimeTick;
       this.latestRuntimeTick = Math.max(this.latestRuntimeTick, event.tick);
-      this.latestRuntimeTickAt =
-        event.type === "snapshot" && event.publishedAtMs !== undefined
-          ? event.publishedAtMs
-          : this.now();
+      if (event.type === "uiSnapshot") {
+        if (advancesRuntimeTick) this.latestRuntimeTickAt = this.now();
+      } else {
+        this.latestRuntimeTickAt =
+          event.type === "snapshot" && event.publishedAtMs !== undefined
+            ? event.publishedAtMs
+            : this.now();
+      }
     }
-    if (event.type === "snapshot") this.latestSnapshot = event.snapshot;
+    if (event.type === "snapshot") {
+      try {
+        this.renderStore.apply(event.renderDelta);
+      } catch (error) {
+        this.failRenderChannel(error, event.tick);
+        return;
+      }
+      this.latestRenderFrame = event.snapshot;
+    }
+    if (event.type === "uiSnapshot") this.latestUiSnapshot = event.snapshot;
     if (event.type === "pauseChanged") {
       this.pauseReasons.clear();
       for (const reason of event.reasons) this.pauseReasons.add(reason);
     }
     if (event.type === "terminated") this.terminated = true;
     for (const listener of [...this.listeners]) listener(event);
+  }
+
+  private failRenderChannel(error: unknown, tick: number) {
+    const failure: SimulationRuntimeEvent = {
+      protocolVersion: SIMULATION_RUNTIME_PROTOCOL_VERSION,
+      type: "error",
+      code: "invalid_message",
+      message:
+        error instanceof Error
+          ? `Render channel failed: ${error.message}`
+          : "Render channel failed with an invalid delta.",
+      recoverable: false,
+      tick,
+    };
+    this.runtime.terminate();
+    this.terminated = true;
+    for (const listener of [...this.listeners]) listener(failure);
   }
 }

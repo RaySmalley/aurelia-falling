@@ -77,10 +77,15 @@ const run = async () => {
         vite.ssrLoadModule("/app/game/runtime-protocol.ts"),
       ]);
     const tickSamples = [];
+    const simulationWorkSamples = [];
+    const publicationSamples = [];
+    const publicationMsByTick = new Map();
     const scheduleLatenessSamples = [];
     let completedTicks = 0;
     let missedDeadlines = 0;
     let snapshotCount = 0;
+    let uiSnapshotCount = 0;
+    let transferredBufferCount = 0;
     let firstScheduledAt = null;
     let lastFinishedAt = null;
     let finishing = false;
@@ -120,7 +125,11 @@ const run = async () => {
           missedDeadlines,
           scenario: state.scenario,
           scheduleLatenessSamples,
+          simulationWorkSamples,
           snapshotCount,
+          uiSnapshotCount,
+          publicationSamples,
+          transferredBufferCount,
           tickSamples,
           unitCount: initialUnitCount,
         },
@@ -134,10 +143,15 @@ const run = async () => {
       ({ scheduledAtMs, startedAtMs, finishedAtMs }) => {
         const runtimeTick = runtime.tick();
         if (runtimeTick <= workerData.warmupTicks) return;
+        const tickMs = finishedAtMs - startedAtMs;
+        const publicationMs = publicationMsByTick.get(runtimeTick) ?? 0;
+        publicationMsByTick.delete(runtimeTick);
         if (firstScheduledAt === null) firstScheduledAt = scheduledAtMs;
         lastFinishedAt = finishedAtMs;
         completedTicks += 1;
-        tickSamples.push(finishedAtMs - startedAtMs);
+        tickSamples.push(tickMs);
+        publicationSamples.push(publicationMs);
+        simulationWorkSamples.push(Math.max(0, tickMs - publicationMs));
         scheduleLatenessSamples.push(
           Math.max(0, startedAtMs - scheduledAtMs),
         );
@@ -151,7 +165,7 @@ const run = async () => {
     );
     host = hostModule.startSimulationWorkerHost(
       {
-        postMessage(event) {
+        postMessage(event, transfer) {
           if (event.type === "error") {
             parentPort.postMessage({ type: "failure", message: event.message });
             return;
@@ -162,7 +176,25 @@ const run = async () => {
           ) {
             snapshotCount += 1;
           }
-          parentPort.postMessage({ type: "runtimeEvent", event });
+          if (
+            event.type === "uiSnapshot" &&
+            event.tick > workerData.warmupTicks
+          ) {
+            uiSnapshotCount += 1;
+          }
+          const publicationStartedAt = performance.now();
+          parentPort.postMessage(
+            { type: "runtimeEvent", event },
+            transfer?.length ? [...transfer] : undefined,
+          );
+          const publicationMs = performance.now() - publicationStartedAt;
+          if (event.tick !== null && event.tick > workerData.warmupTicks) {
+            publicationMsByTick.set(
+              event.tick,
+              (publicationMsByTick.get(event.tick) ?? 0) + publicationMs,
+            );
+            transferredBufferCount += transfer?.length ?? 0;
+          }
         },
         subscribe(listener) {
           requestListener = listener;
@@ -181,6 +213,7 @@ const run = async () => {
       scenario: "skirmish",
       difficulty: "normal",
       snapshotCadenceTicks: workerData.snapshotCadenceTicks,
+      uiCadenceTicks: workerData.uiCadenceTicks,
     });
   } catch (error) {
     await vite.close();

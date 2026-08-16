@@ -2,11 +2,11 @@
 
 ## Status
 
-Current canonical roadmap following completion of Phases 7-12 and all Phase 9A
-presentation slices. Phase 13 is next: replace full render snapshots with a
-versioned delta protocol and scalable presentation pipeline before beginning
-the final player UI upgrade in Phase 13A and the first-play experience in Phase
-13B.
+Current canonical roadmap following completion of Phases 7-13 and all Phase 9A
+presentation slices. Phase 13's delta transport, bounded UI channel, culling,
+pooling, batching, detail tiers, effect caps, and machine-readable presentation
+performance gates are complete. Phase 13A is next, followed by the first-play
+experience in Phase 13B.
 
 This document defines the order of the remaining phases. Detailed technical
 design remains in the supporting plans:
@@ -56,8 +56,9 @@ The implemented release through Phase 12 provides:
 
 The next work begins from the remaining scale limits:
 
-- The runtime still publishes full object-graph snapshots. Phase 13 introduces
-  versioned deltas and scalable presentation channels.
+- Versioned render deltas and bounded UI summaries now constrain routine worker
+  transport, but remaining Phase 13 presentation work must reduce per-view draw,
+  allocation, and detail cost at 600-1,000 visible units.
 - The simulation remains a two-player world model despite its larger-army
   performance foundations.
 - Player identity, visibility, victory, and setup flows assume two sides.
@@ -562,14 +563,55 @@ scale limit.
 ### Current implementation slice
 
 The first slice defines render-delta protocol version 1 and a transport-neutral
-encoder/store pair. Unit position and combat values and structure health and
-construction progress use packed typed arrays; cold metadata changes use
-explicit records. Creation, visibility hide/reveal, and authoritative
-destruction are distinct lifecycle operations. The render channel excludes
-complete unit paths and structure production queues, validates sequence
-continuity, and emits empty entity payloads when nothing changed. Worker
-transport integration, the slower UI/economy channel, and Phaser rendering
-changes remain follow-up slices.
+encoder/store pair. The second slice integrates that channel with runtime
+protocol version 2: workers transfer packed buffers without cloning, the live
+session reconstructs sequence-checked entity state, and Phaser renders and
+hit-tests those reconstructed units and structures. Creation, visibility
+hide/reveal, authoritative destruction, and restart resets remain distinct.
+The render channel excludes complete unit paths and structure production
+queues. The third slice introduces runtime protocol version 3 and a bounded
+2 Hz UI/economy channel containing economy, match state, intel summaries, and
+only the lead unit or selected structure detail. React no longer receives or
+updates for the 10 Hz render stream. The fourth slice culls live units,
+structures, stale structure memory, Aurelite fields, and projectiles outside the
+camera world view plus a 160-unit safety margin. It changes only Phaser Game
+Object visibility and draw work; selection and targeting still query the full
+reconstructed render state. The fifth slice retains Phaser Graphics command
+buffers until their displayed unit, structure, or field values change, and
+retains shared route, projectile, build-radius, and Solar Spear buffers until
+their snapshot or camera inputs change. The sixth slice reuses compatible unit,
+live-structure, and stale-structure Phaser containers through bounded pools;
+overflow views are destroyed, and every acquired view resets its active,
+visible, positional, depth, naming, and facing state before use.
+The seventh slice removes per-container health, cargo, structure-status, and
+selection Game Objects. Two scene-level Phaser Graphics command buffers now
+draw every camera-visible entity indicator from interpolated, read-only render
+state, joining the existing shared route and projectile batches. The eighth
+slice maps the supported camera zooms to overview, tactical, and full-detail
+tiers. Overview renders meters only for selected or damaged entities, limits
+Harvester cargo to selected friendly units, and hides Aurelite amount bars;
+tactical restores meters while retaining simplified damage and projectile
+treatment. Full detail preserves every existing indicator. All tiers keep
+selection rings, structure warnings, projectile bodies, entity visibility, hit
+testing, and commands unchanged. The ninth slice applies reusable deterministic
+presentation budgets to expendable polish: full-detail projectile halo strokes
+are capped per redraw and synthesized selection/weapon sounds share one
+low-priority slot per snapshot. Projectile bodies, alert subtitles, construction
+and loss cues, warnings, Solar Spear feedback, match-result feedback, camera
+shake, visibility, hit testing, and commands remain uncapped. The tenth and
+final slice adds a production-cadence delta publication gate and a headed WebGL
+benchmark that injects exactly 600 and 1,000 immutable units into the real
+Operations scene. Every live 10 Hz worker render publication renews that fixed
+unit-count fixture, so the FPS measurement exercises production snapshot
+reference churn, interpolation, view synchronization, and overlay processing
+instead of a settled static scene. The acceptance gate requires at least 40
+live publications during each five-second browser sample. Unchanged snapshots
+retain unit reconciliation and overlay command buffers, while overview detail
+submits only the atlas body per unit. On the recorded Intel UHD minimum profile,
+delta production and transfer measure 0.779 ms and 0.515 ms p95; both the 600-
+and 1,000-unit scenes sustain 59.96 FPS. Payload proportionality, entity counts,
+live snapshot churn, renderer, frame floors, selection/culling invariants, and
+bounded React publication are executable checks. Phase 13 is complete.
 
 ### Work
 

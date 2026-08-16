@@ -4,12 +4,17 @@ import {
   isContinuousAudioTransition,
   ProceduralAudio,
 } from "./audio";
+import { PresentationEffectBudget } from "./effect-budget";
 import { createBrowserSimulationWorkerRuntime } from "./browser-simulation-worker-runtime";
 import {
   SIMULATION_TICK_INTERVAL_MS,
   SimulationWorkerSession,
 } from "./simulation-worker-session";
 import { DEFAULT_SNAPSHOT_CADENCE_TICKS } from "./runtime-protocol";
+import type {
+  RenderStructureSnapshot,
+  RenderUnitSnapshot,
+} from "./render-delta";
 import type {
   AudioCueSnapshot,
   AudioSettings,
@@ -19,11 +24,18 @@ import type {
   RuntimeListener,
   RuntimeSnapshot,
   SimCommand,
+  SimulationRenderFrame,
   SimulationSnapshot,
+  SimulationUiSnapshot,
   StructureSnapshot,
   UnitSnapshot,
   Vec2,
 } from "./types";
+import { BoundedKeyedPool } from "./view-pool";
+import {
+  createPresentationBenchmarkSnapshot,
+  presentationBenchmarkUnitCount,
+} from "./presentation-benchmark";
 
 const TILE_WIDTH = 64;
 const TILE_HEIGHT = 32;
@@ -69,6 +81,10 @@ const STRUCTURE_ATLAS_SIZE = Object.freeze({
 const STRUCTURE_ATLAS_OFFSET_Y = 8;
 const STRUCTURE_ATLAS_ORIGIN_Y = 0.8;
 const PROCEDURAL_STRUCTURE_HIT_RADIUS = 38;
+export const VIEW_CULL_MARGIN_WORLD = 160;
+export const UNIT_VIEW_POOL_CAPACITY = 128;
+export const STRUCTURE_VIEW_POOL_CAPACITY = 64;
+export const LOW_PRIORITY_PROJECTILE_ACCENTS_PER_BATCH = 96;
 const BATTLEFIELD_ATLAS_FRAME = Object.freeze({
   groundA: 0,
   groundB: 1,
@@ -95,6 +111,156 @@ function fixedToWorld(point: Vec2) {
   return gridToWorld({
     x: point.x / TILE_MILLI,
     y: point.y / TILE_MILLI,
+  });
+}
+
+type CameraWorldView = Readonly<{
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}>;
+
+function healthColor(ratio: number) {
+  return ratio > 0.55 ? 0x79e0d3 : ratio > 0.25 ? 0xe6a63f : 0xf06d5c;
+}
+
+export type PresentationDetailTier = "overview" | "tactical" | "full";
+
+export function presentationDetailTierForZoom(
+  zoom: number,
+): PresentationDetailTier {
+  if (zoom <= 0.8) return "overview";
+  if (zoom < 1) return "tactical";
+  return "full";
+}
+
+export function unitOverlayStyle(
+  unit: UnitSnapshot,
+  controlledPlayer: SimulationSnapshot["controlledPlayer"],
+  detailTier: PresentationDetailTier = "full",
+) {
+  const heavy = unit.armor === "heavy" || unit.armor === "siege";
+  const cargoVisible =
+    unit.kind === "midasHarvester" &&
+    unit.playerId === controlledPlayer &&
+    (unit.selected || (detailTier !== "overview" && unit.cargo > 0));
+  return {
+    healthWidth: heavy ? 40 : 34,
+    healthRatio: unit.health / unit.maxHealth,
+    healthVisible:
+      detailTier !== "overview" || unit.selected || unit.health < unit.maxHealth,
+    selectionSize: heavy ? ([52, 24] as const) : ([45, 20] as const),
+    cargoRatio:
+      cargoVisible && unit.cargoCapacity > 0
+        ? Math.min(1, unit.cargo / unit.cargoCapacity)
+        : cargoVisible
+          ? 0
+          : null,
+  };
+}
+
+export function structureStatusValuesEqual(
+  left: StructureSnapshot,
+  right: StructureSnapshot,
+) {
+  return (
+    left.health === right.health &&
+    left.maxHealth === right.maxHealth &&
+    left.playerId === right.playerId &&
+    left.completed === right.completed &&
+    left.constructionRemainingTicks === right.constructionRemainingTicks &&
+    left.constructionTotalTicks === right.constructionTotalTicks &&
+    left.powered === right.powered &&
+    left.connected === right.connected
+  );
+}
+
+export function structureOverlayStyle(
+  structure: StructureSnapshot,
+  detailTier: PresentationDetailTier = "full",
+) {
+  const healthRatio = structure.health / structure.maxHealth;
+  return {
+    healthRatio,
+    healthColor: healthColor(healthRatio),
+    healthVisible:
+      detailTier !== "overview" ||
+      structure.selected ||
+      structure.health < structure.maxHealth,
+    damageHatchingVisible: detailTier === "full" && healthRatio <= 0.55,
+    constructionRatio: structure.completed
+      ? null
+      : 1 -
+        structure.constructionRemainingTicks /
+          Math.max(1, structure.constructionTotalTicks),
+    warning: !structure.completed
+      ? null
+      : !structure.powered
+        ? "unpowered"
+        : !structure.connected
+          ? "disconnected"
+          : null,
+  } as const;
+}
+
+export function fieldAmountValuesEqual(
+  left: AureliteFieldSnapshot,
+  right: AureliteFieldSnapshot,
+) {
+  return (
+    left.amount === right.amount &&
+    left.capacity === right.capacity &&
+    left.contested === right.contested
+  );
+}
+
+function cameraWorldViewsEqual(
+  left: CameraWorldView | null,
+  right: CameraWorldView,
+) {
+  return (
+    left !== null &&
+    left.x === right.x &&
+    left.y === right.y &&
+    left.width === right.width &&
+    left.height === right.height
+  );
+}
+
+export function worldPointWithinCameraMargin(
+  point: Vec2,
+  view: CameraWorldView,
+  margin = VIEW_CULL_MARGIN_WORLD,
+) {
+  return (
+    point.x >= view.x - margin &&
+    point.x <= view.x + view.width + margin &&
+    point.y >= view.y - margin &&
+    point.y <= view.y + view.height + margin
+  );
+}
+
+const EMPTY_PRODUCTION_QUEUE = Object.freeze([]);
+
+export function withRenderEntities(
+  snapshot: SimulationRenderFrame,
+  render: Readonly<{
+    units: readonly RenderUnitSnapshot[];
+    structures: readonly RenderStructureSnapshot[];
+  }>,
+): SimulationSnapshot {
+  return Object.freeze({
+    ...snapshot,
+    units: Object.freeze([...render.units]),
+    structures: Object.freeze(
+      render.structures.map((structure) =>
+        Object.freeze({
+          ...structure,
+          queue: EMPTY_PRODUCTION_QUEUE,
+        }),
+      ),
+    ),
   });
 }
 
@@ -127,6 +293,30 @@ type StructureHitTarget = Pick<
   StructureSnapshot,
   "id" | "kind" | "playerId" | "tile"
 >;
+
+type UnitHitTarget = Pick<UnitSnapshot, "id" | "playerId" | "position">;
+
+export function pickUnitAtWorldPoint<T extends UnitHitTarget>(
+  units: readonly T[],
+  point: Vec2,
+  playerId: UnitSnapshot["playerId"],
+  radius = 34,
+) {
+  return units
+    .filter((unit) => unit.playerId === playerId)
+    .map((unit) => {
+      const world = fixedToWorld(unit.position);
+      const dx = world.x - point.x;
+      const dy = world.y - point.y;
+      return { unit, distanceSquared: dx * dx + dy * dy };
+    })
+    .filter((candidate) => candidate.distanceSquared <= radius * radius)
+    .sort(
+      (left, right) =>
+        left.distanceSquared - right.distanceSquared ||
+        left.unit.id - right.unit.id,
+    )[0]?.unit;
+}
 
 export function pickStructureAtWorldPoint<T extends StructureHitTarget>(
   structures: readonly T[],
@@ -188,6 +378,9 @@ function worldToGrid(point: Vec2): Vec2 {
 export async function createGameRuntime(
   host: HTMLDivElement,
 ): Promise<GameRuntime> {
+  const benchmarkUnitCount = presentationBenchmarkUnitCount(
+    window.location.search,
+  );
   const workerSession = new SimulationWorkerSession(
     createBrowserSimulationWorkerRuntime(),
     {
@@ -197,9 +390,9 @@ export async function createGameRuntime(
     },
   );
   let Phaser: typeof import("phaser");
-  let initialSimulationSnapshot: SimulationSnapshot;
+  let initialUiSnapshot: SimulationUiSnapshot;
   try {
-    [Phaser, initialSimulationSnapshot] = await Promise.all([
+    [Phaser, initialUiSnapshot] = await Promise.all([
       import("phaser"),
       workerSession.initialize(),
     ]);
@@ -208,11 +401,16 @@ export async function createGameRuntime(
     throw error;
   }
   const listeners = new Set<RuntimeListener>();
+  const initialRenderFrame = workerSession.renderFrame();
+  if (!initialRenderFrame) {
+    workerSession.terminate();
+    throw new Error("Simulation worker did not publish an initial render frame.");
+  }
   let paused = false;
   let pauseReason: RuntimeSnapshot["pauseReason"] = null;
   let audioReady = false;
   let cameraMoved = false;
-  let cameraZoom = 1;
+  let cameraZoom = benchmarkUnitCount === null ? 1 : 0.75;
   let reducedScreenShake = false;
   let pendingBuilding: BuildingKind | null = null;
   let solarTargeting = false;
@@ -220,9 +418,21 @@ export async function createGameRuntime(
   let nextAudioCueId = 1;
   let renderer = "initializing";
   let runtimeError: string | null = null;
-  let lastSnapshot = initialSimulationSnapshot;
-  let previousSnapshot = lastSnapshot;
+  let lastUiSnapshot = initialUiSnapshot;
+  const initialRenderSnapshot = withRenderEntities(
+    initialRenderFrame,
+    workerSession.renderSnapshot(),
+  );
+  let lastRenderSnapshot = benchmarkUnitCount
+    ? createPresentationBenchmarkSnapshot(
+        initialRenderSnapshot,
+        benchmarkUnitCount,
+      )
+    : initialRenderSnapshot;
+  let lastSnapshot = lastRenderSnapshot;
+  let previousRenderSnapshot = lastRenderSnapshot;
   let lastSnapshotReceivedAt = performance.now();
+  let presentationBenchmarkPublicationCount = 0;
   let detachKeyboardCaptureGuard = () => {};
   let refreshKeyboardInput = () => {};
   let gameplayInputEnabled = false;
@@ -231,7 +441,7 @@ export async function createGameRuntime(
 
   const emit = () => {
     const snapshot: RuntimeSnapshot = {
-      simulation: lastSnapshot,
+      simulation: lastUiSnapshot,
       paused,
       pauseReason,
       audioReady,
@@ -267,28 +477,48 @@ export async function createGameRuntime(
   });
   const unsubscribeWorkerSession = workerSession.subscribe((event) => {
     if (event.type === "snapshot") {
-      const nextSnapshot = event.snapshot;
+      const nextRenderSnapshot = withRenderEntities(
+        event.snapshot,
+        workerSession.renderSnapshot(),
+      );
+      if (benchmarkUnitCount !== null) {
+        const nextBenchmarkSnapshot = createPresentationBenchmarkSnapshot(
+          nextRenderSnapshot,
+          benchmarkUnitCount,
+        );
+        previousRenderSnapshot = lastRenderSnapshot;
+        lastSnapshot = nextBenchmarkSnapshot;
+        lastRenderSnapshot = nextBenchmarkSnapshot;
+        lastSnapshotReceivedAt = performance.now();
+        presentationBenchmarkPublicationCount += 1;
+        return;
+      }
       if (
         pendingFogMemoryResetAtTick !== null &&
         event.tick >= pendingFogMemoryResetAtTick
       ) {
-        previousSnapshot = nextSnapshot;
+        previousRenderSnapshot = nextRenderSnapshot;
         pendingFogMemoryResetAtTick = null;
         fogMemoryResetReady = true;
       } else if (
         isContinuousAudioTransition(
           lastSnapshot,
-          nextSnapshot,
+          nextRenderSnapshot,
           DEFAULT_SNAPSHOT_CADENCE_TICKS,
         )
       ) {
-        previousSnapshot = lastSnapshot;
-        proceduralAudio.observe(lastSnapshot, nextSnapshot);
+        previousRenderSnapshot = lastRenderSnapshot;
+        proceduralAudio.observe(lastSnapshot, nextRenderSnapshot);
       } else {
-        previousSnapshot = nextSnapshot;
+        previousRenderSnapshot = nextRenderSnapshot;
       }
-      lastSnapshot = nextSnapshot;
+      lastSnapshot = nextRenderSnapshot;
+      lastRenderSnapshot = nextRenderSnapshot;
       lastSnapshotReceivedAt = performance.now();
+      return;
+    }
+    if (event.type === "uiSnapshot") {
+      lastUiSnapshot = event.snapshot;
       emit();
       return;
     }
@@ -317,9 +547,14 @@ export async function createGameRuntime(
     private shiftKey!: Phaser.Input.Keyboard.Key;
     private ctrlKey!: Phaser.Input.Keyboard.Key;
     private selectionBox!: Phaser.GameObjects.Graphics;
+    private selectionGraphics!: Phaser.GameObjects.Graphics;
+    private meterGraphics!: Phaser.GameObjects.Graphics;
     private routeGraphics!: Phaser.GameObjects.Graphics;
     private rallyGraphics!: Phaser.GameObjects.Graphics;
     private projectileGraphics!: Phaser.GameObjects.Graphics;
+    private readonly projectileEffectBudget = new PresentationEffectBudget(
+      LOW_PRIORITY_PROJECTILE_ACCENTS_PER_BATCH,
+    );
     private buildRadiusGraphics!: Phaser.GameObjects.Graphics;
     private solarGraphics!: Phaser.GameObjects.Graphics;
     private fogTexture!: Phaser.GameObjects.RenderTexture;
@@ -328,14 +563,44 @@ export async function createGameRuntime(
     private orderMarker!: Phaser.GameObjects.Arc;
     private dragStart: Phaser.Math.Vector2 | null = null;
     private unitViews = new Map<number, Phaser.GameObjects.Container>();
+    private unitViewPool = new BoundedKeyedPool<
+      string,
+      Phaser.GameObjects.Container
+    >(UNIT_VIEW_POOL_CAPACITY);
+    private unitViewPoolKeys = new WeakMap<
+      Phaser.GameObjects.Container,
+      string
+    >();
     private unitFacings = new Map<number, number>();
     private structureViews = new Map<number, Phaser.GameObjects.Container>();
+    private structureViewPool = new BoundedKeyedPool<
+      string,
+      Phaser.GameObjects.Container
+    >(STRUCTURE_VIEW_POOL_CAPACITY);
+    private structureViewPoolKeys = new WeakMap<
+      Phaser.GameObjects.Container,
+      string
+    >();
+    private structureStatusSnapshots = new Map<number, StructureSnapshot>();
     private staleStructureViews = new Map<
       number,
       Phaser.GameObjects.Container
     >();
     private staleStructureMemory = new Map<number, StructureSnapshot>();
     private fieldViews = new Map<number, Phaser.GameObjects.Container>();
+    private fieldAmountSnapshots = new Map<number, AureliteFieldSnapshot>();
+    private lastUnitViewSnapshot: SimulationSnapshot | null = null;
+    private lastRenderedPreviousSnapshot: SimulationSnapshot | null = null;
+    private lastRenderedUnitSnapshot: SimulationSnapshot | null = null;
+    private lastRenderedUnitCameraView: CameraWorldView | null = null;
+    private lastRenderedUnitDetailTier: PresentationDetailTier | null = null;
+    private lastRenderedUnitAlpha = -1;
+    private lastRouteSnapshot: SimulationSnapshot | null = null;
+    private lastProjectileSnapshot: SimulationSnapshot | null = null;
+    private lastProjectileCameraView: CameraWorldView | null = null;
+    private lastProjectileDetailTier: PresentationDetailTier | null = null;
+    private lastBuildRadiusSnapshot: SimulationSnapshot | null = null;
+    private lastSolarSnapshot: SimulationSnapshot | null = null;
     private lastImpactShakeTick = -1;
     private pendingOrder: "move" | "attackMove" | "rally" = "move";
 
@@ -382,6 +647,8 @@ export async function createGameRuntime(
       this.routeGraphics = this.add.graphics().setDepth(8);
       this.rallyGraphics = this.add.graphics().setDepth(7);
       this.projectileGraphics = this.add.graphics().setDepth(24);
+      this.selectionGraphics = this.add.graphics().setDepth(9);
+      this.meterGraphics = this.add.graphics().setDepth(25);
       this.buildRadiusGraphics = this.add.graphics().setDepth(6);
       this.solarGraphics = this.add.graphics().setDepth(70);
       this.fogTexture = this.add
@@ -400,8 +667,8 @@ export async function createGameRuntime(
         .setStrokeStyle(2, 0xf4bd55, 0.95)
         .setDepth(30)
         .setVisible(false);
-      this.syncUnitViews(lastSnapshot);
-      this.syncStructureViews(lastSnapshot);
+      this.syncUnitViews(lastRenderSnapshot);
+      this.syncStructureViews(lastRenderSnapshot);
       this.syncFieldViews(lastSnapshot);
       this.drawFog(lastSnapshot);
 
@@ -600,13 +867,17 @@ export async function createGameRuntime(
       }
 
       this.updateCamera(delta);
-      this.syncUnitViews(lastSnapshot);
-      this.syncStructureViews(lastSnapshot);
-      this.syncStaleStructureViews(lastSnapshot);
-      this.syncFieldViews(lastSnapshot);
+      const cameraView = this.cameras.main.worldView;
+      const detailTier = presentationDetailTierForZoom(
+        this.cameras.main.zoom,
+      );
+      this.syncUnitViews(lastRenderSnapshot);
+      this.syncStructureViews(lastRenderSnapshot, cameraView);
+      this.syncStaleStructureViews(lastRenderSnapshot, cameraView);
+      this.syncFieldViews(lastSnapshot, cameraView, detailTier);
       this.renderUnits(
-        previousSnapshot,
-        lastSnapshot,
+        previousRenderSnapshot,
+        lastRenderSnapshot,
         paused
           ? 1
           : Math.min(
@@ -615,9 +886,42 @@ export async function createGameRuntime(
                 (DEFAULT_SNAPSHOT_CADENCE_TICKS *
                   SIMULATION_TICK_INTERVAL_MS),
             ),
+        cameraView,
+        detailTier,
       );
+      if (benchmarkUnitCount !== null) {
+        const benchmarkWindow = window as typeof window & {
+          __AURELIA_PRESENTATION_BENCHMARK__?: Readonly<{
+            ready: true;
+            renderedUnitCount: number;
+            renderer: string;
+            snapshotPublicationCount: number;
+            unitCount: number;
+            visibleUnitCount: number;
+          }>;
+        };
+        if (!benchmarkWindow.__AURELIA_PRESENTATION_BENCHMARK__) {
+          let visibleUnitCount = 0;
+          for (const view of this.unitViews.values()) {
+            if (view.visible) visibleUnitCount += 1;
+          }
+          if (visibleUnitCount === benchmarkUnitCount) {
+            benchmarkWindow.__AURELIA_PRESENTATION_BENCHMARK__ ??=
+              Object.freeze({
+                ready: true,
+                renderedUnitCount: this.unitViews.size,
+                renderer,
+                get snapshotPublicationCount() {
+                  return presentationBenchmarkPublicationCount;
+                },
+                unitCount: benchmarkUnitCount,
+                visibleUnitCount,
+              });
+          }
+        }
+      }
       this.drawRoutes(lastSnapshot);
-      this.drawProjectiles(lastSnapshot);
+      this.drawProjectiles(lastSnapshot, cameraView, detailTier);
       this.drawBuildRadii(lastSnapshot);
       this.drawFog(lastSnapshot);
       this.drawSolarSpear(lastSnapshot);
@@ -650,6 +954,8 @@ export async function createGameRuntime(
     }
 
     private drawSolarSpear(snapshot: SimulationSnapshot) {
+      if (this.lastSolarSnapshot === snapshot) return;
+      this.lastSolarSnapshot = snapshot;
       this.solarGraphics.clear();
       for (const playerId of [1, 2] as const) {
         const solar = snapshot.solarSpears[playerId];
@@ -875,6 +1181,28 @@ export async function createGameRuntime(
       structure: StructureSnapshot,
       stale = false,
     ) {
+      const poolKey = `${stale ? "stale" : "live"}:${structure.playerId}:${structure.kind}:${structure.completed}:${structure.connected}`;
+      const pooled = this.structureViewPool.acquire(poolKey);
+      if (pooled) {
+        const world = gridToWorld(structure.tile);
+        pooled
+          .setActive(true)
+          .setVisible(true)
+          .setPosition(world.x, world.y)
+          .setDepth(structureRenderDepth(structure.tile))
+          .setName(
+            stale
+              ? `stale-structure-${structure.id}`
+              : `structure-${structure.id}`,
+          )
+          .setAlpha(stale ? 0.34 : 1);
+        (stale ? this.staleStructureViews : this.structureViews).set(
+          structure.id,
+          pooled,
+        );
+        this.structureViewPoolKeys.set(pooled, poolKey);
+        return;
+      }
       const teamColor = stale
         ? 0x5a6869
         : structure.playerId === 1
@@ -947,29 +1275,19 @@ export async function createGameRuntime(
             )
             .setName("sprite")
         : null;
-      const status = this.add.graphics().setName("status");
       const teamHalo = this.add
         .ellipse(0, 17, 67, 30)
         .setStrokeStyle(1.4, teamColor, stale ? 0.4 : 0.86)
         .setName("team-halo");
-      const selection = this.add
-        .ellipse(0, 17, 65, 30)
-        .setStrokeStyle(2, 0xf4f0b5, 0.98)
-        .setName("selection")
-        .setVisible(!stale && structure.selected);
       const world = gridToWorld(structure.tile);
       const teamMark = this.add
         .rectangle(0, 9, 9, 9, teamColor, stale ? 0.5 : 0.95)
         .setStrokeStyle(1, outline, stale ? 0.55 : 1)
         .setAngle(45)
         .setName("team-mark");
-      const children: Phaser.GameObjects.GameObject[] = [
-        teamHalo,
-        selection,
-        body,
-      ];
+      const children: Phaser.GameObjects.GameObject[] = [teamHalo, body];
       if (sprite) children.push(sprite);
-      children.push(teamMark, status);
+      children.push(teamMark);
       const container = this.add
         .container(world.x, world.y, children)
         .setDepth(structureRenderDepth(structure.tile))
@@ -983,24 +1301,63 @@ export async function createGameRuntime(
         structure.id,
         container,
       );
+      this.structureViewPoolKeys.set(container, poolKey);
     }
 
-    private syncFieldViews(snapshot: SimulationSnapshot) {
+    private releaseStructureView(
+      id: number,
+      view: Phaser.GameObjects.Container,
+      stale = false,
+    ) {
+      (stale ? this.staleStructureViews : this.structureViews).delete(id);
+      if (!stale) this.structureStatusSnapshots.delete(id);
+      view.setActive(false).setVisible(false);
+      const poolKey = this.structureViewPoolKeys.get(view);
+      if (poolKey && this.structureViewPool.release(poolKey, view)) return;
+      view.destroy(true);
+    }
+
+    private setViewWithinCameraMargin(
+      view: Phaser.GameObjects.Container,
+      world: Vec2,
+      cameraView: CameraWorldView,
+    ) {
+      const visible = worldPointWithinCameraMargin(world, cameraView);
+      if (view.visible !== visible) view.setVisible(visible);
+      return visible;
+    }
+
+    private syncFieldViews(
+      snapshot: SimulationSnapshot,
+      cameraView?: CameraWorldView,
+      detailTier: PresentationDetailTier = "full",
+    ) {
       const activeIds = new Set(snapshot.fields.map((field) => field.id));
       for (const [id, view] of this.fieldViews) {
         if (activeIds.has(id)) continue;
         view.destroy(true);
         this.fieldViews.delete(id);
+        this.fieldAmountSnapshots.delete(id);
       }
       for (const field of snapshot.fields) {
         if (!this.fieldViews.has(field.id)) this.createFieldView(field);
-        const amount = this.fieldViews
-          .get(field.id)
-          ?.getByName("amount") as Phaser.GameObjects.Graphics | null;
+        const view = this.fieldViews.get(field.id)!;
+        const world = gridToWorld(field.tile);
+        if (
+          cameraView &&
+          !this.setViewWithinCameraMargin(view, world, cameraView)
+        ) {
+          continue;
+        }
+        const amount = view.getByName(
+          "amount",
+        ) as Phaser.GameObjects.Graphics | null;
         if (!amount) continue;
-        const sprite = this.fieldViews
-          .get(field.id)
-          ?.getByName("sprite") as Phaser.GameObjects.Image | null;
+        const showAmount = detailTier !== "overview";
+        if (amount.visible !== showAmount) amount.setVisible(showAmount);
+        const sprite = view.getByName(
+          "sprite",
+        ) as Phaser.GameObjects.Image | null;
         sprite
           ?.setTint(field.contested ? 0xffd59c : 0xffffff)
           .setAlpha(
@@ -1008,6 +1365,9 @@ export async function createGameRuntime(
               ? 0.94
               : 0.88 + Math.sin(snapshot.tick / 7) * 0.08,
           );
+        if (!showAmount) continue;
+        const previous = this.fieldAmountSnapshots.get(field.id);
+        if (previous && fieldAmountValuesEqual(previous, field)) continue;
         amount.clear();
         amount.fillStyle(0x071318, 0.92);
         amount.fillRect(-22, 20, 44, 5);
@@ -1018,33 +1378,37 @@ export async function createGameRuntime(
           Math.ceil(42 * (field.amount / field.capacity)),
           3,
         );
+        this.fieldAmountSnapshots.set(field.id, field);
       }
     }
 
-    private syncStructureViews(snapshot: SimulationSnapshot) {
+    private syncStructureViews(
+      snapshot: SimulationSnapshot,
+      cameraView?: CameraWorldView,
+    ) {
       const activeIds = new Set(
         snapshot.structures.map((structure) => structure.id),
       );
       for (const [id, view] of this.structureViews) {
         if (activeIds.has(id)) continue;
-        view.destroy(true);
-        this.structureViews.delete(id);
+        this.releaseStructureView(id, view);
       }
       for (const structure of snapshot.structures) {
         if (!this.structureViews.has(structure.id)) {
           this.createStructureView(structure);
         }
         const view = this.structureViews.get(structure.id)!;
-        (
-          view.getByName("selection") as Phaser.GameObjects.Ellipse | null
-        )?.setVisible(structure.selected);
-        const status = view.getByName(
-          "status",
-        ) as Phaser.GameObjects.Graphics | null;
-        if (!status) continue;
-        status.clear();
-        status.fillStyle(0x071318, 0.92);
-        status.fillRect(-25, -49, 50, 6);
+        const world = gridToWorld(structure.tile);
+        if (
+          cameraView &&
+          !this.setViewWithinCameraMargin(view, world, cameraView)
+        ) {
+          continue;
+        }
+        const previous = this.structureStatusSnapshots.get(structure.id);
+        if (previous && structureStatusValuesEqual(previous, structure)) {
+          continue;
+        }
         const ratio = structure.health / structure.maxHealth;
         const sprite = view.getByName(
           "sprite",
@@ -1062,46 +1426,24 @@ export async function createGameRuntime(
                   : baseTint,
             );
         }
-        status.fillStyle(
-          ratio > 0.55 ? 0x79e0d3 : ratio > 0.25 ? 0xe6a63f : 0xf06d5c,
-          1,
-        );
-        status.fillRect(-24, -48, Math.ceil(48 * ratio), 4);
-        if (ratio <= 0.55) {
-          status.lineStyle(1.2, ratio <= 0.25 ? 0xff6d5c : 0xe6a63f, 0.8);
-          for (let offset = -18; offset <= 18; offset += 9) {
-            status.lineBetween(offset - 5, -35, offset + 5, -25);
-          }
-        }
-        if (!structure.completed) {
-          const progress =
-            1 -
-            structure.constructionRemainingTicks /
-              Math.max(1, structure.constructionTotalTicks);
-          status.fillStyle(0x071318, 0.92);
-          status.fillRect(-25, 25, 50, 6);
-          status.fillStyle(0xe6a63f, 1);
-          status.fillRect(-24, 26, Math.ceil(48 * progress), 4);
-        } else if (!structure.powered) {
-          status.lineStyle(2, 0xf06d5c, 1);
-          status.strokeCircle(0, -8, 29);
-          status.lineBetween(-19, -29, 19, 13);
-        } else if (!structure.connected) {
-          status.lineStyle(2, 0xe6a63f, 0.9);
-          status.strokeCircle(0, -8, 28);
-        }
+        this.structureStatusSnapshots.set(structure.id, structure);
       }
     }
 
-    private syncStaleStructureViews(snapshot: SimulationSnapshot) {
+    private syncStaleStructureViews(
+      snapshot: SimulationSnapshot,
+      cameraView?: CameraWorldView,
+    ) {
       const visibleIds = new Set(
         snapshot.structures.map((structure) => structure.id),
       );
       for (const structure of snapshot.structures) {
         if (structure.playerId === snapshot.controlledPlayer) continue;
         this.staleStructureMemory.set(structure.id, structure);
-        this.staleStructureViews.get(structure.id)?.destroy(true);
-        this.staleStructureViews.delete(structure.id);
+        const staleView = this.staleStructureViews.get(structure.id);
+        if (staleView) {
+          this.releaseStructureView(structure.id, staleView, true);
+        }
       }
 
       const desired = new Set<number>();
@@ -1121,22 +1463,32 @@ export async function createGameRuntime(
         }
       }
       for (const [id, view] of this.staleStructureViews) {
-        if (desired.has(id)) continue;
-        view.destroy(true);
-        this.staleStructureViews.delete(id);
+        if (!desired.has(id)) {
+          this.releaseStructureView(id, view, true);
+          continue;
+        }
+        if (cameraView) {
+          this.setViewWithinCameraMargin(
+            view,
+            gridToWorld(this.staleStructureMemory.get(id)!.tile),
+            cameraView,
+          );
+        }
       }
     }
 
     private clearStaleFogMemory() {
       this.staleStructureMemory.clear();
-      for (const view of this.staleStructureViews.values()) {
-        view.destroy(true);
+      for (const [id, view] of this.staleStructureViews) {
+        this.releaseStructureView(id, view, true);
       }
       this.staleStructureViews.clear();
       this.lastFogRevision = -1;
     }
 
     private drawBuildRadii(snapshot: SimulationSnapshot) {
+      if (this.lastBuildRadiusSnapshot === snapshot) return;
+      this.lastBuildRadiusSnapshot = snapshot;
       this.buildRadiusGraphics.clear();
       for (const structure of snapshot.structures) {
         if (
@@ -1159,6 +1511,20 @@ export async function createGameRuntime(
     }
 
     private createUnitView(unit: UnitSnapshot) {
+      const poolKey = `${unit.playerId}:${unit.kind}:${unit.armor}`;
+      const pooled = this.unitViewPool.acquire(poolKey);
+      if (pooled) {
+        pooled
+          .setActive(true)
+          .setVisible(true)
+          .setPosition(0, 0)
+          .setDepth(10)
+          .setName(`unit-${unit.id}`);
+        this.unitViews.set(unit.id, pooled);
+        this.unitViewPoolKeys.set(pooled, poolKey);
+        this.unitFacings.set(unit.id, 0);
+        return;
+      }
       const heavy = unit.armor === "heavy" || unit.armor === "siege";
       const teamColor = unit.playerId === 1 ? 0xe4a33a : 0x4ccac0;
       const outline = unit.playerId === 1 ? 0xffd78a : 0xb6fff5;
@@ -1214,36 +1580,171 @@ export async function createGameRuntime(
       const teamMark = this.add
         .rectangle(0, 2, heavy ? 9 : 7, heavy ? 9 : 7, teamColor, 0.94)
         .setStrokeStyle(1, outline, 1)
-        .setAngle(45);
-      const core = this.add.circle(0, 0, 4, 0xe9ffff);
-      const health = this.add.graphics().setName("health");
-      const cargo = this.add.graphics().setName("cargo");
-      const ring = this.add
-        .ellipse(0, 13, heavy ? 52 : 45, heavy ? 24 : 20)
-        .setStrokeStyle(2, 0xf4f0b5, 0.98)
-        .setName("selection")
-        .setVisible(unit.selected);
-      const children: Phaser.GameObjects.GameObject[] = [ring, body];
+        .setAngle(45)
+        .setName("team-mark");
+      const core = this.add.circle(0, 0, 4, 0xe9ffff).setName("core");
+      const children: Phaser.GameObjects.GameObject[] = [body];
       if (sprite) children.push(sprite);
-      children.push(teamMark, core, health, cargo);
+      children.push(teamMark, core);
       const container = this.add
         .container(0, 0, children)
         .setDepth(10)
         .setName(`unit-${unit.id}`);
       this.unitViews.set(unit.id, container);
+      this.unitViewPoolKeys.set(container, poolKey);
       this.unitFacings.set(unit.id, 0);
     }
 
+    private releaseUnitView(
+      id: number,
+      view: Phaser.GameObjects.Container,
+    ) {
+      this.unitViews.delete(id);
+      this.unitFacings.delete(id);
+      view.setActive(false).setVisible(false);
+      const poolKey = this.unitViewPoolKeys.get(view);
+      if (poolKey && this.unitViewPool.release(poolKey, view)) return;
+      view.destroy(true);
+    }
+
     private syncUnitViews(snapshot: SimulationSnapshot) {
+      if (this.lastUnitViewSnapshot === snapshot) return;
+      this.lastUnitViewSnapshot = snapshot;
       const activeIds = new Set(snapshot.units.map((unit) => unit.id));
       for (const [id, view] of this.unitViews) {
         if (activeIds.has(id)) continue;
-        view.destroy(true);
-        this.unitViews.delete(id);
-        this.unitFacings.delete(id);
+        this.releaseUnitView(id, view);
       }
       for (const unit of snapshot.units) {
         if (!this.unitViews.has(unit.id)) this.createUnitView(unit);
+      }
+    }
+
+    private drawStructureOverlays(
+      snapshot: SimulationSnapshot,
+      cameraView: CameraWorldView,
+      detailTier: PresentationDetailTier,
+    ) {
+      for (const structure of snapshot.structures) {
+        const world = gridToWorld(structure.tile);
+        if (!worldPointWithinCameraMargin(world, cameraView)) continue;
+        if (structure.selected) {
+          this.selectionGraphics.lineStyle(2, 0xf4f0b5, 0.98);
+          this.selectionGraphics.strokeEllipse(
+            world.x,
+            world.y + 17,
+            65,
+            30,
+          );
+        }
+
+        const style = structureOverlayStyle(structure, detailTier);
+        if (style.healthVisible) {
+          this.meterGraphics.fillStyle(0x071318, 0.92);
+          this.meterGraphics.fillRect(world.x - 25, world.y - 49, 50, 6);
+          this.meterGraphics.fillStyle(style.healthColor, 1);
+          this.meterGraphics.fillRect(
+            world.x - 24,
+            world.y - 48,
+            Math.ceil(48 * style.healthRatio),
+            4,
+          );
+        }
+        if (style.damageHatchingVisible) {
+          this.meterGraphics.lineStyle(
+            1.2,
+            style.healthRatio <= 0.25 ? 0xff6d5c : 0xe6a63f,
+            0.8,
+          );
+          for (let offset = -18; offset <= 18; offset += 9) {
+            this.meterGraphics.lineBetween(
+              world.x + offset - 5,
+              world.y - 35,
+              world.x + offset + 5,
+              world.y - 25,
+            );
+          }
+        }
+        if (style.constructionRatio !== null) {
+          this.meterGraphics.fillStyle(0x071318, 0.92);
+          this.meterGraphics.fillRect(world.x - 25, world.y + 25, 50, 6);
+          this.meterGraphics.fillStyle(0xe6a63f, 1);
+          this.meterGraphics.fillRect(
+            world.x - 24,
+            world.y + 26,
+            Math.ceil(48 * style.constructionRatio),
+            4,
+          );
+        } else if (style.warning === "unpowered") {
+          this.meterGraphics.lineStyle(2, 0xf06d5c, 1);
+          this.meterGraphics.strokeCircle(world.x, world.y - 8, 29);
+          this.meterGraphics.lineBetween(
+            world.x - 19,
+            world.y - 29,
+            world.x + 19,
+            world.y + 13,
+          );
+        } else if (style.warning === "disconnected") {
+          this.meterGraphics.lineStyle(2, 0xe6a63f, 0.9);
+          this.meterGraphics.strokeCircle(world.x, world.y - 8, 28);
+        }
+      }
+    }
+
+    private drawUnitOverlay(
+      unit: UnitSnapshot,
+      world: Vec2,
+      controlledPlayer: SimulationSnapshot["controlledPlayer"],
+      detailTier: PresentationDetailTier,
+    ) {
+      const style = unitOverlayStyle(unit, controlledPlayer, detailTier);
+      if (unit.selected) {
+        this.selectionGraphics.lineStyle(2, 0xf4f0b5, 0.98);
+        this.selectionGraphics.strokeEllipse(
+          world.x,
+          world.y + 13,
+          style.selectionSize[0],
+          style.selectionSize[1],
+        );
+      }
+      if (style.healthVisible) {
+        this.meterGraphics.fillStyle(0x071318, 0.92);
+        this.meterGraphics.fillRect(
+          world.x - style.healthWidth / 2 - 1,
+          world.y - 27,
+          style.healthWidth + 2,
+          5,
+        );
+        this.meterGraphics.fillStyle(healthColor(style.healthRatio), 1);
+        this.meterGraphics.fillRect(
+          world.x - style.healthWidth / 2,
+          world.y - 26,
+          Math.ceil(style.healthWidth * style.healthRatio),
+          3,
+        );
+      }
+      if (style.cargoRatio === null) return;
+
+      const width = 34;
+      const segments = 5;
+      const segmentWidth = (width - (segments - 1) * 2) / segments;
+      for (let segment = 0; segment < segments; segment += 1) {
+        const x = world.x - width / 2 + segment * (segmentWidth + 2);
+        this.meterGraphics.fillStyle(0x071318, 0.94);
+        this.meterGraphics.fillRect(x, world.y - 20, segmentWidth, 4);
+        const segmentFill = Math.max(
+          0,
+          Math.min(1, style.cargoRatio * segments - segment),
+        );
+        if (segmentFill > 0) {
+          this.meterGraphics.fillStyle(0xf0bf57, 1);
+          this.meterGraphics.fillRect(
+            x,
+            world.y - 19,
+            segmentWidth * segmentFill,
+            2,
+          );
+        }
       }
     }
 
@@ -1251,7 +1752,31 @@ export async function createGameRuntime(
       previous: SimulationSnapshot,
       current: SimulationSnapshot,
       alpha: number,
+      cameraView: CameraWorldView,
+      detailTier: PresentationDetailTier,
     ) {
+      if (
+        this.lastRenderedPreviousSnapshot === previous &&
+        this.lastRenderedUnitSnapshot === current &&
+        this.lastRenderedUnitAlpha === alpha &&
+        this.lastRenderedUnitDetailTier === detailTier &&
+        cameraWorldViewsEqual(this.lastRenderedUnitCameraView, cameraView)
+      ) {
+        return;
+      }
+      this.lastRenderedPreviousSnapshot = previous;
+      this.lastRenderedUnitSnapshot = current;
+      this.lastRenderedUnitAlpha = alpha;
+      this.lastRenderedUnitDetailTier = detailTier;
+      this.lastRenderedUnitCameraView = {
+        x: cameraView.x,
+        y: cameraView.y,
+        width: cameraView.width,
+        height: cameraView.height,
+      };
+      this.selectionGraphics.clear();
+      this.meterGraphics.clear();
+      this.drawStructureOverlays(current, cameraView, detailTier);
       const previousById = new Map(previous.units.map((unit) => [unit.id, unit]));
       for (const unit of current.units) {
         const prior = previousById.get(unit.id) ?? unit;
@@ -1279,73 +1804,67 @@ export async function createGameRuntime(
         (
           view.getByName("sprite") as Phaser.GameObjects.Image | null
         )?.setFrame(UNIT_ATLAS_FRAME[unit.kind] + facing, false, false);
+        const showUnitMarks = detailTier === "full";
         (
-          view.getByName("selection") as Phaser.GameObjects.Ellipse | null
-        )?.setVisible(unit.selected);
-        const health = view.getByName(
-          "health",
-        ) as Phaser.GameObjects.Graphics | null;
-        if (health) {
-          const width = unit.armor === "heavy" || unit.armor === "siege" ? 40 : 34;
-          const ratio = unit.health / unit.maxHealth;
-          health.clear();
-          health.fillStyle(0x071318, 0.92);
-          health.fillRect(-width / 2 - 1, -27, width + 2, 5);
-          health.fillStyle(
-            ratio > 0.55 ? 0x79e0d3 : ratio > 0.25 ? 0xe6a63f : 0xf06d5c,
-            1,
-          );
-          health.fillRect(-width / 2, -26, Math.ceil(width * ratio), 3);
+          view.getByName("team-mark") as Phaser.GameObjects.Shape | null
+        )?.setVisible(showUnitMarks);
+        (
+          view.getByName("core") as Phaser.GameObjects.Shape | null
+        )?.setVisible(showUnitMarks);
+        if (!this.setViewWithinCameraMargin(view, world, cameraView)) {
+          continue;
         }
-        const cargo = view.getByName(
-          "cargo",
-        ) as Phaser.GameObjects.Graphics | null;
-        if (cargo) {
-          const showCargo =
-            unit.kind === "midasHarvester" &&
-            unit.playerId === current.controlledPlayer &&
-            (unit.selected || unit.cargo > 0);
-          cargo.clear().setVisible(showCargo);
-          if (showCargo) {
-            const width = 34;
-            const segments = 5;
-            const ratio =
-              unit.cargoCapacity > 0
-                ? Math.min(1, unit.cargo / unit.cargoCapacity)
-                : 0;
-            const segmentWidth = (width - (segments - 1) * 2) / segments;
-            for (let segment = 0; segment < segments; segment += 1) {
-              const x = -width / 2 + segment * (segmentWidth + 2);
-              cargo.fillStyle(0x071318, 0.94);
-              cargo.fillRect(x, -20, segmentWidth, 4);
-              const segmentFill = Math.max(
-                0,
-                Math.min(1, ratio * segments - segment),
-              );
-              if (segmentFill > 0) {
-                cargo.fillStyle(0xf0bf57, 1);
-                cargo.fillRect(x, -19, segmentWidth * segmentFill, 2);
-              }
-            }
-          }
-        }
+        this.drawUnitOverlay(
+          unit,
+          world,
+          current.controlledPlayer,
+          detailTier,
+        );
       }
     }
 
-    private drawProjectiles(snapshot: SimulationSnapshot) {
+    private drawProjectiles(
+      snapshot: SimulationSnapshot,
+      cameraView: CameraWorldView,
+      detailTier: PresentationDetailTier,
+    ) {
+      if (
+        this.lastProjectileSnapshot === snapshot &&
+        cameraWorldViewsEqual(this.lastProjectileCameraView, cameraView) &&
+        this.lastProjectileDetailTier === detailTier
+      ) {
+        return;
+      }
+      this.lastProjectileSnapshot = snapshot;
+      this.lastProjectileCameraView = {
+        x: cameraView.x,
+        y: cameraView.y,
+        width: cameraView.width,
+        height: cameraView.height,
+      };
+      this.lastProjectileDetailTier = detailTier;
       this.projectileGraphics.clear();
+      this.projectileEffectBudget.reset();
       for (const projectile of snapshot.projectiles) {
         const world = fixedToWorld(projectile.position);
+        if (!worldPointWithinCameraMargin(world, cameraView)) continue;
         const color = projectile.playerId === 1 ? 0xffd36e : 0x79fff1;
         const radius = projectile.weaponId === "gorgonMortar" ? 5 : 3;
         this.projectileGraphics.fillStyle(color, 0.95);
         this.projectileGraphics.fillCircle(world.x, world.y, radius);
-        this.projectileGraphics.lineStyle(1, 0xffffff, 0.45);
-        this.projectileGraphics.strokeCircle(world.x, world.y, radius + 2);
+        if (
+          detailTier === "full" &&
+          this.projectileEffectBudget.admit("low")
+        ) {
+          this.projectileGraphics.lineStyle(1, 0xffffff, 0.45);
+          this.projectileGraphics.strokeCircle(world.x, world.y, radius + 2);
+        }
       }
     }
 
     private drawRoutes(snapshot: SimulationSnapshot) {
+      if (this.lastRouteSnapshot === snapshot) return;
+      this.lastRouteSnapshot = snapshot;
       this.routeGraphics.clear();
       this.rallyGraphics.clear();
       for (const unit of snapshot.units) {
@@ -1413,21 +1932,12 @@ export async function createGameRuntime(
       const click = width < 10 && height < 10;
       let unitIds: number[] = [];
       if (click) {
-        const nearest = lastSnapshot.units
-          .filter(
-            (unit) => unit.playerId === lastSnapshot.controlledPlayer,
-          )
-          .map((unit) => {
-            const world = fixedToWorld(unit.position);
-            const dx = world.x - end.x;
-            const dy = world.y - end.y;
-            return { id: unit.id, distanceSquared: dx * dx + dy * dy };
-          })
-          .filter((candidate) => candidate.distanceSquared <= 32 * 32)
-          .sort(
-            (a, b) =>
-              a.distanceSquared - b.distanceSquared || a.id - b.id,
-          )[0];
+        const nearest = pickUnitAtWorldPoint(
+          lastRenderSnapshot.units,
+          end,
+          lastSnapshot.controlledPlayer,
+          32,
+        );
         unitIds = nearest ? [nearest.id] : [];
         if (unitIds.length === 0) {
           const structure = this.structureAtWorldPoint(
@@ -1442,7 +1952,7 @@ export async function createGameRuntime(
           return;
         }
       } else {
-        unitIds = lastSnapshot.units
+        unitIds = lastRenderSnapshot.units
           .filter((unit) => {
             if (unit.playerId !== lastSnapshot.controlledPlayer) return false;
             const world = fixedToWorld(unit.position);
@@ -1466,20 +1976,11 @@ export async function createGameRuntime(
       point: Phaser.Math.Vector2,
       playerId: 1 | 2,
     ) {
-      return lastSnapshot.units
-        .filter((unit) => unit.playerId === playerId)
-        .map((unit) => {
-          const world = fixedToWorld(unit.position);
-          const dx = world.x - point.x;
-          const dy = world.y - point.y;
-          return { unit, distanceSquared: dx * dx + dy * dy };
-        })
-        .filter((candidate) => candidate.distanceSquared <= 34 * 34)
-        .sort(
-          (left, right) =>
-            left.distanceSquared - right.distanceSquared ||
-            left.unit.id - right.unit.id,
-        )[0]?.unit;
+      return pickUnitAtWorldPoint(
+        lastRenderSnapshot.units,
+        point,
+        playerId,
+      );
     }
 
     private structureAtWorldPoint(
@@ -1487,7 +1988,7 @@ export async function createGameRuntime(
       playerId: 1 | 2,
     ) {
       return pickStructureAtWorldPoint(
-        lastSnapshot.structures,
+        lastRenderSnapshot.structures,
         point,
         playerId,
         this.textures.exists("structure-atlas"),
@@ -1564,7 +2065,7 @@ export async function createGameRuntime(
     resume() {
       paused = false;
       pauseReason = null;
-      previousSnapshot = lastSnapshot;
+      previousRenderSnapshot = lastRenderSnapshot;
       lastSnapshotReceivedAt = performance.now();
       workerSession.resume();
       proceduralAudio.setPaused(false);
@@ -1579,7 +2080,10 @@ export async function createGameRuntime(
       proceduralAudio.setSettings(settings);
     },
     setCameraZoom(zoom: number) {
-      cameraZoom = Math.max(0.75, Math.min(1.25, zoom));
+      cameraZoom =
+        benchmarkUnitCount === null
+          ? Math.max(0.75, Math.min(1.25, zoom))
+          : 0.75;
       game.scene.getScene("operations")?.cameras.main.setZoom(cameraZoom);
       emit();
     },
@@ -1596,6 +2100,13 @@ export async function createGameRuntime(
         ?.cameras.main.centerOn(CAMERA_CENTER.x, CAMERA_CENTER.y);
     },
     destroy() {
+      if (benchmarkUnitCount !== null) {
+        delete (
+          window as typeof window & {
+            __AURELIA_PRESENTATION_BENCHMARK__?: unknown;
+          }
+        ).__AURELIA_PRESENTATION_BENCHMARK__;
+      }
       listeners.clear();
       unsubscribeWorkerSession();
       workerSession.terminate();

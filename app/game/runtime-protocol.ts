@@ -1,12 +1,15 @@
 import type {
   AiDifficulty,
   SimCommand,
+  SimulationRenderFrame,
   SimulationScenario,
-  SimulationSnapshot,
+  SimulationUiSnapshot,
 } from "./types";
+import type { RenderSnapshotDelta } from "./render-delta";
 
-export const SIMULATION_RUNTIME_PROTOCOL_VERSION = 1 as const;
+export const SIMULATION_RUNTIME_PROTOCOL_VERSION = 3 as const;
 export const DEFAULT_SNAPSHOT_CADENCE_TICKS = 2;
+export const DEFAULT_UI_CADENCE_TICKS = 10;
 
 export type SimulationRuntimeProtocolVersion =
   typeof SIMULATION_RUNTIME_PROTOCOL_VERSION;
@@ -23,6 +26,7 @@ export type InitializeSimulationRuntimeMessage = VersionedRuntimeMessage &
     scenario: SimulationScenario;
     difficulty: AiDifficulty;
     snapshotCadenceTicks?: number;
+    uiCadenceTicks?: number;
   }>;
 
 export type QueueSimulationCommandMessage = VersionedRuntimeMessage &
@@ -96,7 +100,16 @@ export type SimulationRuntimeSnapshotEvent = VersionedRuntimeMessage &
     tick: number;
     /** Transport-only wall-clock sample used to bound live command latency. */
     publishedAtMs?: number;
-    snapshot: SimulationSnapshot;
+    snapshot: SimulationRenderFrame;
+    /** High-frequency entity presentation state, reconstructed independently. */
+    renderDelta: RenderSnapshotDelta;
+  }>;
+
+export type SimulationRuntimeUiSnapshotEvent = VersionedRuntimeMessage &
+  Readonly<{
+    type: "uiSnapshot";
+    tick: number;
+    snapshot: SimulationUiSnapshot;
   }>;
 
 export type SimulationRuntimePauseEvent = VersionedRuntimeMessage &
@@ -125,6 +138,7 @@ export type SimulationRuntimeErrorEvent = VersionedRuntimeMessage &
 export type SimulationRuntimeEvent =
   | SimulationRuntimeReadyEvent
   | SimulationRuntimeSnapshotEvent
+  | SimulationRuntimeUiSnapshotEvent
   | SimulationRuntimePauseEvent
   | SimulationRuntimeTerminatedEvent
   | SimulationRuntimeErrorEvent;

@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-16T01:42:28.062Z",
+  "revision": "be024c4b6514b8e80428b0f75994ef53372c2305",
+  "workingTreeDirty": false,
+  "runtime": {
+    "node": "v24.19.0",
+    "platform": "win32",
+    "architecture": "x64",
+    "cpu": "11th Gen Intel(R) Core(TM) i7-11800H @ 2.30GHz",
+    "logicalCpuCount": 16,
+    "totalMemoryBytes": 16890277888
+  },
+  "publication": {
+    "changedPayloadBytes": 321,
+    "initialPayloadBytes": 247269,
+    "productionTiming": {
+      "sampleCount": 100,
+      "p50Ms": 0.5395,
+      "p95Ms": 0.779,
+      "p99Ms": 1.4063,
+      "worstMs": 1.8033
+    },
+    "reconstructedUnitCount": 600,
+    "sourceSnapshotTiming": {
+      "sampleCount": 100,
+      "p50Ms": 1.2284,
+      "p95Ms": 2.8346,
+      "p99Ms": 3.0503,
+      "worstMs": 3.4635
+    },
+    "transferTiming": {
+      "sampleCount": 100,
+      "p50Ms": 0.3971,
+      "p95Ms": 0.5145,
+      "p99Ms": 0.6579,
+      "worstMs": 0.7643
+    }
+  },
+  "scenarios": [
+    {
+      "averageFps": 59.955,
+      "frameTiming": {
+        "sampleCount": 299,
+        "p50Ms": 16.7,
+        "p95Ms": 16.8,
+        "p99Ms": 17,
+        "worstMs": 17.4
+      },
+      "renderedUnitCount": 600,
+      "renderer": "WebGL · industrial atlas",
+      "snapshotPublications": 50,
+      "unitCount": 600,
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+      "visibleUnitCount": 600,
+      "webglRenderer": "ANGLE (Intel, Intel(R) UHD Graphics (0x00009A60) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    {
+      "averageFps": 59.959,
+      "frameTiming": {
+        "sampleCount": 299,
+        "p50Ms": 16.7,
+        "p95Ms": 16.8,
+        "p99Ms": 17.1,
+        "worstMs": 17.3
+      },
+      "renderedUnitCount": 1000,
+      "renderer": "WebGL · industrial atlas",
+      "snapshotPublications": 50,
+      "unitCount": 1000,
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+      "visibleUnitCount": 1000,
+      "webglRenderer": "ANGLE (Intel, Intel(R) UHD Graphics (0x00009A60) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    }
+  ],
+  "gate": {
+    "acceptanceProfile": {
+      "browserDurationMs": 5000,
+      "browserWarmupFrames": 120,
+      "maxProductionP95Ms": 2,
+      "maxTransferP95Ms": 2,
+      "measuredPublications": 100,
+      "minimumBrowserSnapshotPublications": 40,
+      "normalTargetMinimumFps": 57,
+      "normalTargetUnits": 600,
+      "publicationCadenceMs": 100,
+      "stressMinimumFps": 30,
+      "stressUnits": 1000,
+      "warmupPublications": 20
+    },
+    "checks": {
+      "changedPayloadIsProportional": true,
+      "normalFrameRate": true,
+      "normalUnitCount": true,
+      "productionBudget": true,
+      "renderer": true,
+      "snapshotChurn": true,
+      "stressFrameRate": true,
+      "stressUnitCount": true,
+      "transferBudget": true
+    },
+    "passed": true
+  }
+}

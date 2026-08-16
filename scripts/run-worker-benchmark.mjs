@@ -15,6 +15,7 @@ const ACCEPTANCE_PARAMETERS = Object.freeze({
   measuredTicks: 100,
   seed: 12_600,
   snapshotCadenceTicks: 2,
+  uiCadenceTicks: 10,
   unitCount: 600,
   warmupTicks: 20,
 });
@@ -55,6 +56,7 @@ export const parseArguments = (argv) => {
     output: null,
     seed: ACCEPTANCE_PARAMETERS.seed,
     snapshotCadenceTicks: ACCEPTANCE_PROFILE.snapshotCadenceTicks,
+    uiCadenceTicks: ACCEPTANCE_PROFILE.uiCadenceTicks,
     unitCount: ACCEPTANCE_PROFILE.unitCount,
     warmupTicks: ACCEPTANCE_PROFILE.warmupTicks,
   };
@@ -72,6 +74,8 @@ export const parseArguments = (argv) => {
       options.seed = parseInteger(value, option, true);
     } else if (option === "--snapshot-cadence" && value) {
       options.snapshotCadenceTicks = parseInteger(value, option);
+    } else if (option === "--ui-cadence" && value) {
+      options.uiCadenceTicks = parseInteger(value, option);
     } else if (option === "--max-tick-ms" && value) {
       options.maxTickMs = parsePositiveNumber(value, option);
     } else if (option === "--output" && value) {
@@ -119,6 +123,12 @@ export const evaluateAcceptanceGate = (
       result.snapshotCount ===
       ACCEPTANCE_PROFILE.measuredTicks /
         ACCEPTANCE_PROFILE.snapshotCadenceTicks,
+    uiSnapshotCadence:
+      result.uiSnapshotCount ===
+      ACCEPTANCE_PROFILE.measuredTicks /
+        ACCEPTANCE_PROFILE.uiCadenceTicks,
+    transferableBuffers:
+      result.transferredBufferCount === result.snapshotCount * 8,
     tickBudget: tickTiming.worstMs <= ACCEPTANCE_PROFILE.maxTickMs,
     fixedCadence: result.missedDeadlines === 0,
   };
@@ -212,7 +222,7 @@ const main = async () => {
   const gate = evaluateAcceptanceGate(options, result, tickTiming);
   const cpu = cpus()[0];
   const report = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     recordedAt: new Date().toISOString(),
     revision: revision(),
     workingTreeDirty: workingTreeDirty(),
@@ -232,6 +242,7 @@ const main = async () => {
       unitCount: options.unitCount,
       seed: options.seed,
       snapshotCadenceTicks: options.snapshotCadenceTicks,
+      uiCadenceTicks: options.uiCadenceTicks,
       warmupTicks: options.warmupTicks,
       measuredTicks: options.measuredTicks,
       maxTickMs: options.maxTickMs,
@@ -243,10 +254,14 @@ const main = async () => {
       host: result.host,
       unitCount: result.unitCount,
       snapshotCount: result.snapshotCount,
+      uiSnapshotCount: result.uiSnapshotCount,
+      transferredBufferCount: result.transferredBufferCount,
       missedDeadlines: result.missedDeadlines,
       scenario: result.scenario,
       elapsedMs: Number(result.elapsedMs.toFixed(6)),
       tickTiming,
+      simulationWorkTiming: summarize(result.simulationWorkSamples),
+      publicationTiming: summarize(result.publicationSamples),
       scheduleLateness,
     },
     gate,

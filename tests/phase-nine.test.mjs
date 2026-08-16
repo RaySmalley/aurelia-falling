@@ -11,7 +11,7 @@ const vite = await createServer({
   configFile: false,
   server: { middlewareMode: true },
 });
-const { pickStructureAtWorldPoint, structureContainsWorldPoint } =
+const { pickStructureAtWorldPoint, structureContainsWorldPoint, unitOverlayStyle } =
   await vite.ssrLoadModule("/app/game/bootstrap.ts");
 
 test.after(() => vite.close());
@@ -139,13 +139,32 @@ test("Phase 9 cargo meters reveal only friendly Harvester capacity", async () =>
     new URL("../app/game/bootstrap.ts", import.meta.url),
     "utf8",
   );
+  const harvester = {
+    armor: "heavy",
+    kind: "midasHarvester",
+    playerId: 1,
+    selected: false,
+    health: 100,
+    maxHealth: 100,
+    cargo: 25,
+    cargoCapacity: 50,
+  };
 
-  assert.match(bootstrap, /unit\.kind === "midasHarvester"/);
-  assert.match(bootstrap, /unit\.playerId === current\.controlledPlayer/);
-  assert.match(bootstrap, /\(unit\.selected \|\| unit\.cargo > 0\)/);
-  assert.match(bootstrap, /unit\.cargo \/ unit\.cargoCapacity/);
+  assert.equal(unitOverlayStyle(harvester, 1).cargoRatio, 0.5);
+  assert.equal(
+    unitOverlayStyle({ ...harvester, playerId: 2 }, 1).cargoRatio,
+    null,
+  );
+  assert.equal(
+    unitOverlayStyle({ ...harvester, cargo: 0 }, 1).cargoRatio,
+    null,
+  );
+  assert.equal(
+    unitOverlayStyle({ ...harvester, cargo: 0, selected: true }, 1).cargoRatio,
+    0,
+  );
   assert.match(bootstrap, /const segments = 5/);
-  assert.match(bootstrap, /cargo\.fillStyle\(0xf0bf57/);
+  assert.match(bootstrap, /meterGraphics\.fillStyle\(0xf0bf57/);
 });
 
 test("Phase 9 portraits and Aurelite icon use atlas-derived UI", async () => {

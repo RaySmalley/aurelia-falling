@@ -52,6 +52,14 @@ The documentation set was reconciled with `main` on August 8, 2026 after the
 first Phase 12 runtime-protocol slice. The Phase 12 worker-transport slice then
 added the dedicated worker host, browser transport, and actual Node
 worker-thread parity coverage while retaining the in-process comparison oracle.
-The first Phase 13 slice then established the versioned render-delta contract,
+The first Phase 13 slice established the versioned render-delta contract,
 packed hot fields, explicit entity lifecycle records, and sequence-checked
-reconstruction before worker and Phaser integration.
+reconstruction. The second integrates transferable delta buffers with the
+worker session and Phaser entity rendering. The third adds the bounded 2 Hz
+UI/economy channel and removes full entity collections from React updates.
+The fourth adds camera-margin culling for live, stale, field, unit, and
+projectile presentation while retaining snapshot-backed selection and targeting.
+The remaining Phase 13 slices retain graphics command buffers, pool entity
+views, batch overlays and projectiles, scale detail with zoom, cap expendable
+effects, and add production-cadence delta plus headed WebGL performance gates.
+The recorded 600- and 1,000-unit acceptance workloads pass, completing Phase 13.

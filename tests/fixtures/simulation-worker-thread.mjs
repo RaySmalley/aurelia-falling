@@ -23,9 +23,9 @@ const close = async () => {
 };
 
 startSimulationWorkerHost({
-  postMessage(event) {
+  postMessage(event, transfer) {
     if (event.type === "snapshot") Atomics.store(heartbeat, 0, event.tick);
-    parentPort.postMessage(event);
+    parentPort.postMessage(event, transfer);
     if (event.type === "terminated") queueMicrotask(close);
   },
   subscribe(listener) {

@@ -3,14 +3,31 @@ import {
   type SimulationRuntimeEvent,
 } from "./runtime-protocol";
 import { InProcessSimulationRuntime } from "./simulation-runtime";
+import type { RenderSnapshotDelta } from "./render-delta";
 
 export const SIMULATION_TICK_RATE = 20;
 export const SIMULATION_TICK_INTERVAL_MS = 1_000 / SIMULATION_TICK_RATE;
 
 export type SimulationWorkerHostPort = Readonly<{
-  postMessage(event: SimulationRuntimeEvent): void;
+  postMessage(
+    event: SimulationRuntimeEvent,
+    transfer?: readonly ArrayBuffer[],
+  ): void;
   subscribe(listener: (message: unknown) => void): () => void;
 }>;
+
+function renderDeltaTransferables(delta: RenderSnapshotDelta) {
+  return [
+    delta.units.hide.buffer,
+    delta.units.destroy.buffer,
+    delta.units.hotIds.buffer,
+    delta.units.hotValues.buffer,
+    delta.structures.hide.buffer,
+    delta.structures.destroy.buffer,
+    delta.structures.hotIds.buffer,
+    delta.structures.hotValues.buffer,
+  ] as ArrayBuffer[];
+}
 
 export type SimulationWorkerClock = Readonly<{
   start(tick: () => void): void;
@@ -112,10 +129,15 @@ export function startSimulationWorkerHost(
   };
 
   unsubscribeRuntime = runtime.subscribe((event) => {
-    port.postMessage(
+    const publishedEvent =
       event.type === "snapshot"
         ? Object.freeze({ ...event, publishedAtMs: Date.now() })
-        : event,
+        : event;
+    port.postMessage(
+      publishedEvent,
+      event.type === "snapshot"
+        ? renderDeltaTransferables(event.renderDelta)
+        : undefined,
     );
     if (event.type === "ready" && !started) {
       started = true;

@@ -3,12 +3,12 @@
 ## Status
 
 Approved implementation plan for scaling Aurelia Falling from its current
-two-player world model to stable one-to-four-player matches. The indexed-entity
-and spatial-query phase and budgeted-pathfinding phase are implemented. The
-simulation-worker phase is active: protocol version 1 and its in-process
-comparison adapter, dedicated worker transport, and Node worker-thread parity
-tests are complete, while live-client ownership and performance gates remain.
-Later phases are planned.
+two-player world model to stable one-to-four-player matches. The indexed-entity,
+spatial-query, budgeted-pathfinding, simulation-worker, and delta-rendering
+phases are implemented. Phase 13's production-cadence delta gate and
+hardware-accelerated 600/1,000-unit rendering gates pass on the recorded Intel
+UHD minimum profile. The player UI upgrade in Phase 13A is next; later
+four-player phases remain planned.
 
 Its work is sequenced as Phases 10-16 of the
 [current development roadmap](./development-roadmap.md).
@@ -229,6 +229,20 @@ next bottleneck after the simulation moves off the main thread.
 - Add distance-based detail rules for shadows, bars, particles, and labels.
 - Cap transient visual and audio effects by priority without changing
   simulation outcomes.
+
+The active Phase 13 implementation caps only expendable presentation polish:
+full-detail projectile halo strokes have a fixed per-redraw budget, and
+synthesized selection/weapon sounds share a fixed low-priority budget per
+snapshot. Projectile bodies and gameplay-significant subtitles, alerts,
+warnings, Solar Spear effects, match results, and camera shake bypass that
+budget.
+
+The final Phase 13 acceptance run records 0.771 ms p95 delta production,
+0.423 ms p95 transfer and reconstruction, a 321-byte one-unit update versus a
+247,269-byte initial payload, 59.96 FPS with 600 units, and 59.96 FPS with 1,000
+units. The headed Chromium run used an Intel UHD Direct3D 11 renderer on an
+11th-generation Core i7-11800H with 16 GB RAM. Fixture identity, unit counts,
+WebGL selection, thresholds, and gate evaluation are machine-readable.
 
 ### Acceptance gates
 

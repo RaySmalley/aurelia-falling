@@ -1,6 +1,8 @@
 import { Simulation } from "./simulation";
+import { RenderSnapshotDeltaEncoder } from "./render-delta";
 import {
   DEFAULT_SNAPSHOT_CADENCE_TICKS,
+  DEFAULT_UI_CADENCE_TICKS,
   SIMULATION_RUNTIME_PROTOCOL_VERSION,
   type InitializeSimulationRuntimeMessage,
   type QueueSimulationCommandMessage,
@@ -10,6 +12,10 @@ import {
   type SimulationRuntimePauseReason,
   type SimulationRuntimeRequest,
 } from "./runtime-protocol";
+import {
+  toSimulationRenderFrame,
+  toSimulationUiSnapshot,
+} from "./presentation-snapshot";
 import type { AiDifficulty, SimulationScenario } from "./types";
 
 export type SimulationRuntimeEventListener = (
@@ -135,6 +141,8 @@ export class InProcessSimulationRuntime {
   private simulation: Simulation | null = null;
   private lastTick = 0;
   private snapshotCadenceTicks = DEFAULT_SNAPSHOT_CADENCE_TICKS;
+  private uiCadenceTicks = DEFAULT_UI_CADENCE_TICKS;
+  private forceUiSnapshot = true;
   private readonly pauseReasons = new Set<SimulationRuntimePauseReason>();
   private advancing = false;
   private initializing = false;
@@ -145,6 +153,9 @@ export class InProcessSimulationRuntime {
   private readonly listeners = new Set<SimulationRuntimeEventListener>();
   private readonly pendingEvents: SimulationRuntimeEvent[] = [];
   private emitting = false;
+  private readonly renderDeltaEncoder = new RenderSnapshotDeltaEncoder();
+  private authoritativeUnitIds = new Set<number>();
+  private authoritativeStructureIds = new Set<number>();
 
   constructor(
     private readonly reportListenerError: (error: unknown) => void = () => {},
@@ -259,7 +270,10 @@ export class InProcessSimulationRuntime {
         this.scheduledCommands.clear();
         this.receivedSequences.clear();
         for (let index = this.pendingEvents.length - 1; index >= 0; index -= 1) {
-          if (this.pendingEvents[index].type === "snapshot") {
+          if (
+            this.pendingEvents[index].type === "snapshot" ||
+            this.pendingEvents[index].type === "uiSnapshot"
+          ) {
             this.pendingEvents.splice(index, 1);
           }
         }
@@ -291,6 +305,7 @@ export class InProcessSimulationRuntime {
       ) {
         const commands = this.scheduledCommands.get(this.lastTick) ?? [];
         this.scheduledCommands.delete(this.lastTick);
+        if (commands.length > 0) this.forceUiSnapshot = true;
         for (const message of commands.sort(
           (left, right) => left.sequence - right.sequence,
         )) {
@@ -300,6 +315,10 @@ export class InProcessSimulationRuntime {
               message.scenario,
               message.difficulty,
             );
+            this.renderDeltaEncoder.reset();
+            this.authoritativeUnitIds.clear();
+            this.authoritativeStructureIds.clear();
+            this.forceUiSnapshot = true;
             this.scheduledCommands.clear();
           } else {
             this.simulation!.enqueue(message.command);
@@ -309,8 +328,14 @@ export class InProcessSimulationRuntime {
         simulation.step();
         this.lastTick += 1;
         advanced += 1;
-        if (this.lastTick % this.snapshotCadenceTicks === 0) {
-          this.emitSnapshot(simulation.snapshot());
+        const publishRender =
+          this.lastTick % this.snapshotCadenceTicks === 0;
+        const publishUi =
+          this.forceUiSnapshot || this.lastTick % this.uiCadenceTicks === 0;
+        if (publishRender || publishUi) {
+          const snapshot = simulation.snapshot();
+          if (publishRender) this.emitSnapshot(snapshot);
+          if (publishUi && !this.terminated) this.emitUiSnapshot(snapshot);
         }
       }
     } finally {
@@ -338,19 +363,23 @@ export class InProcessSimulationRuntime {
     }
     const cadence =
       message.snapshotCadenceTicks ?? DEFAULT_SNAPSHOT_CADENCE_TICKS;
+    const uiCadence = message.uiCadenceTicks ?? DEFAULT_UI_CADENCE_TICKS;
     if (
       !this.validInitialization(message) ||
       cadence < 1 ||
-      !Number.isInteger(cadence)
+      !Number.isInteger(cadence) ||
+      uiCadence < cadence ||
+      !Number.isInteger(uiCadence)
     ) {
       this.emitError(
         "invalid_initialization",
-        "Seed, scenario, difficulty, and snapshot cadence must be valid.",
+        "Seed, scenario, difficulty, and presentation cadences must be valid.",
         false,
       );
       return;
     }
     this.snapshotCadenceTicks = cadence;
+    this.uiCadenceTicks = uiCadence;
     this.simulation = this.createSimulation(
       message.seed,
       message.scenario,
@@ -368,7 +397,10 @@ export class InProcessSimulationRuntime {
     } finally {
       this.initializing = false;
     }
-    if (!this.terminated) this.emitSnapshot(snapshot);
+    if (!this.terminated) {
+      this.emitSnapshot(snapshot);
+      if (!this.terminated) this.emitUiSnapshot(snapshot);
+    }
   }
 
   private queueScheduledMessage(message: ScheduledRuntimeMessage) {
@@ -430,11 +462,35 @@ export class InProcessSimulationRuntime {
   }
 
   private emitSnapshot(snapshot: ReturnType<Simulation["snapshot"]>) {
+    const entityIds = this.simulation!.renderEntityIds();
+    const nextUnitIds = new Set(entityIds.unitIds);
+    const nextStructureIds = new Set(entityIds.structureIds);
+    const renderDelta = this.renderDeltaEncoder.encode(snapshot, {
+      destroyedUnitIds: [...this.authoritativeUnitIds].filter(
+        (id) => !nextUnitIds.has(id),
+      ),
+      destroyedStructureIds: [...this.authoritativeStructureIds].filter(
+        (id) => !nextStructureIds.has(id),
+      ),
+    });
+    this.authoritativeUnitIds = nextUnitIds;
+    this.authoritativeStructureIds = nextStructureIds;
     this.emit({
       protocolVersion: SIMULATION_RUNTIME_PROTOCOL_VERSION,
       type: "snapshot",
       tick: this.lastTick,
-      snapshot,
+      snapshot: toSimulationRenderFrame(snapshot),
+      renderDelta,
+    });
+  }
+
+  private emitUiSnapshot(snapshot: ReturnType<Simulation["snapshot"]>) {
+    this.forceUiSnapshot = false;
+    this.emit({
+      protocolVersion: SIMULATION_RUNTIME_PROTOCOL_VERSION,
+      type: "uiSnapshot",
+      tick: this.lastTick,
+      snapshot: toSimulationUiSnapshot(snapshot),
     });
   }
 

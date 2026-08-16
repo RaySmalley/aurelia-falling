@@ -464,6 +464,7 @@ export class DeterministicRng {
   authoritativeState() {
     return this.state;
   }
+
 }
 
 class OccupiedTileView implements PathTileSet {
@@ -649,6 +650,13 @@ export class Simulation {
         ),
       },
     });
+  }
+
+  renderEntityIds() {
+    return {
+      unitIds: this.units.map((unit) => unit.id),
+      structureIds: this.structures.map((structure) => structure.id),
+    } as const;
   }
 
   step(observer?: SimulationStepObserver) {

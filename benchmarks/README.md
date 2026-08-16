@@ -26,13 +26,38 @@ To run the Phase 12 worker acceptance gate with a 600-unit Normal workload:
 npm run benchmark:worker
 ```
 
+To run the Phase 13 delta-publication and hardware-rendering acceptance gate:
+
+```powershell
+npm run benchmark:presentation -- --output benchmarks/presentation-phase-13.json
+```
+
+The presentation gate builds the production application, then measures 100
+delta publications at the production 10 Hz cadence. Delta encoding and
+transfer/reconstruction must each remain at or below 2 ms p95, and a one-unit
+hot update must remain below 5% of the initial 600-unit payload. Authoritative
+source-snapshot allocation is reported separately so it cannot be mistaken for
+delta encoding cost. The browser half uses headed, hardware-accelerated Chromium
+because headless software rendering is not a hardware-profile result. It warms
+the real Phaser Operations scene for 120 frames, then samples five seconds with
+exactly 600 and 1,000 immutable unit views at overview zoom. The 600-unit target
+allows normal refresh-rate sampling tolerance (57 FPS for a nominal 60 FPS
+display); the stress floor is 30 FPS. The checked-in Phase 13 result records an
+11th-generation Core i7-11800H, 16 GB RAM, and Intel UHD Direct3D 11 renderer:
+delta production was 0.771 ms p95, transfer/reconstruction was 0.423 ms p95,
+the 600-unit scene sustained 59.96 FPS, and the 1,000-unit scene sustained
+59.96 FPS. The benchmark is a local hardware acceptance gate, not a CI runner
+claim; deterministic fixture and gate logic remain covered by the unit suite.
+
 The worker benchmark runs the production worker host, runtime dispatch, 20 Hz
 clock, and snapshot-publication path on a Node worker thread. Its
 deterministic 600-unit fixture retains the Normal skirmish economy, AI, fog,
 connectivity, production, and combat systems rather than substituting the
-combat-only idle scenario. It runs 100 measured ticks, publishes a full
-snapshot every two ticks, and includes structured-clone submission in the
-measured work. Its
+combat-only idle scenario. It runs 100 measured ticks, publishes a render
+snapshot every two ticks and a bounded UI snapshot every ten ticks, and honors
+the same transferable-buffer list as the browser worker. Synchronous event
+publication remains included in the complete tick timing and is also reported
+separately from derived simulation work. Its
 machine-readable gate fails if the workload is not exactly 600 units, does not
 complete every tick, takes more than the 50 ms tick interval, or misses the
 following fixed-step deadline. Scheduling lateness is reported separately so
@@ -42,6 +67,8 @@ exactly 100 measured ticks, 20 warmup ticks, all 50 expected two-tick-cadence
 snapshots, and the pinned Node.js 24.19.0 runtime. Any CLI override or runtime
 mismatch makes the run explicitly diagnostic: it still reports timings and the
 reason for the mismatch but does not claim an acceptance pass or failure.
+The gate also checks all ten expected UI snapshots and all eight packed buffers
+for every render snapshot.
 Initial and final unit counts are
 reported separately because the active skirmish workload permits real combat
 casualties. The production clock schedules against absolute deadlines to avoid
