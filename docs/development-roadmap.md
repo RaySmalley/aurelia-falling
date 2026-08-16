@@ -608,7 +608,7 @@ instead of a settled static scene. The acceptance gate requires at least 40
 live publications during each five-second browser sample. Unchanged snapshots
 retain unit reconciliation and overlay command buffers, while overview detail
 submits only the atlas body per unit. On the recorded Intel UHD minimum profile,
-delta production and transfer measure 0.634 ms and 0.561 ms p95; both the 600-
+delta production and transfer measure 0.779 ms and 0.515 ms p95; both the 600-
 and 1,000-unit scenes sustain 59.96 FPS. Payload proportionality, entity counts,
 live snapshot churn, renderer, frame floors, selection/culling invariants, and
 bounded React publication are executable checks. Phase 13 is complete.
