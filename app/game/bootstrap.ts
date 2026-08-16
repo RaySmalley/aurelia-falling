@@ -432,6 +432,7 @@ export async function createGameRuntime(
   let lastSnapshot = lastRenderSnapshot;
   let previousRenderSnapshot = lastRenderSnapshot;
   let lastSnapshotReceivedAt = performance.now();
+  let presentationBenchmarkPublicationCount = 0;
   let detachKeyboardCaptureGuard = () => {};
   let refreshKeyboardInput = () => {};
   let gameplayInputEnabled = false;
@@ -480,7 +481,18 @@ export async function createGameRuntime(
         event.snapshot,
         workerSession.renderSnapshot(),
       );
-      if (benchmarkUnitCount !== null) return;
+      if (benchmarkUnitCount !== null) {
+        const nextBenchmarkSnapshot = createPresentationBenchmarkSnapshot(
+          nextRenderSnapshot,
+          benchmarkUnitCount,
+        );
+        previousRenderSnapshot = lastRenderSnapshot;
+        lastSnapshot = nextBenchmarkSnapshot;
+        lastRenderSnapshot = nextBenchmarkSnapshot;
+        lastSnapshotReceivedAt = performance.now();
+        presentationBenchmarkPublicationCount += 1;
+        return;
+      }
       if (
         pendingFogMemoryResetAtTick !== null &&
         event.tick >= pendingFogMemoryResetAtTick
@@ -883,6 +895,7 @@ export async function createGameRuntime(
             ready: true;
             renderedUnitCount: number;
             renderer: string;
+            snapshotPublicationCount: number;
             unitCount: number;
             visibleUnitCount: number;
           }>;
@@ -898,6 +911,9 @@ export async function createGameRuntime(
                 ready: true,
                 renderedUnitCount: this.unitViews.size,
                 renderer,
+                get snapshotPublicationCount() {
+                  return presentationBenchmarkPublicationCount;
+                },
                 unitCount: benchmarkUnitCount,
                 visibleUnitCount,
               });

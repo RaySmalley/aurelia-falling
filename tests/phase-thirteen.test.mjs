@@ -84,6 +84,8 @@ test("presentation acceptance requires payload, timing, renderer, and FPS gates"
       averageFps: PRESENTATION_ACCEPTANCE_PROFILE.normalTargetMinimumFps,
       renderedUnitCount: 600,
       renderer: "WebGL · industrial atlas",
+      snapshotPublications:
+        PRESENTATION_ACCEPTANCE_PROFILE.minimumBrowserSnapshotPublications,
       unitCount: 600,
       visibleUnitCount: 600,
     },
@@ -91,6 +93,8 @@ test("presentation acceptance requires payload, timing, renderer, and FPS gates"
       averageFps: PRESENTATION_ACCEPTANCE_PROFILE.stressMinimumFps,
       renderedUnitCount: 1_000,
       renderer: "WebGL · industrial atlas",
+      snapshotPublications:
+        PRESENTATION_ACCEPTANCE_PROFILE.minimumBrowserSnapshotPublications,
       unitCount: 1_000,
       visibleUnitCount: 1_000,
     },
@@ -103,6 +107,37 @@ test("presentation acceptance requires payload, timing, renderer, and FPS gates"
       { ...scenarios[1], averageFps: 29.99 },
     ]).passed,
     false,
+  );
+  assert.equal(
+    evaluatePresentationAcceptance(publication, [
+      scenarios[0],
+      { ...scenarios[1], snapshotPublications: 0 },
+    ]).passed,
+    false,
+  );
+});
+
+test("presentation benchmark renews its fixture on live worker snapshots", async () => {
+  const [source, benchmarkSource] = await Promise.all([
+    readFile(new URL("../app/game/bootstrap.ts", import.meta.url), "utf8"),
+    readFile(
+      new URL("../scripts/run-presentation-benchmark.mjs", import.meta.url),
+      "utf8",
+    ),
+  ]);
+  const snapshotBranch = source.slice(
+    source.indexOf('if (event.type === "snapshot")'),
+    source.indexOf('if (event.type === "uiSnapshot")'),
+  );
+
+  assert.doesNotMatch(snapshotBranch, /if \(benchmarkUnitCount !== null\) return;/);
+  assert.match(
+    snapshotBranch,
+    /createPresentationBenchmarkSnapshot\([\s\S]*previousRenderSnapshot = lastRenderSnapshot;[\s\S]*lastRenderSnapshot = nextBenchmarkSnapshot;[\s\S]*presentationBenchmarkPublicationCount \+= 1;/,
+  );
+  assert.match(
+    benchmarkSource,
+    /getByRole\("button", \{ name: "Begin operation" \}\)[\s\S]*\.click/,
   );
 });
 

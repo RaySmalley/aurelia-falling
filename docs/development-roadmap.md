@@ -601,13 +601,17 @@ and loss cues, warnings, Solar Spear feedback, match-result feedback, camera
 shake, visibility, hit testing, and commands remain uncapped. The tenth and
 final slice adds a production-cadence delta publication gate and a headed WebGL
 benchmark that injects exactly 600 and 1,000 immutable units into the real
-Operations scene. Unchanged snapshots now retain unit reconciliation and
-overlay command buffers, while overview detail submits only the atlas body per
-unit. On the recorded Intel UHD minimum profile, delta production and transfer
-measure 0.771 ms and 0.423 ms p95; both the 600- and 1,000-unit scenes sustain
-59.96 FPS. Payload proportionality, entity counts, renderer, frame floors,
-selection/culling invariants, and bounded React publication are executable
-checks. Phase 13 is complete.
+Operations scene. Every live 10 Hz worker render publication renews that fixed
+unit-count fixture, so the FPS measurement exercises production snapshot
+reference churn, interpolation, view synchronization, and overlay processing
+instead of a settled static scene. The acceptance gate requires at least 40
+live publications during each five-second browser sample. Unchanged snapshots
+retain unit reconciliation and overlay command buffers, while overview detail
+submits only the atlas body per unit. On the recorded Intel UHD minimum profile,
+delta production and transfer measure 0.634 ms and 0.561 ms p95; both the 600-
+and 1,000-unit scenes sustain 59.96 FPS. Payload proportionality, entity counts,
+live snapshot churn, renderer, frame floors, selection/culling invariants, and
+bounded React publication are executable checks. Phase 13 is complete.
 
 ### Work
 

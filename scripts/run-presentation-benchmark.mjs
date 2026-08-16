@@ -20,6 +20,7 @@ export const PRESENTATION_ACCEPTANCE_PROFILE = Object.freeze({
   maxProductionP95Ms: 2,
   maxTransferP95Ms: 2,
   measuredPublications: 100,
+  minimumBrowserSnapshotPublications: 40,
   normalTargetMinimumFps: 57,
   normalTargetUnits: 600,
   publicationCadenceMs: 100,
@@ -210,6 +211,9 @@ async function measureBrowserScenario(page, unitCount) {
     `${serverUrl}/?presentationBenchmarkUnits=${unitCount}`,
     { timeout: 30_000, waitUntil: "domcontentloaded" },
   );
+  await page
+    .getByRole("button", { name: "Begin operation" })
+    .click({ timeout: 60_000 });
   await page.waitForFunction(
     (expected) => {
       const marker = window.__AURELIA_PRESENTATION_BENCHMARK__;
@@ -217,7 +221,8 @@ async function measureBrowserScenario(page, unitCount) {
         marker?.ready === true &&
         marker.unitCount === expected &&
         marker.renderedUnitCount === expected &&
-        marker.visibleUnitCount === expected
+        marker.visibleUnitCount === expected &&
+        marker.snapshotPublicationCount > 0
       );
     },
     unitCount,
@@ -243,6 +248,9 @@ async function measureBrowserScenario(page, unitCount) {
         };
         requestAnimationFrame(warm);
       });
+      const initialSnapshotPublicationCount =
+        window.__AURELIA_PRESENTATION_BENCHMARK__
+          ?.snapshotPublicationCount ?? 0;
       const timestamps = [];
       const startedAt = performance.now();
       await new Promise((resolveMeasurement, rejectMeasurement) => {
@@ -273,6 +281,8 @@ async function measureBrowserScenario(page, unitCount) {
         averageFps: ((timestamps.length - 1) * 1_000) / elapsedMs,
         frameIntervals: intervals,
         marker,
+        snapshotPublications:
+          marker.snapshotPublicationCount - initialSnapshotPublicationCount,
         userAgent: navigator.userAgent,
         webglRenderer:
           context && extension
@@ -290,6 +300,7 @@ async function measureBrowserScenario(page, unitCount) {
     frameTiming: summarize(measurement.frameIntervals),
     renderedUnitCount: measurement.marker.renderedUnitCount,
     renderer: measurement.marker.renderer,
+    snapshotPublications: measurement.snapshotPublications,
     unitCount,
     userAgent: measurement.userAgent,
     visibleUnitCount: measurement.marker.visibleUnitCount,
@@ -351,6 +362,11 @@ export function evaluatePresentationAcceptance(publication, scenarios) {
       publication.productionTiming.p95Ms <=
       PRESENTATION_ACCEPTANCE_PROFILE.maxProductionP95Ms,
     renderer: scenarios.every((scenario) => scenario.renderer.startsWith("WebGL")),
+    snapshotChurn: scenarios.every(
+      (scenario) =>
+        scenario.snapshotPublications >=
+        PRESENTATION_ACCEPTANCE_PROFILE.minimumBrowserSnapshotPublications,
+    ),
     stressFrameRate:
       stress?.averageFps >= PRESENTATION_ACCEPTANCE_PROFILE.stressMinimumFps,
     stressUnitCount:
