@@ -44,8 +44,8 @@ exactly 600 and 1,000 immutable unit views at overview zoom. The 600-unit target
 allows normal refresh-rate sampling tolerance (57 FPS for a nominal 60 FPS
 display); the stress floor is 30 FPS. The checked-in Phase 13 result records an
 11th-generation Core i7-11800H, 16 GB RAM, and Intel UHD Direct3D 11 renderer:
-delta production was 0.620 ms p95, transfer/reconstruction was 0.679 ms p95,
-the 600-unit scene sustained 59.76 FPS, and the 1,000-unit scene sustained
+delta production was 0.771 ms p95, transfer/reconstruction was 0.423 ms p95,
+the 600-unit scene sustained 59.96 FPS, and the 1,000-unit scene sustained
 59.96 FPS. The benchmark is a local hardware acceptance gate, not a CI runner
 claim; deterministic fixture and gate logic remain covered by the unit suite.
 

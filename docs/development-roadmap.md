@@ -604,8 +604,8 @@ benchmark that injects exactly 600 and 1,000 immutable units into the real
 Operations scene. Unchanged snapshots now retain unit reconciliation and
 overlay command buffers, while overview detail submits only the atlas body per
 unit. On the recorded Intel UHD minimum profile, delta production and transfer
-measure 0.620 ms and 0.679 ms p95; the 600- and 1,000-unit scenes sustain 59.76
-and 59.96 FPS. Payload proportionality, entity counts, renderer, frame floors,
+measure 0.771 ms and 0.423 ms p95; both the 600- and 1,000-unit scenes sustain
+59.96 FPS. Payload proportionality, entity counts, renderer, frame floors,
 selection/culling invariants, and bounded React publication are executable
 checks. Phase 13 is complete.
 

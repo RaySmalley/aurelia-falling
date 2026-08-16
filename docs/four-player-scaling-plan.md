@@ -237,9 +237,9 @@ snapshot. Projectile bodies and gameplay-significant subtitles, alerts,
 warnings, Solar Spear effects, match results, and camera shake bypass that
 budget.
 
-The final Phase 13 acceptance run records 0.620 ms p95 delta production,
-0.679 ms p95 transfer and reconstruction, a 321-byte one-unit update versus a
-247,269-byte initial payload, 59.76 FPS with 600 units, and 59.96 FPS with 1,000
+The final Phase 13 acceptance run records 0.771 ms p95 delta production,
+0.423 ms p95 transfer and reconstruction, a 321-byte one-unit update versus a
+247,269-byte initial payload, 59.96 FPS with 600 units, and 59.96 FPS with 1,000
 units. The headed Chromium run used an Intel UHD Direct3D 11 renderer on an
 11th-generation Core i7-11800H with 16 GB RAM. Fixture identity, unit counts,
 WebGL selection, thresholds, and gate evaluation are machine-readable.
