@@ -74,15 +74,19 @@ lead; worker publication timestamps keep that delay bounded after main-thread
 stalls. A dedicated 600-unit Normal worker benchmark now exercises the 20 Hz
 clock and production-equivalent transferable snapshot publication, separating
 simulation work from synchronous publication cost and failing on missed
-deadlines or work that exceeds the 50 ms tick budget. Phase 13 is now active: its first four slices
-define a versioned render-delta contract and carry it through the worker as
+deadlines or work that exceeds the 50 ms tick budget. Phase 13 is complete: its
+versioned render-delta contract flows through the worker as
 transferable packed buffers. The live session sequence-checks reconstruction,
 and Phaser consumes the reconstructed entity channel without full unit paths
 or production queues. A separate bounded UI/economy channel now updates React
 at 2 Hz with summaries and selected-asset detail instead of full entity graphs.
 Camera-margin culling now skips off-screen entity views and projectiles while
 selection and targeting continue to use the complete reconstructed state.
-Pooling, batching, and scalable detail work remain subsequent slices.
+Bounded pooling, shared graphics batches, retained draw buffers, zoom detail,
+and effect budgets cap presentation work. The recorded hardware gate keeps
+delta production and transfer below 2 ms p95, sustains the nominal 60 FPS target
+with 600 units, and exceeds the 30 FPS stress floor with 1,000 units. Phase 13A's
+player UI upgrade is next.
 
 Phase 9A now presents active play as a full-bleed battlefield with compact
 persistent status and command overlays. Construction, production, detailed

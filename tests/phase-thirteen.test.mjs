@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createServer } from "vite";
+import {
+  PRESENTATION_ACCEPTANCE_PROFILE,
+  evaluatePresentationAcceptance,
+} from "../scripts/run-presentation-benchmark.mjs";
 
 const vite = await createServer({
   configFile: false,
@@ -17,6 +21,10 @@ const viewPoolModule = await vite.ssrLoadModule("/app/game/view-pool.ts");
 const effectBudgetModule = await vite.ssrLoadModule(
   "/app/game/effect-budget.ts",
 );
+const presentationBenchmarkModule = await vite.ssrLoadModule(
+  "/app/game/presentation-benchmark.ts",
+);
+const simulationModule = await vite.ssrLoadModule("/app/game/simulation.ts");
 const {
   RENDER_DELTA_PROTOCOL_VERSION,
   RenderSnapshotDeltaEncoder,
@@ -39,9 +47,63 @@ const {
 } = bootstrapModule;
 const { BoundedKeyedPool } = viewPoolModule;
 const { PresentationEffectBudget } = effectBudgetModule;
+const {
+  createPresentationBenchmarkSnapshot,
+  presentationBenchmarkUnitCount,
+} = presentationBenchmarkModule;
+const { Simulation } = simulationModule;
 const { SIMULATION_RUNTIME_PROTOCOL_VERSION: runtimeVersion } = protocolModule;
 
 test.after(() => vite.close());
+
+test("presentation benchmark fixtures are explicit, immutable, and bounded", () => {
+  const source = new Simulation(13_600, "skirmish").snapshot();
+  const fixture = createPresentationBenchmarkSnapshot(source, 1_000);
+
+  assert.equal(presentationBenchmarkUnitCount("?presentationBenchmarkUnits=600"), 600);
+  assert.equal(presentationBenchmarkUnitCount("?presentationBenchmarkUnits=1000"), 1_000);
+  assert.equal(presentationBenchmarkUnitCount("?presentationBenchmarkUnits=999"), null);
+  assert.equal(fixture.units.length, 1_000);
+  assert.equal(new Set(fixture.units.map(({ id }) => id)).size, 1_000);
+  assert.equal(Object.isFrozen(fixture), true);
+  assert.equal(Object.isFrozen(fixture.units), true);
+  assert.equal(Object.isFrozen(fixture.units[0]), true);
+  assert.equal(fixture.units.every(({ selected }) => !selected), true);
+});
+
+test("presentation acceptance requires payload, timing, renderer, and FPS gates", () => {
+  const publication = {
+    changedPayloadBytes: 100,
+    initialPayloadBytes: 10_000,
+    productionTiming: { p95Ms: 1.5 },
+    transferTiming: { p95Ms: 1.2 },
+  };
+  const scenarios = [
+    {
+      averageFps: PRESENTATION_ACCEPTANCE_PROFILE.normalTargetMinimumFps,
+      renderedUnitCount: 600,
+      renderer: "WebGL · industrial atlas",
+      unitCount: 600,
+      visibleUnitCount: 600,
+    },
+    {
+      averageFps: PRESENTATION_ACCEPTANCE_PROFILE.stressMinimumFps,
+      renderedUnitCount: 1_000,
+      renderer: "WebGL · industrial atlas",
+      unitCount: 1_000,
+      visibleUnitCount: 1_000,
+    },
+  ];
+
+  assert.equal(evaluatePresentationAcceptance(publication, scenarios).passed, true);
+  assert.equal(
+    evaluatePresentationAcceptance(publication, [
+      scenarios[0],
+      { ...scenarios[1], averageFps: 29.99 },
+    ]).passed,
+    false,
+  );
+});
 
 test("presentation effect budgets cap only low-priority polish", () => {
   const budget = new PresentationEffectBudget(2);

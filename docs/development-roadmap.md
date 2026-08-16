@@ -2,13 +2,11 @@
 
 ## Status
 
-Current canonical roadmap following completion of Phases 7-12 and all Phase 9A
-presentation slices. Phase 13 is active: its delta transport, bounded UI
-channel, camera-culling foundations, graphics caching, and primary entity-view
-pooling are implemented. Shared entity-indicator, route, and projectile batches
-are also in place, along with zoom-based presentation detail tiers. Effect caps
-and performance gates remain before the final player UI upgrade in Phase 13A
-and the first-play experience in Phase 13B.
+Current canonical roadmap following completion of Phases 7-13 and all Phase 9A
+presentation slices. Phase 13's delta transport, bounded UI channel, culling,
+pooling, batching, detail tiers, effect caps, and machine-readable presentation
+performance gates are complete. Phase 13A is next, followed by the first-play
+experience in Phase 13B.
 
 This document defines the order of the remaining phases. Detailed technical
 design remains in the supporting plans:
@@ -600,8 +598,16 @@ presentation budgets to expendable polish: full-detail projectile halo strokes
 are capped per redraw and synthesized selection/weapon sounds share one
 low-priority slot per snapshot. Projectile bodies, alert subtitles, construction
 and loss cues, warnings, Solar Spear feedback, match-result feedback, camera
-shake, visibility, hit testing, and commands remain uncapped. Performance gates
-remain.
+shake, visibility, hit testing, and commands remain uncapped. The tenth and
+final slice adds a production-cadence delta publication gate and a headed WebGL
+benchmark that injects exactly 600 and 1,000 immutable units into the real
+Operations scene. Unchanged snapshots now retain unit reconciliation and
+overlay command buffers, while overview detail submits only the atlas body per
+unit. On the recorded Intel UHD minimum profile, delta production and transfer
+measure 0.620 ms and 0.679 ms p95; the 600- and 1,000-unit scenes sustain 59.76
+and 59.96 FPS. Payload proportionality, entity counts, renderer, frame floors,
+selection/culling invariants, and bounded React publication are executable
+checks. Phase 13 is complete.
 
 ### Work
 

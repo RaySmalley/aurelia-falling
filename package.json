@@ -14,6 +14,7 @@
     "test:viewport": "node scripts/run-viewport-tests.mjs",
     "benchmark:simulation": "node scripts/run-simulation-benchmarks.mjs",
     "benchmark:worker": "node scripts/run-worker-benchmark.mjs",
+    "benchmark:presentation": "npm run build && node scripts/run-presentation-benchmark.mjs",
     "benchmark:pathfinding": "node scripts/run-simulation-benchmarks.mjs --scenarios formation-move,direct-attack --targeted-count 200 --max-targeted-worst-ms 25",
     "benchmark:baseline": "node scripts/run-simulation-benchmarks.mjs --scenarios idle-armies --output benchmarks/baseline.json",
     "replay:verify": "node scripts/verify-simulation-replays.mjs",

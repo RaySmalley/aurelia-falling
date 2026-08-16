@@ -32,6 +32,10 @@ import type {
   Vec2,
 } from "./types";
 import { BoundedKeyedPool } from "./view-pool";
+import {
+  createPresentationBenchmarkSnapshot,
+  presentationBenchmarkUnitCount,
+} from "./presentation-benchmark";
 
 const TILE_WIDTH = 64;
 const TILE_HEIGHT = 32;
@@ -368,6 +372,9 @@ function worldToGrid(point: Vec2): Vec2 {
 export async function createGameRuntime(
   host: HTMLDivElement,
 ): Promise<GameRuntime> {
+  const benchmarkUnitCount = presentationBenchmarkUnitCount(
+    window.location.search,
+  );
   const workerSession = new SimulationWorkerSession(
     createBrowserSimulationWorkerRuntime(),
     {
@@ -397,7 +404,7 @@ export async function createGameRuntime(
   let pauseReason: RuntimeSnapshot["pauseReason"] = null;
   let audioReady = false;
   let cameraMoved = false;
-  let cameraZoom = 1;
+  let cameraZoom = benchmarkUnitCount === null ? 1 : 0.75;
   let reducedScreenShake = false;
   let pendingBuilding: BuildingKind | null = null;
   let solarTargeting = false;
@@ -406,10 +413,16 @@ export async function createGameRuntime(
   let renderer = "initializing";
   let runtimeError: string | null = null;
   let lastUiSnapshot = initialUiSnapshot;
-  let lastRenderSnapshot = withRenderEntities(
+  const initialRenderSnapshot = withRenderEntities(
     initialRenderFrame,
     workerSession.renderSnapshot(),
   );
+  let lastRenderSnapshot = benchmarkUnitCount
+    ? createPresentationBenchmarkSnapshot(
+        initialRenderSnapshot,
+        benchmarkUnitCount,
+      )
+    : initialRenderSnapshot;
   let lastSnapshot = lastRenderSnapshot;
   let previousRenderSnapshot = lastRenderSnapshot;
   let lastSnapshotReceivedAt = performance.now();
@@ -461,6 +474,7 @@ export async function createGameRuntime(
         event.snapshot,
         workerSession.renderSnapshot(),
       );
+      if (benchmarkUnitCount !== null) return;
       if (
         pendingFogMemoryResetAtTick !== null &&
         event.tick >= pendingFogMemoryResetAtTick
@@ -557,6 +571,12 @@ export async function createGameRuntime(
     private staleStructureMemory = new Map<number, StructureSnapshot>();
     private fieldViews = new Map<number, Phaser.GameObjects.Container>();
     private fieldAmountSnapshots = new Map<number, AureliteFieldSnapshot>();
+    private lastUnitViewSnapshot: SimulationSnapshot | null = null;
+    private lastRenderedPreviousSnapshot: SimulationSnapshot | null = null;
+    private lastRenderedUnitSnapshot: SimulationSnapshot | null = null;
+    private lastRenderedUnitCameraView: CameraWorldView | null = null;
+    private lastRenderedUnitDetailTier: PresentationDetailTier | null = null;
+    private lastRenderedUnitAlpha = -1;
     private lastRouteSnapshot: SimulationSnapshot | null = null;
     private lastProjectileSnapshot: SimulationSnapshot | null = null;
     private lastProjectileCameraView: CameraWorldView | null = null;
@@ -851,6 +871,33 @@ export async function createGameRuntime(
         cameraView,
         detailTier,
       );
+      if (benchmarkUnitCount !== null) {
+        const benchmarkWindow = window as typeof window & {
+          __AURELIA_PRESENTATION_BENCHMARK__?: Readonly<{
+            ready: true;
+            renderedUnitCount: number;
+            renderer: string;
+            unitCount: number;
+            visibleUnitCount: number;
+          }>;
+        };
+        if (!benchmarkWindow.__AURELIA_PRESENTATION_BENCHMARK__) {
+          let visibleUnitCount = 0;
+          for (const view of this.unitViews.values()) {
+            if (view.visible) visibleUnitCount += 1;
+          }
+          if (visibleUnitCount === benchmarkUnitCount) {
+            benchmarkWindow.__AURELIA_PRESENTATION_BENCHMARK__ ??=
+              Object.freeze({
+                ready: true,
+                renderedUnitCount: this.unitViews.size,
+                renderer,
+                unitCount: benchmarkUnitCount,
+                visibleUnitCount,
+              });
+          }
+        }
+      }
       this.drawRoutes(lastSnapshot);
       this.drawProjectiles(lastSnapshot, cameraView, detailTier);
       this.drawBuildRadii(lastSnapshot);
@@ -1511,8 +1558,9 @@ export async function createGameRuntime(
       const teamMark = this.add
         .rectangle(0, 2, heavy ? 9 : 7, heavy ? 9 : 7, teamColor, 0.94)
         .setStrokeStyle(1, outline, 1)
-        .setAngle(45);
-      const core = this.add.circle(0, 0, 4, 0xe9ffff);
+        .setAngle(45)
+        .setName("team-mark");
+      const core = this.add.circle(0, 0, 4, 0xe9ffff).setName("core");
       const children: Phaser.GameObjects.GameObject[] = [body];
       if (sprite) children.push(sprite);
       children.push(teamMark, core);
@@ -1538,6 +1586,8 @@ export async function createGameRuntime(
     }
 
     private syncUnitViews(snapshot: SimulationSnapshot) {
+      if (this.lastUnitViewSnapshot === snapshot) return;
+      this.lastUnitViewSnapshot = snapshot;
       const activeIds = new Set(snapshot.units.map((unit) => unit.id));
       for (const [id, view] of this.unitViews) {
         if (activeIds.has(id)) continue;
@@ -1683,6 +1733,25 @@ export async function createGameRuntime(
       cameraView: CameraWorldView,
       detailTier: PresentationDetailTier,
     ) {
+      if (
+        this.lastRenderedPreviousSnapshot === previous &&
+        this.lastRenderedUnitSnapshot === current &&
+        this.lastRenderedUnitAlpha === alpha &&
+        this.lastRenderedUnitDetailTier === detailTier &&
+        cameraWorldViewsEqual(this.lastRenderedUnitCameraView, cameraView)
+      ) {
+        return;
+      }
+      this.lastRenderedPreviousSnapshot = previous;
+      this.lastRenderedUnitSnapshot = current;
+      this.lastRenderedUnitAlpha = alpha;
+      this.lastRenderedUnitDetailTier = detailTier;
+      this.lastRenderedUnitCameraView = {
+        x: cameraView.x,
+        y: cameraView.y,
+        width: cameraView.width,
+        height: cameraView.height,
+      };
       this.selectionGraphics.clear();
       this.meterGraphics.clear();
       this.drawStructureOverlays(current, cameraView, detailTier);
@@ -1713,6 +1782,13 @@ export async function createGameRuntime(
         (
           view.getByName("sprite") as Phaser.GameObjects.Image | null
         )?.setFrame(UNIT_ATLAS_FRAME[unit.kind] + facing, false, false);
+        const showUnitMarks = detailTier === "full";
+        (
+          view.getByName("team-mark") as Phaser.GameObjects.Shape | null
+        )?.setVisible(showUnitMarks);
+        (
+          view.getByName("core") as Phaser.GameObjects.Shape | null
+        )?.setVisible(showUnitMarks);
         if (!this.setViewWithinCameraMargin(view, world, cameraView)) {
           continue;
         }
@@ -1982,7 +2058,10 @@ export async function createGameRuntime(
       proceduralAudio.setSettings(settings);
     },
     setCameraZoom(zoom: number) {
-      cameraZoom = Math.max(0.75, Math.min(1.25, zoom));
+      cameraZoom =
+        benchmarkUnitCount === null
+          ? Math.max(0.75, Math.min(1.25, zoom))
+          : 0.75;
       game.scene.getScene("operations")?.cameras.main.setZoom(cameraZoom);
       emit();
     },
@@ -1999,6 +2078,13 @@ export async function createGameRuntime(
         ?.cameras.main.centerOn(CAMERA_CENTER.x, CAMERA_CENTER.y);
     },
     destroy() {
+      if (benchmarkUnitCount !== null) {
+        delete (
+          window as typeof window & {
+            __AURELIA_PRESENTATION_BENCHMARK__?: unknown;
+          }
+        ).__AURELIA_PRESENTATION_BENCHMARK__;
+      }
       listeners.clear();
       unsubscribeWorkerSession();
       workerSession.terminate();
